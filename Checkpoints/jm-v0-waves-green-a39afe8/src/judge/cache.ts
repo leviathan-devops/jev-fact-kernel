@@ -12,6 +12,9 @@ export function redact(value: unknown): unknown {
       .replace(/\b(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,}/g, "[secret]");
   }
   if (Array.isArray(value)) return value.map(redact);
+  if (value instanceof Date) return { __date: value.toISOString() };          // Date has no enumerable keys; collapse would erase it
+  if (value instanceof Map) return { __map: Array.from(value.entries()).map(([k, v]) => [redact(k), redact(v)]) };
+  if (value instanceof Set) return { __set: Array.from(value).map(redact).sort() };
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(value as Record<string, unknown>).sort()) out[k] = redact((value as Record<string, unknown>)[k]);

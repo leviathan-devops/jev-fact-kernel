@@ -23,7 +23,9 @@ export function startServer(opts: ServeOpts = {}) {
       try {
         if (url.pathname === "/health") {
           const judge = new Judge(db, {});
-          return Response.json({ ok: true, index: indexName, key_source: judge.keySource, key_fingerprint: judge.keyFingerprint, model: judge.model() });
+          // key material metadata is NOT disclosed unless the caller is authenticated (JM_SERVE_TOKEN)
+          const authed = !process.env.JM_SERVE_TOKEN || req.headers.get("authorization") === `Bearer ${process.env.JM_SERVE_TOKEN}`;
+          return Response.json({ ok: true, index: indexName, key_present: judge.keySource !== "absent", model: judge.model(), ...(authed ? { key_source: judge.keySource, key_fingerprint: judge.keyFingerprint } : {}) });
         }
         if (url.pathname === "/jobs") {
           let jobs: string[] = [];
@@ -31,7 +33,9 @@ export function startServer(opts: ServeOpts = {}) {
           return Response.json({ jobs });
         }
         if (url.pathname === "/decide" && req.method === "POST") {
-          const body = await req.json() as { schema?: string; state?: unknown; questions?: Record<string, unknown> };
+          let body: { schema?: string; state?: unknown; questions?: Record<string, unknown> };
+          try { body = await req.json() as typeof body; }
+          catch { return Response.json({ error: "JM_JSON_INVALID" }, { status: 400 }); }   // malformed body is a client error, never a crash
           if (!body.state || !body.questions) return Response.json({ error: "JM_ARGS: state + questions required" }, { status: 400 });
           const judge = new Judge(db, {});
           try {

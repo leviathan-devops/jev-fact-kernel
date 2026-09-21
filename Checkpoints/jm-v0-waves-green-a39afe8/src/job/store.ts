@@ -6,7 +6,7 @@ import { Database } from "bun:sqlite";
 
 export const jmHome = (): string => process.env.JM_HOME ?? join(process.env.HOME ?? ".", ".jm");
 export const jobsDir = (): string => join(jmHome(), "jobs");
-export const jobDir = (id: string): string => join(jobsDir(), id);
+export const jobDir = (id: string): string => join(jobsDir(), id.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").slice(0, 64));
 
 export interface JobPaths { dir: string; dbPath: string; ledgerPath: string; resultsDir: string; }
 
@@ -17,6 +17,7 @@ export function openJob(id: string): { paths: JobPaths; db: Database } {
   const dbPath = join(dir, "queue.sqlite");
   const db = new Database(dbPath, { create: true });
   db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA busy_timeout = 5000");   // contended writes WAIT, not fail-fast
   db.run(`
     CREATE TABLE IF NOT EXISTS queue (
       id          INTEGER PRIMARY KEY,

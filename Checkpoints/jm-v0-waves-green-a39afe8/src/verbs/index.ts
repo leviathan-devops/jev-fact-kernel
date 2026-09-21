@@ -15,7 +15,8 @@ export interface IndexOpts {
 
 export interface IndexStats {
   files: number; changed: number; gone: number; textIndexed: number;
-  bytesHashed: number; ms: number; truncated: boolean; name: string; root: string;
+  bytesHashed: number; skipped: number; lastError?: string;
+  ms: number; truncated: boolean; name: string; root: string;
 }
 
 const DEFAULT_EXCLUDE = ["node_modules", ".git", ".venv", "dist", "target", "__pycache__"];
@@ -34,7 +35,7 @@ function matchesAny(rel: string, pats?: string[]): boolean {
   if (!pats || pats.length === 0) return false;
   const base = rel.split("/").pop() ?? rel;
   return pats.some((p) => {
-    if (!p.includes("*") && !p.includes("?")) return rel.includes(p) || base === p;
+    if (!p.includes("*") && !p.includes("?")) return base === p || rel === p;   // anchored: "test" must NOT match "latest"
     const re = globToRe(p);
     return re.test(rel) || re.test(base);   // `*.json` matches basenames at ANY depth
   });
@@ -74,10 +75,11 @@ export function indexFile(db: Database, root: string, abs: string, opts: IndexOp
   const rel = relative(root, abs);
   const st = statSync(abs);
   const now = new Date().toISOString();
-  const prev = db.query("SELECT id, size, mtime FROM files WHERE path = ?").get(rel) as { id: number; size: number; mtime: number } | null;
-  if (prev && prev.size === st.size && prev.mtime === Math.floor(st.mtimeMs)) {
+  const prev = db.query("SELECT id, size, mtime, state FROM files WHERE path = ?").get(rel) as { id: number; size: number; mtime: number; state: string } | null;
+  if (prev && prev.size === st.size && prev.mtime === Math.floor(st.mtimeMs) && prev.state !== "gone") {
     return { rel, changed: false, textIndexed: false, bytesHashed: 0, truncated: false };  // incremental skip
   }
+  // a tombstoned file with IDENTICAL bytes must REACTIVATE (the skip must not respect the tombstone)
   const ext = extname(rel).toLowerCase();
   const kind = TEXT_EXT.has(ext) ? "text" : "binary";
   let digest: string | null = null, text: string | null = null, bytesHashed = 0, truncated = false;
@@ -139,7 +141,7 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
   const total = (db.query("SELECT COUNT(*) AS n FROM files WHERE state != 'gone'").get() as { n: number }).n;
   const goneCount = (db.query("SELECT COUNT(*) AS n FROM files WHERE state = 'gone'").get() as { n: number }).n;
   return {
-    files: total, changed, gone: goneCount, textIndexed, bytesHashed,
+    files: total, changed, gone: goneCount, textIndexed, bytesHashed, skipped, lastError,
     ms: Date.now() - t0, truncated, name, root,
   };
 }

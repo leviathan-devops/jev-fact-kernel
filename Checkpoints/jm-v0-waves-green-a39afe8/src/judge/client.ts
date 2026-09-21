@@ -27,7 +27,8 @@ export class Judge {
 
   /** FAIL-CLOSED (L4): a decision verb without a key refuses; it never silently degrades. */
   private requireKey(): string {
-    if (this.opts.mock || process.env.JM_MOCK_DIR) return this.key ?? "mock";
+    if (process.env.JM_MOCK_DIR) return this.key ?? "mock";   // the transport short-circuits to canned responses
+    if (this.opts.mock) throw new Error("JM_MOCK_INVALID: opts.mock requires JM_MOCK_DIR (a key alone never fakes the transport)");
     if (!this.key) throw new JevNoKeyError();
     return this.key;
   }

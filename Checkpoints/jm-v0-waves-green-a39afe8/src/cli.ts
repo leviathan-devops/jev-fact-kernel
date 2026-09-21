@@ -110,14 +110,16 @@ async function main(): Promise<number> {
     let indexName = arg;
     if (arg.startsWith("@")) indexName = resolveTarget(arg).name;
     const db = openDb(indexPathFor(indexName));
-    const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag") }, async () => {
-      const r = queryIndex(db, { where: flag("where"), fts: flag("fts"), tag: flag("tag"), limit: flag("limit") ? Number(flag("limit")) : undefined });
-      return { result: r, stats: { rows: r.length }, costUsd: 0 };
-    });
-    db.close();
-    if (has("json")) console.log(JSON.stringify(rows, null, 2));
-    else for (const r of rows) console.log(`${r.size}\t${r.state}\t${r.path}`);
-    return 0;
+    try {
+      const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag") }, async () => {
+        const r = queryIndex(db, { where: flag("where"), fts: flag("fts"), tag: flag("tag"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        return { result: r, stats: { rows: r.length }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(rows, null, 2));
+      else for (const r of rows) console.log(`${r.size}\t${r.state}\t${r.path}`);
+      return 0;
+    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
   }
 
   if (verb === "decision-tree") {

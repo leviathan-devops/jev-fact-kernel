@@ -8,15 +8,28 @@ export interface QueueItem { id: number; fingerprint: string; kind: string; payl
 export class Queue {
   constructor(private db: Database, private jobId: string) {}
 
-  enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): number {
+  /** Enqueue items. A re-enqueue of a PENDING/FAILED fingerprint ADOPTS the new payload
+   *  (never silently keeping the stale one); a DONE row is left untouched. */
+  enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): { added: number; updated: number; skipped: number } {
     const now = new Date().toISOString();
+    const exists = this.db.query("SELECT state FROM queue WHERE fingerprint = ?");
     const ins = this.db.query(
-      "INSERT OR IGNORE INTO queue(fingerprint, kind, payload, state, created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)",
+      "INSERT INTO queue(fingerprint, kind, payload, state, created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)",
     );
-    let added = 0;
-    const tx = this.db.transaction(() => { for (const it of items) added += ins.run(it.fingerprint, kind, JSON.stringify(it.payload), now, now).changes; });
+    const upd = this.db.query(
+      "UPDATE queue SET payload = ?, updated_at = ? WHERE fingerprint = ? AND state IN ('pending','failed')",
+    );
+    let added = 0, updated = 0, skipped = 0;
+    const tx = this.db.transaction(() => {
+      for (const it of items) {
+        const row = exists.get(it.fingerprint) as { state: string } | null;
+        if (!row) { ins.run(it.fingerprint, kind, JSON.stringify(it.payload), now, now); added++; }
+        else if (row.state === "pending" || row.state === "failed") { upd.run(JSON.stringify(it.payload), now, it.fingerprint); updated++; }
+        else skipped++;
+      }
+    });
     tx();
-    return added;
+    return { added, updated, skipped };
   }
 
   /** Claim up to n pending rows. Returns them with state='running' already persisted. */
@@ -39,13 +52,18 @@ export class Queue {
     return tx() as QueueItem[];
   }
 
-  complete(id: number, result: unknown): void {
-    this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=?",
+  /** Ack is conditional on the row still being OURS: a stale process whose claimed row was
+   *  swept back to pending and re-claimed by a live process must NOT overwrite the live result.
+   *  Returns false when the ack was refused (the row moved on without us). */
+  complete(id: number, result: unknown): boolean {
+    const r = this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running'",
       [JSON.stringify(result ?? null), new Date().toISOString(), id]);
+    return r.changes === 1;
   }
-  fail(id: number, error: string): void {
-    this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=?",
+  fail(id: number, error: string): boolean {
+    const r = this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=? AND state='running'",
       [error, new Date().toISOString(), id]);
+    return r.changes === 1;
   }
 
   /** THE RESUME SWEEP: rows left 'running' by a dead process return to 'pending'. */
