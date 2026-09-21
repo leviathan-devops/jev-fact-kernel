@@ -11,6 +11,10 @@ export interface IndexOpts {
   maxTextBytes?: number;   // text indexed into FTS5 only under this size
   maxHashBytes?: number;   // content hashed only under this size
   limit?: number;          // stop after N files (testing)
+  // The store's `files.path` is UNIQUE. Two targets with the same relative path (README.md,
+  // index.ts, ...) would COLLIDE and silently lose rows, so a multi-target ingest passes
+  // "<target>/" here and every stored path is namespaced by its target.
+  prefix?: string;
 }
 
 export interface IndexStats {
@@ -43,6 +47,14 @@ function matchesAny(rel: string, pats?: string[]): boolean {
 
 function walk(root: string, opts: IndexOpts, out: string[] = []): string[] {
   const excl = [...DEFAULT_EXCLUDE, ...(opts.exclude ?? [])];
+  // A FILE root is ONE target, not an empty walk. (Second-operator drill G2b: `jm index <file>`
+  // reported files=0 exit 0 — a silent no-op that read as success.)
+  let rootStat; try { rootStat = statSync(root); } catch { throw new Error(`JM_INDEX_MISSING: ${root} does not exist`); }
+  if (rootStat.isFile()) {
+    if (opts.include && opts.include.length > 0 && !matchesAny(root.split("/").pop() ?? root, opts.include)) return out;
+    out.push(root);
+    return out;
+  }
   const stack = [root];
   while (stack.length) {
     const dir = stack.pop()!;
@@ -72,7 +84,10 @@ export interface OneFileResult { rel: string; changed: boolean; textIndexed: boo
 export function indexFile(db: Database, root: string, abs: string, opts: IndexOpts = {}): OneFileResult {
   const maxText = opts.maxTextBytes ?? 262_144;
   const maxHash = opts.maxHashBytes ?? 8 * 1024 * 1024;
-  const rel = relative(root, abs);
+  // A FILE root: relative(file, file) is "" — the row would land under an empty path. The
+  // basename is the identity in that case (and the stored path must never be empty).
+  const base = relative(root, abs);
+  const rel = (opts.prefix ?? "") + (base === "" ? (abs.split("/").pop() ?? abs) : base);
   const st = statSync(abs);
   const now = new Date().toISOString();
   const prev = db.query("SELECT id, size, mtime, state FROM files WHERE path = ?").get(rel) as { id: number; size: number; mtime: number; state: string } | null;
@@ -111,6 +126,7 @@ export function indexFile(db: Database, root: string, abs: string, opts: IndexOp
 export function listFiles(root: string, opts: IndexOpts = {}): string[] { return walk(root, opts); }
 
 export function indexTarget(db: Database, name: string, root: string, opts: IndexOpts = {}): IndexStats {
+  const prefix = opts.prefix ?? "";
   const t0 = Date.now();
   const maxText = opts.maxTextBytes ?? 262_144;      // 256 KB
   const maxHash = opts.maxHashBytes ?? 8 * 1024 * 1024; // 8 MB
@@ -122,7 +138,8 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
 
   const tx = db.transaction(() => {
     for (const full of paths) {
-      const rel = relative(root, full);
+      const base = relative(root, full);
+      const rel = prefix + (base === "" ? (full.split("/").pop() ?? full) : base);
       seen.add(rel);
       try {
         const r = indexFile(db, root, full, { ...opts, maxTextBytes: maxText, maxHashBytes: maxHash });

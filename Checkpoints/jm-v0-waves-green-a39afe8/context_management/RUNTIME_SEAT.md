@@ -92,9 +92,15 @@ re-proven. The zero-bugs red flag is avoided — the defects are enumerated abov
 
 - The escalation band (0.5-0.8) — unit-covered but no live row landed there in this session.
 - The `@ocdb` adapter — the DBs exist but no adapter is written.
+  **[STALE 2026-09-21 — second-operator drill]** A `sqlite` target kind IS registered and ingests:
+  `jm target add op2db sqlite /tmp/op2/src.sqlite` then `jm index --in op2db` -> `rows=2 changed=2`,
+  rows addressable as `<db>#<table>/<pk>`. The seat's own `@ocdb` may have meant a different DB set.
 - The `@ocws` 219G tree — never walked (skip-rules design owed).
 - The fire gate — blocked on F1/F6; the reflex host was never started.
 - The MCP surface and the watch daemon — planned, unbuilt.
+  **[STALE 2026-09-21 — second-operator drill]** BOTH ARE BUILT AND RUN. `jm mcp` answers
+  `tools/list` with 4 tools (jm_query/jm_find/jm_decide/jm_index); `jm watch --once --in a,b`
+  ticks and writes `$JM_HOME/watch/journal.jsonl`; `jm journal` renders it.
 - Multi-process queue contention — single-process tested; the sweep is unfenced (recorded as open).
 
 ## APPENDIX 3 — THE SEAT'S VERDICT ONE MORE TIME

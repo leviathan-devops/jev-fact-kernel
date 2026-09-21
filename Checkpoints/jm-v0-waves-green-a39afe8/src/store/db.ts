@@ -30,6 +30,21 @@ export function safeName(name: string): string {
 }
 export const indexPathFor = (name: string): string => join(indexDir(), `${safeName(name)}.sqlite`);
 
+/** A READ-ONLY open: the index must already exist. Creating a phantom index on a typo turned
+ *  "no such index" into "no matches" with exit 0 — a silent wrong answer (second-operator drill,
+ *  G1). Writers use openDb(); readers use this. */
+export function openIndexExisting(name: string, dbPath: string): Database {
+  if (!existsSync(dbPath)) {
+    throw new Error(`JM_INDEX_MISSING: no index "${name}" at ${dbPath} — build it first (jm index --in all --name ${name})`);
+  }
+  return openDb(dbPath);
+}
+
+/** True when the index file exists (for a caller that wants to report rather than throw). */
+export function indexExists(name: string): boolean {
+  return existsSync(indexPathFor(name));
+}
+
 export function loadTargets(): Target[] {
   const p = targetsPath();
   if (!existsSync(p)) return [];

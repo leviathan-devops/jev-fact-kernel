@@ -592,3 +592,114 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 - **DISPOSITION:** no change; recorded so the next reader does not "fix" a non-defect.
 - **LESSON:** adjudicate every finding against the RUNTIME's semantics — a true statement about
   threaded languages is false about single-threaded JS.
+
+## EN-024 — the row path never populated FTS (found by the W2 gate test, fixed)
+- **SYMPTOM:** after `ingestTarget` on a sqlite source, `queryIndex(db, {fts:"tombstone"})`
+  returned only the fs file — the sqlite row that literally contains "tombstone" was invisible.
+- **ROOT CAUSE:** when `targets.ts` was consolidated (registry delegated to `store/db.ts`), the
+  per-row FTS mirror was dropped: rows were written to `docs` but never to `docs_fts`.
+- **FIX:** mirror `indexFile`'s write path exactly — `DELETE FROM docs_fts WHERE path=?` then
+  `INSERT INTO docs_fts(text,path)` per row. NOT a global rebuild (that is O(corpus) per ingest
+  and would make incremental ingest a lie).
+- **VERIFICATION:** `test_adapter_delta` — one FTS query spans fs + jsonl + sqlite; battery 36/0.
+- **LESSON:** a mirror table needs the same delete/insert pair as its source, at the same
+  granularity. Consolidation passes silently drop exactly these two lines.
+
+## EN-025 — the upsert wrote `sha256` only on the INSERT arm (found by RUNNING, fixed)
+- **SYMPTOM:** `jm index --in all` reported `changed=2` for the sqlite target on EVERY run, forever.
+- **ROOT CAUSE:** `ON CONFLICT(path) DO UPDATE SET size=..., mtime=..., kind=...` — `sha256` was
+  in the INSERT column list but NOT in the DO UPDATE SET, so the stored sha stayed stale/null and
+  the content-sha skip could never fire.
+- **FIX:** `sha256=excluded.sha256` added to the UPDATE arm.
+- **VERIFICATION:** three consecutive `index --in all` runs: `changed=2` (writes the shas) then
+  `changed=0`, `changed=0`; a one-row mutation then yields exactly `changed=1` and the old text
+  disappears from FTS. Pinned by `test_row_ingest_incremental`.
+- **LESSON:** an upsert's DO UPDATE arm is a second write path — every column the skip logic
+  depends on must appear in BOTH arms. `changed=N` on every run is the signature.
+
+## EN-026 — the fifth audit's 2 findings, adjudicated (1 refuted + pinned, 1 fixed)
+- **HIGH (REFUTED BY PROBE):** "`INSERT OR REPLACE` in cachePut deletes the row before the COALESCE
+  subquery reads it, so hits reset to 0." Measured on this runtime (bun:sqlite):
+  `INSERT OR REPLACE ... COALESCE((SELECT hits ...))` -> `hits = 7` (PRESERVED). Pinned at the REAL
+  call site (`test_cache_put_preserves_hits`) so a future "fix" cannot break it. The UPSERT form
+  was measured too — also preserved. The claim is false for this SQLite.
+- **LOW (fixed):** `calibrate.ts` used `type='table' AND name='decisions'` inline; the literal was
+  never injectable (no interpolation), but it is now parameterized for consistency with every
+  other query in the file.
+- **LESSON:** SQL-semantics claims are cheap to settle with a 6-line probe. Probe first, patch
+  second — a "fix" for a non-defect is a new defect.
+
+## EN-027 — D-008 (CRITICAL): two targets' same-named files collapsed into ONE row
+- **CLASS:** silent wrong answer — the store lost a row and reported `changed=0`, nothing else.
+- **SYMPTOM (as first seen):** `test_cluster_splits_by_source` returned ONE cluster where two
+  sources were set up. Chasing it exposed the real defect underneath.
+- **PROBE (the reproduction, 5 lines of shell):**
+  ```
+  /tmp/collide/one/a.md = "CONTENT-FROM-ONE"   /tmp/collide/two/a.md = "CONTENT-FROM-TWO"
+  jm target add one fs /tmp/collide/one ; jm target add two fs /tmp/collide/two
+  jm index --in all --name collide
+    one  fs  rows=1  changed=1  2ms
+    two  fs  rows=1  changed=0  1ms     <- the second target's file was SILENTLY DROPPED
+  jm query collide --json  ->  rows: 1  (a.md 17)
+  ```
+- **ROOT CAUSE:** `files.path` is UNIQUE and `indexFile` stored `relative(root, abs)`. Each target
+  has its OWN root, so `one/a.md` and `two/a.md` both stored as `a.md`. The incremental skip then
+  saw an identical (size, mtime) and skipped the write entirely.
+- **BLAST RADIUS:** any `--in` spanning targets: README.md, index.ts, package.json, a.md — every
+  common filename in two targets is a lost row. This is the exact class C-criteria call a silent
+  wrong answer.
+- **FIX:** `IndexOpts.prefix` — the multi-target ingest passes `<target>/` and every stored path is
+  namespaced (`one/a.md`, `two/a.md`). Path-based single-target indexing is unchanged (a bare
+  `a.md`), so the existing W0 gate and its pins still hold.
+- **VERIFICATION:** both targets now report `changed=1`; 2 rows; both bodies findable by FTS;
+  pinned by `test_same_named_files_across_targets_do_not_collide`. Battery 59/0.
+- **LESSON:** a UNIQUE key built from a ROOT-RELATIVE path is only unique per root. The moment a
+  second root is introduced, the key silently merges rows — and the incremental skip turns the
+  merge into a DROP. Any multi-source ingest needs a namespacing decision made explicitly.
+
+## EN-028 — THE SECOND-OPERATOR DRILL: six silent defects, all found by a ZERO-CONTEXT operator
+- **METHOD:** a subagent with NO project context, given only README §10/§13 + RUNTIME_SEAT.md, had
+  to complete 9 numbered operations. It completed all 9 and reported 14 doc gaps + 12 reproduced
+  stale/wrong doc claims. Every claim below was re-verified by hand before any fix.
+- **D-009 (CRITICAL, silent wrong answer) — G1: an unknown index returned an empty result, exit 0,
+  and CREATED a phantom index file.** `jm query totally-bogus-index --fts quick` printed only the
+  cost line; `$JM_HOME/index/totally-bogus-index.sqlite` appeared. An operator cannot distinguish
+  "no matches" from "no such index" — the failure mode that makes an empty answer trustworthy.
+  FIX: `openIndexExisting()` — every READ verb (query/scan/cluster/extract/report) refuses a
+  missing index by name. VERIFIED: loud `JM_INDEX_MISSING`, exit 2, no phantom file; a real index
+  reads unchanged. PIN: `test_unknown_index_is_loud_not_empty`.
+- **D-010 — G2: `jm index @sqlite-target` indexed the .sqlite FILE as one row.** The `@target`
+  form bypassed the kind dispatch that `--in` uses, so the DB file itself became the row and the
+  report said success. FIX: `@target` now dispatches by the target's kind (rows via the adapter).
+  VERIFIED: `@optdb` -> `rows=2`, the row's text findable; identical to `--in optdb`.
+- **D-011 — `jm index <file>` was a silent no-op.** A file root was walked as a directory:
+  `files=0 changed=0`, exit 0. Then the naive fix (index the file) stored it under path `""`
+  (`relative(file,file)`), so `text=0` and it was unfindable. FIX: a file root is one target and
+  its stored path is the BASENAME, never empty. VERIFIED: `files=1 changed=1 text=1`, findable as
+  `solo.md`. PIN: `test_single_file_root_indexes_that_file`.
+- **D-012 — G9: `--structure csv` silently rendered MARKDOWN, and `--out x.csv` wrote JSON into a
+  .csv file.** A declared structure the code did not honour. FIX: CSV implemented for real
+  (RFC4180 quoting), `--out`'s extension infers the structure, and an unknown structure is a loud
+  `JM_EXTRACT_STRUCTURE`. VERIFIED: real csv rows; `--out /tmp/op5.csv` alone produced csv.
+- **D-013 — G13: `jm find` wrote its artifact to `/tmp/jm-find-<epoch>.md`, ignoring JM_HOME.**
+  Every other artifact homes under JM_HOME. FIX: `$JM_HOME/find/find-<epoch>.md`. VERIFIED.
+- **D-014 — G14: the ledger `args` dropped the flags the caller passed** (`--out`, `--structure`,
+  `--json`, `--limit`), so a ledger row could not reconstruct the run it claims to prove. FIX: the
+  consumed flags are recorded. VERIFIED: the row now carries `{index, re, structure, out}`.
+- **LESSON:** every one of these was invisible to the test suite because the suite tests the paths
+  the AUTHOR knows. A zero-context operator walks the paths the DOCS imply. The drill is the only
+  instrument that reaches that class — run it after every surface change.
+
+## EN-029 — dead duplicate `report` handler in the CLI (found by the src-chunk audit, fixed)
+- **SYMPTOM (audit, HIGH):** "DEAD CODE: This second `if (verb === "report")` block is
+  unreachable... leftover from a refactoring."
+- **ROOT CAUSE:** the W7 `report` verb was inserted ABOVE the original ledger-only `report`
+  handler; the original kept its position at the bottom and could never run. The usage text also
+  carried a duplicate `jm report` line, and `readLedger` became an unused import.
+- **IMPACT:** none at runtime (the first handler wins), but the file carried a second, differently
+  behaving `report` — a trap for the next editor who changes "the" report and sees no effect.
+- **FIX:** the dead block deleted (its ledger view is subsumed by the surviving report's `ledger`
+  field), the duplicate usage line removed, the now-unused `readLedger` import dropped.
+- **VERIFICATION:** battery 71/0; `jm report f6` and `--json` both live off the surviving handler.
+- **LESSON:** an insert-above-the-old-handler refactor leaves a corpse that a diff will not show.
+  A grep for the verb name across the file would have caught it; the audit caught it instead.

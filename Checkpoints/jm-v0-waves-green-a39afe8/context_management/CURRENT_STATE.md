@@ -83,7 +83,7 @@ describes NOW. (Anchors are `file:line`; every claim has a run behind it in EVID
 
 ```
  cd Shared_Workspace/JevManager
- bun test && bunx tsc --noEmit      # 18/0 and exit 0
+ bun test && bunx tsc --noEmit      # 24/0 and exit 0
  bun src/cli.ts report              # the ledger's run counts
  bun src/cli.ts query shadow --limit 3
  cat context_management/NEXT_STEPS.md

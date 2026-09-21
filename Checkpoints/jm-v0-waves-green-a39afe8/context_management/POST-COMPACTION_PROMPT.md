@@ -91,7 +91,7 @@ battery. If you cannot verify something, say BLOCKED and name the resume conditi
 
 ```bash
 # --- the substrate
-bun test                                  # 18 pass / 0 fail / 87 expects / 8 files
+bun test                                  # 24 pass / 0 fail / 110 expects / 9 files
 bunx tsc --noEmit                         # TSC_EXIT=0
 bun src/cli.ts report                     # runs=N cost=$0.000000 + per-verb counts
 
@@ -136,7 +136,7 @@ ocr review --from 7b7f7eb --to HEAD --format json > artifacts/audit-$(date +%F)-
  the act band is non-empty on a live corpus (a zero rate means the question is vague)
  no `truncated:true` on the corpora you care about (or you know exactly why)
  the escalation file is small but non-empty over many runs
- the battery stays 18/0 and tsc stays 0 after every change
+ the battery stays 24/0 and tsc stays 0 after every change
  the audit gate is PASS (or you are mid-fix with the gate line saying FAIL)
 ```
 

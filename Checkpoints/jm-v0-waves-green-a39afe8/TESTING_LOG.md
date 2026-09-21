@@ -134,3 +134,84 @@ fourth run's `FAIL (0 critical, 1 high)` remains the last VALID verdict. The sco
 findings were adjudicated and dispositioned (2 high fixed + pinned, 1 medium fixed, 1 medium
 REFUTED by JS single-thread semantics). **The retry condition: any lane returning non-zero tokens
 across the full scope.**
+
+### W2 GATE — TARGETS + ADAPTERS (GREEN, 2026-09-22)
+```
+$ jm index --in all --name w2all
+fixTree  fs      rows=2  changed=2  4ms
+fixRows  jsonl   rows=2  changed=2  6ms
+fixDb    sqlite  rows=2  changed=2  1ms
+$ jm query --in all --name w2all --fts tombstone
+23  new  a.md
+38  new  /tmp/w2fix/rows.jsonl#L2
+60  new  /tmp/w2fix/src.sqlite#issues/2     <- ONE query, THREE kinds
+$ jm target rm nope   ->  JM_TARGET_UNKNOWN: nope   exit=1   (LOUD, never a silent subset)
+
+C11 keyless: index --in all exit=0 · query --in all exit=0
+incremental: run A changed=2 (writes shas) -> run B changed=0 -> run C changed=0
+mutate one row -> changed=1, new text queryable, old text GONE from FTS
+sqlite source read-only: size+mtime unchanged before/after ingest
+monkey: JM_ADAPTER_UNKNOWN · JM_SQLITE_MISSING · malformed jsonl line KEPT + findable
+battery 36 pass / 0 fail / 159 expects / 11 files · tsc exit 0
+```
+**W2: GREEN.** (`src/targets.ts` 154L, `src/adapters/{sqlite,jsonl}.ts` 62+38L, `tests/adapters.test.ts`.)
+
+### W3 GATE — RETRIEVE (scan · cluster · extract) — GREEN
+```
+$ jm scan w2all --lex tombstone --re 'tomb\w+'            # keyless, deterministic
+1  38  /tmp/w2fix/rows.jsonl#L2  {"kind":"evt","msg":"tombstone delta"}
+1  23  a.md                      alpha tombstone record
+$ jm cluster w2all --lex tombstone
+n=1  text       .             [alpha,record,tombstone]  a.md
+n=1  jsonl:fixRows /tmp/w2fix [delta,kind,tombstone]    rows.jsonl#L2
+$ jm extract w2all --lex tombstone --re 'service (\w+)'   -> total: 2, empty: 0
+
+D-008 CRITICAL found + fixed: two targets holding the same relative path merged into ONE row
+(the second read changed=0). Paths are now namespaced by target; both rows stored, both findable.
+battery 59 pass / 0 fail / 232 expects / 14 files · tsc exit 0
+```
+**W3: GREEN** (with D-008 recorded as the wave's critical find).
+
+### W5/W7 GATE — ROUTE · EVALUATE · REPORT — GREEN
+```
+$ jm route --catalogue                                # keyless, pure read
+entries: 456   (the LIVE skill/tool catalogue on this host)
+$ jm route --task "index the shadow corpus"           # HOME redirected: no env key, no key file
+route exit=2   JM_ERROR: JEV_NO_KEY: ... no TYPESAFE_API_KEY and no ~/.config/typesafe/key
+$ jm evaluate --cases F --questions F --key flag      # same sandbox
+evaluate exit=2  JEV_NO_KEY                                        (C12 fail-closed, ZERO decisions)
+$ jm report w2all
+index: w2all (72.0 KB) · files: 6 live · docs/fts: 6/6 · runs: 0 · cache: 0 rows
+kinds: text=2 sqlite:fixDb=2 jsonl:fixRows=2
+ledger: 23 rows · 23 ok · 0 failed · $0.000000 · verbs index=12 query=5 scan=2 cluster=2 extract=2
+
+route ladder (mocked transport): p=0.91 -> act + injection text + runner-up logged;
+                                p=0.60 -> escalate, NO injection (never act on a weak signal)
+evaluate: metrics n/k/agreement/brier/ece/variance; k=3 repeats -> 2 cache hits, variance 0
+          (numerical-zero fix: identical answers reported 1.2e-32 before)
+report: a READ — runs row count unchanged before/after; a malformed ledger line counts as failed
+battery 69 pass / 0 fail / 271 expects / 15 files · tsc exit 0
+```
+**W5/W7: GREEN.**
+
+### SECOND-OPERATOR DRILL (L3/L4 acceptance: a zero-context operator must be able to run it)
+```
+OPERATOR   SecondOperator2 (agent `sonic`, zero project context, dispatched with a 9-step script)
+DOCS READ  README §10 (Quickstart) · README §13 (surfaces) · context_management/RUNTIME_SEAT.md
+RESULT     all 9 steps completed · 14 doc gaps · 12 stale/wrong doc claims reproduced
+REPO STATE `git status --porcelain` EMPTY after the drill (the operator modified nothing)
+
+CODE DEFECTS (all re-verified by hand, all fixed, all pinned):
+  D-009 CRITICAL  unknown index -> empty result + exit 0 + a PHANTOM index file
+  D-010           `jm index @sqlite-target` indexed the .sqlite FILE, not its rows
+  D-011           `jm index <file>` was a silent no-op (files=0, exit 0)
+  D-012           `--structure csv` rendered markdown; `--out x.csv` wrote JSON
+  D-013           `jm find` wrote to /tmp, ignoring JM_HOME
+  D-014           ledger `args` dropped flags -> a row could not reconstruct its run
+DOC FIXES: README §10/§11/§13 corrected (MCP tool list was wrong in TWO places, --recipe takes a
+FILE, csv claim, ledger-row claim, the "after Wave 6" future tense); RUNTIME_SEAT's two stale
+appendix claims annotated with the drill's evidence; N-10..N-16 recorded as the doc backlog.
+battery 71 pass / 0 fail / 281 expects / 15 files · tsc exit 0
+```
+**SECOND-OPERATOR GATE: PASSED** (the operator completed the work; the engine's defects it exposed
+are fixed and pinned; the residual doc gaps are named as N-10..N-16 rather than papered over).

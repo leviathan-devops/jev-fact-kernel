@@ -8,7 +8,7 @@ export interface CalibrationReport {
 }
 
 export function calibrate(db: Database): CalibrationReport {
-  const exists = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='decisions'").get();
+  const exists = db.query("SELECT name FROM sqlite_master WHERE type = ? AND name = ?").get("table", "decisions");
   if (!exists) return { decisions: 0, bands: { act: 0, escalate: 0, noop: 0 }, meanSignal: 0, truthFilled: 0, truthRate: 0 };
   const rows = db.query("SELECT answer_json, conf, policy FROM decisions").all() as { answer_json: string; conf: number | null; policy: string | null }[];
   const bands = { act: 0, escalate: 0, noop: 0 };

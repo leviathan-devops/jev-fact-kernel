@@ -1,6 +1,15 @@
 #!/usr/bin/env bun
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
-import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
+import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
+import { targetsIn, ingestAll } from "./targets.ts";
+import { serveStdio } from "./mcp.ts";
+import { scanIndex } from "./verbs/scan.ts";
+import { clusterIndex } from "./verbs/cluster.ts";
+import { extractFields, renderExtract, type Structure } from "./verbs/extract.ts";
+import { route, buildCatalogue } from "./verbs/route.ts";
+import { evaluate, replayDiff } from "./verbs/evaluate.ts";
+import { report, renderReport } from "./verbs/report.ts";
+import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
 import { decisionTree, type Recipe } from "./verbs/decision-tree.ts";
@@ -8,9 +17,11 @@ import { filterIndex } from "./verbs/filter.ts";
 import { find } from "./verbs/find.ts";
 import { startServer } from "./serve.ts";
 import { calibrate, recordTruth, recordCalibration } from "./calibrate.ts";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { queryIndex } from "./verbs/query.ts";
-import { withLedger, readLedger } from "./ledger.ts";
+import { withLedger } from "./ledger.ts";
 
 const argv = process.argv.slice(2);
 const verb = argv[0];
@@ -41,8 +52,18 @@ function usage(): void {
 
   jm index <path|@target> [--name N] [--include G,G] [--exclude G,G] [--limit N] [--json]
   jm query <name|@target> [--where "size>2000"] [--fts "phrase"] [--tag k=v] [--limit N] [--json]
-  jm target add <name> <kind> <root> | jm target ls
-  jm report [--json]
+  jm index --in a,b|all [--name N]                 multi-target ingest (fs | jsonl | sqlite)
+  jm query --in a,b|all [--fts P] [--where W]      query the multi-target index
+  jm target add <name> <kind> <root> | jm target ls | jm target rm <name>
+  jm scan <index> [--lex P] [--re R] [--limit N] [--json]      seeds -> candidates (keyless)
+  jm cluster <index> [--lex P] [--re R] [--min N] [--json]     group candidates (no model)
+  jm extract <index> --re R|--field K [--lex P] [--out F]      structured pulls -> result
+  jm route --task "..." [--catalogue] [--json]               catalogue Choice + injection
+  jm evaluate --cases F --questions F --key K [--k N]         metrics + --replay diff
+  jm report [index] [--json]                                  status over the store + ledger
+  jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
+  jm watch [--once] [--interval MS] [--in a,b]     the reconcile daemon (journal per tick)
+  jm journal [--limit N] [--json]                  the watch journal
 `);
 }
 
@@ -65,12 +86,59 @@ async function main(): Promise<number> {
       console.log(`target ${name} (${kind}) -> ${root}`);
       return 0;
     }
+    if (sub === "rm" || sub === "remove") {
+      const name = argv[2];
+      if (!name) { console.error("usage: jm target rm <name>"); return 2; }
+      const before = loadTargets();
+      const after = before.filter((t) => t.name !== name);
+      if (after.length === before.length) { console.error(`JM_TARGET_UNKNOWN: ${name}`); return 1; }   // LOUD
+      saveTargets(after);
+      console.log(`removed ${name}`);
+      return 0;
+    }
     usage(); return 2;
   }
 
   if (verb === "index") {
+    // `--in a,b|all` (W2/S8): ingest every resolved target through its adapter into ONE index.
+    if (flag("in") !== undefined) {
+      const spec = flag("in")!;
+      const indexName = flag("name") ?? (spec === "all" ? "all" : spec.split(",").map((x) => x.trim()).join("+"));
+      const db = openDb(indexPathFor(indexName));
+      try {
+        const stats = await withLedger("index", { in: spec, name: indexName }, async () => {
+          const r = await ingestAll(db, spec);
+          return { result: r, stats: { targets: r.length, rows: r.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
+        });
+        db.close();
+        if (has("json")) console.log(JSON.stringify(stats, null, 2));
+        else for (const r of stats) console.log(`${r.target}\t${r.kind}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
+        return 0;
+      } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+    }
     const arg = positional[0];
-    if (!arg) { console.error("JM_ARGS: jm index <path|@target>"); return 2; }
+    if (!arg) { console.error("JM_ARGS: jm index <path|@target> [--in a,b|all]"); return 2; }
+    // `@target` DISPATCHES BY KIND: a sqlite/jsonl target goes through its adapter (rows), not
+    // through the fs walker over the DB file. (Second-operator drill G2: `jm index @sqldb`
+    // indexed the .sqlite FILE as one row and reported success.)
+    if (arg.startsWith("@")) {
+      const t = loadTargets().find((x) => x.name === arg.slice(1));
+      if (!t) { console.error(`JM_TARGET_UNKNOWN: ${arg}`); return 2; }
+      if (t.kind !== "fs") {
+        const idxName = flag("name") ?? t.name;
+        const db0 = openDb(indexPathFor(idxName));
+        try {
+          const r = await withLedger("index", { target: t.name, kind: t.kind, name: idxName }, async () => {
+            const st = await ingestAll(db0, t.name);
+            return { result: st, stats: { targets: st.length, rows: st.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
+          });
+          db0.close();
+          if (has("json")) console.log(JSON.stringify(r, null, 2));
+          else for (const x of r) console.log(`${x.target}\t${x.kind}\trows=${x.rows}\tchanged=${x.changed}\t${x.ms}ms`);
+          return 0;
+        } catch (err) { db0.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+      }
+    }
     const { name, root } = resolveTarget(arg);
     const indexName = flag("name") ?? name;
     const dbPath = indexPathFor(indexName);
@@ -106,12 +174,15 @@ async function main(): Promise<number> {
 
   if (verb === "query") {
     const arg = positional[0];
-    if (!arg) { console.error("JM_ARGS: jm query <name|@target>"); return 2; }
-    let indexName = arg;
-    if (arg.startsWith("@")) indexName = resolveTarget(arg).name;
-    const db = openDb(indexPathFor(indexName));
+    const inSpec = flag("in");
+    if (!arg && inSpec === undefined) { console.error("JM_ARGS: jm query <name|@target> | jm query --in a,b|all"); return 2; }
+    let indexName = arg ?? "";
+    if (inSpec !== undefined) {
+      indexName = flag("name") ?? (inSpec === "all" ? "all" : inSpec.split(",").map((x) => x.trim()).join("+"));
+    } else if (arg.startsWith("@")) indexName = resolveTarget(arg).name;
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
     try {
-      const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag") }, async () => {
+      const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag"), limit: flag("limit"), json: has("json") }, async () => {
         const r = queryIndex(db, { where: flag("where"), fts: flag("fts"), tag: flag("tag"), limit: flag("limit") ? Number(flag("limit")) : undefined });
         return { result: r, stats: { rows: r.length }, costUsd: 0 };
       });
@@ -175,6 +246,7 @@ async function main(): Promise<number> {
   if (verb === "find") {
     const phrase = positional[0] ?? flag("phrase");
     if (!phrase) { console.error("JM_ARGS: jm find \"<phrase>\" --in <index> [--common N] [--structure md|json] [--out F]"); return 2; }
+    mkdirSync(join(process.env.JM_HOME ?? join(homedir(), ".jm"), "find"), { recursive: true });   // G13: the artifact home exists
     const indexArg = flag("in") ?? flag("index") ?? "shadow";
     const indexName = indexArg.startsWith("@") ? indexArg.slice(1) : indexArg;
     const db = openDb(indexPathFor(indexName));
@@ -183,7 +255,7 @@ async function main(): Promise<number> {
         const r = await find(db, {
           phrase, common: flag("common") ? Number(flag("common")) : undefined,
           structure: (flag("structure") as "md" | "json") ?? "md",
-          outPath: flag("out") ?? `/tmp/jm-find-${Date.now()}.md`,
+          outPath: flag("out") ?? join(process.env.JM_HOME ?? join(homedir(), ".jm"), "find", `find-${Date.now()}.md`),
           minP: flag("min-p") ? Number(flag("min-p")) : undefined,
           limit: flag("limit") ? Number(flag("limit")) : undefined,
           budgetCalls: flag("budget-calls") ? Number(flag("budget-calls")) : undefined,
@@ -195,6 +267,150 @@ async function main(): Promise<number> {
       else console.log(`JM_FIND trend: ${res.trend} · out=${res.out}`);
       return res.budgetStopped ? 3 : 0;
     } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "scan") {
+    // W3/S9: seeds -> candidates. Keyless and deterministic.
+    const indexName = flag("name") ?? (positional[0] ?? "all");
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
+    try {
+      const r = await withLedger("scan", { index: indexName, lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") }, async () => {
+        const res = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        return { result: res, stats: { scanned: res.scanned, returned: res.returned, truncated: res.truncated }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else for (const c of r.candidates) console.log(`${c.hits}\t${c.size}\t${c.path}\t${c.excerpt.slice(0, 90)}`);
+      return 0;
+    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return (String(err).includes("JM_SCAN_RE_INVALID") || String(err).includes("JM_INDEX_MISSING")) ? 2 : 1; }
+  }
+
+  if (verb === "cluster") {
+    // W3/S10: group the scan's candidates. No model.
+    const indexName = flag("name") ?? (positional[0] ?? "all");
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
+    try {
+      const r = await withLedger("cluster", { index: indexName, lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit"), min: flag("min") }, async () => {
+        const sc = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        const cl = clusterIndex(db, sc.candidates, { minSize: flag("min") ? Number(flag("min")) : undefined });
+        return { result: { scan: { scanned: sc.scanned, returned: sc.returned }, ...cl }, stats: { clusters: cl.clusters.length, grouped: cl.grouped }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else for (const c of r.clusters) console.log(`n=${c.n}\t${c.kind}\t${c.source}\t[${c.signature.slice(0, 4).join(",")}]\t${c.exemplars.map((e) => e.path.split("/").pop()).join(", ")}`);
+      return 0;
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+  }
+
+  if (verb === "extract") {
+    // W3/S9: structured pulls from the scan's candidates -> the RESULT artifact.
+    const indexName = flag("name") ?? (positional[0] ?? "all");
+    if (!flag("re") && !flag("field")) { console.error("JM_ARGS: jm extract --re <regex|--field K> [--lex L] [--out F]"); return 2; }
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
+    try {
+      // G9: the structure comes from --structure, else from --out's extension, else json.
+      const outExt = flag("out")?.toLowerCase();
+      const inferred: Structure | undefined = outExt?.endsWith(".csv") ? "csv" : outExt?.endsWith(".md") ? "md" : outExt?.endsWith(".json") ? "json" : undefined;
+      const structure: Structure = (flag("structure") as Structure) ?? inferred ?? "json";
+      const r = await withLedger("extract", { index: indexName, re: flag("re"), field: flag("field"), lex: flag("lex"), where: flag("where"), limit: flag("limit"), structure, out: flag("out") }, async () => {
+        const sc = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        const ex = extractFields(db, sc.candidates, { re: flag("re"), field: flag("field"), structure });
+        return { result: ex, stats: { rows: ex.rows.length, values: ex.total, empty: ex.empty, structure }, costUsd: 0 };
+      });
+      db.close();
+      const out = renderExtract(r, structure);
+      if (flag("out")) { writeFileSync(flag("out")!, out); console.log(`wrote ${flag("out")} (${r.total} values, ${r.rowsWithValues} rows)`); }
+      else process.stdout.write(out + (out.endsWith("\n") ? "" : "\n"));
+      return 0;
+    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return (String(err).includes("JM_EXTRACT_RE_INVALID") || String(err).includes("JM_INDEX_MISSING")) ? 2 : 1; }
+  }
+
+  if (verb === "route") {
+    // W5/S13: the catalogue Choice. Needs a key (fail polarity: exit 2 without one).
+    if (has("catalogue")) { const c = buildCatalogue(); console.log(JSON.stringify(c, null, 2)); return 0; }   // no key, no judge: a pure read
+    const task = flag("task") ?? positional.join(" ");
+    if (!task) { console.error("JM_ARGS: jm route --task \"<task>\" [--catalogue]"); return 2; }
+    const db = openDb(indexPathFor(flag("name") ?? "decisions"));
+    try {
+      const r = await withLedger("route", { task, context: flag("context") }, async () => {
+        const res = await route(db, { task, context: flag("context") });
+        return { result: res, stats: { route: res.route, p: res.p, candidates: res.candidates }, costUsd: res.costUsd, calls: res.calls, cached: res.cached ? 1 : 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else {
+        console.log(`route=${r.route} choice=${r.choice || "(none)"} p=${r.p.toFixed(3)}${r.runnerUp ? ` runner-up=${r.runnerUp.id}(${r.runnerUp.p.toFixed(3)})` : ""}`);
+        console.log(`reason: ${r.reason}`);
+        if (r.injection) console.log(`injection: ${r.injection}`);
+      }
+      return 0;
+    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "evaluate") {
+    // W5/S14: fixed cases + oracle labels -> metrics. `--replay B` diffs two runs.
+    const casesPath = flag("cases");
+    const qPath = flag("questions");
+    if (!casesPath || !qPath) { console.error("JM_ARGS: jm evaluate --cases F --questions F --key K [--k N] [--replay F]"); return 2; }
+    const cases = JSON.parse(readFileSync(casesPath, "utf8"));
+    const questions = JSON.parse(readFileSync(qPath, "utf8"));
+    const key = flag("key") ?? Object.keys(questions)[0];
+    const db = openDb(indexPathFor(flag("name") ?? "decisions"));
+    try {
+      const r = await withLedger("evaluate", { cases: casesPath, k: flag("k") }, async () => {
+        const res = await evaluate(db, { cases, questions, questionKey: key, repetitions: flag("k") ? Number(flag("k")) : undefined, schema: flag("schema") });
+        return { result: res, stats: { n: res.metrics.n, agreement: res.metrics.agreement, brier: res.metrics.brier }, costUsd: res.metrics.costUsdTotal, calls: res.metrics.n, cached: res.cases.filter((c) => c.cached).length };
+      });
+      db.close();
+      let replay: unknown = null;
+      if (flag("replay")) {
+        const prev = JSON.parse(readFileSync(flag("replay")!, "utf8")) as typeof r;
+        replay = replayDiff(prev, r);
+      }
+      if (has("json")) console.log(JSON.stringify({ ...r, replay }, null, 2));
+      else {
+        const m = r.metrics;
+        console.log(`n=${m.n} k=${m.k} agreement=${(m.agreement * 100).toFixed(1)}% brier=${m.brier.toFixed(4)} ece=${m.ece.toFixed(4)} variance=${m.variance.toFixed(5)}`);
+        console.log(`latency=${m.latencyMsMean.toFixed(0)}ms $/call=${m.costPerCall.toFixed(8)} total=$${m.costUsdTotal.toFixed(6)}`);
+        if (Array.isArray(replay)) { console.log(`replay diffs: ${(replay as unknown[]).length}`); for (const d of replay as { id: string; from: number; to: number; flipped: boolean }[]) console.log(`  ${d.id} ${d.from} -> ${d.to}${d.flipped ? " FLIPPED" : ""}`); }
+      }
+      return 0;
+    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "report") {
+    // W7: a READ-ONLY status report (index · ledger · registry).
+    const repName = flag("name") ?? (positional[0] ?? "all");
+    const db = openIndexExisting(repName, indexPathFor(repName));   // G1: a typo is LOUD
+    try {
+      const r = await withLedger("report", { index: flag("name") ?? positional[0] ?? "all" }, async () => {
+        const res = report(db, { index: flag("name") ?? (positional[0] ?? "all") });
+        return { result: res, stats: { files: res.files, runs: res.runs, ledger: res.ledger.rows }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else console.log(renderReport(r));
+      return 0;
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+  }
+
+  if (verb === "mcp") {
+    // The MCP surface on stdio: an agent (OMP, Claude, any MCP client) calls jm_* tools.
+    await serveStdio();
+    return 0;
+  }
+
+  if (verb === "watch") {
+    // The daemon surface: `--once` for a single reconcile tick (tests/cron), else the loop.
+    const r = await watch({ intervalMs: flag("interval") ? Number(flag("interval")) : undefined, index: flag("name"), once: has("once"), in: flag("in") });
+    return 0;
+  }
+
+  if (verb === "journal") {
+    const rows = readJournal(flag("limit") ? Number(flag("limit")) : 20);
+    if (has("json")) console.log(JSON.stringify(rows, null, 2));
+    else for (const r of rows) console.log(`${r.at}\ttargets=${r.targets}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
+    return 0;
   }
 
   if (verb === "serve") {
@@ -222,19 +438,6 @@ async function main(): Promise<number> {
     else {
       console.log(`JM_CALIBRATE decisions=${rep.decisions} act=${rep.bands.act} escalate=${rep.bands.escalate} noop=${rep.bands.noop} mean=${rep.meanSignal.toFixed(2)} truth=${rep.truthFilled}`);
       if (rep.suggestion) console.log(`  SUGGESTION act=${rep.suggestion.act} — ${rep.suggestion.reason}`);
-    }
-    return 0;
-  }
-
-  if (verb === "report") {
-    const rows = readLedger();
-    const byVerb: Record<string, number> = {};
-    for (const r of rows) byVerb[r.verb] = (byVerb[r.verb] ?? 0) + 1;
-    const totalCost = rows.reduce((a, r) => a + (r.cost_usd ?? 0), 0);
-    if (has("json")) console.log(JSON.stringify({ rows: rows.length, byVerb, totalCost }, null, 2));
-    else {
-      console.log(`runs=${rows.length} cost=$${totalCost.toFixed(6)}`);
-      for (const [k, v] of Object.entries(byVerb)) console.log(`  ${k}: ${v}`);
     }
     return 0;
   }

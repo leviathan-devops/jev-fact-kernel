@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { makeSandbox } from "./helpers.ts";
 import { openDb, indexPathFor } from "../src/store/db.ts";
 import { decisionTree, type Recipe } from "../src/verbs/decision-tree.ts";
+import { cacheGet, cachePut } from "../src/judge/cache.ts";
 
 const RECIPE: Recipe = {
   recipe: "screening-escalate", version: 1, status: "shadow",
@@ -86,5 +87,26 @@ function test_cache_zero_calls() {
       expect(r.calls).toBeLessThanOrEqual(2);
       db.close();
     } finally { delete process.env.JM_MOCK_DIR; rmSync(mock, { recursive: true, force: true }); sb.cleanup(); }
+  });
+
+  test("test_cache_put_preserves_hits", async () => {
+    // AUDIT-5 HIGH, REFUTED BY PROBE: the claim was that `INSERT OR REPLACE` in cachePut deletes
+    // the row before the COALESCE subquery reads it, so hits reset to 0. Measured on THIS runtime
+    // (bun:sqlite): hits are PRESERVED. The pin runs the REAL cachePut/cacheGet, not a SQL twin,
+    // so a future "fix" that actually breaks hits cannot slip through.
+    const sb = makeSandbox();
+    try {
+      const db = openDb(indexPathFor("cache-hits"));
+      cachePut(db, "fp1", "poolside", "laguna-s", "sh", "st", { flag: { noul: 0.9 } });
+      expect(cacheGet(db, "fp1")).not.toBeNull();                       // miss -> hit
+      cacheGet(db, "fp1");
+      const before = (db.query("SELECT hits FROM cache WHERE fingerprint='fp1'").get() as { hits: number }).hits;
+      expect(before).toBe(2);
+      cachePut(db, "fp1", "poolside", "laguna-s", "sh", "st", { flag: { noul: 0.1 } });  // same fingerprint, re-put
+      const after = (db.query("SELECT hits FROM cache WHERE fingerprint='fp1'").get() as { hits: number }).hits;
+      expect(after).toBe(before);                                       // PRESERVED (not reset to 0)
+      expect(cacheGet(db, "fp1")?.answers).toEqual({ flag: { noul: 0.1 } });  // the new answer wins
+      db.close();
+    } finally { sb.cleanup(); }
   });
 }
