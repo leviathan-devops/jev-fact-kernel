@@ -1,6 +1,7 @@
 # TASK_QUEUE — the live queue (OVERWRITE semantics: completed moves to done, active to next)
 
-**TREE SHA: `2e3962af1f29f8f93fb5c51ad818ca24` (git 683fb6b)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `2e3962af1f29f8f93fb5c51ad818ca24` (git 862b29e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -29,6 +30,7 @@ criterion resolves mechanically; "worked on" is a status, never a completion.
 | D12 | README §18 — the operating contract | every claim executed | 25/25 verified; the sweep itself found 3 defects |
 | D13 | C8 — `jm report --job <id\|last>` (a spec criterion recorded as an OPEN violation) | the invocation exists and reconciles the queue against the ledger | `reconciled: YES` exit 0 on a clean job; `NO` exit 3 on a leftover running row; a typo -> exit 2 with no phantom; `tests/job-report.test.ts` |
 | D14 | The escalation band's live row (N6) | a real scenario lands in the band | a 5-scenario live run: `act=1 escalate=1 noop=3`; the escalate row at p=0.590 |
+| D16 | The independent audit runner (the pin's PROOF CONTRACT clause) | every prior gate re-runs on the combined tree with a token per check | `scripts-gates.sh` -> `GATES: 33 passed / 0 failed`, exiting non-zero on any failure; its own first run found a bad CHECK (a grep for a column `scan` does not have) |
 | D15 | D-030 — the reason/route contradiction | every reason states the comparison that fired | `reasonForSignal` in the ladder's own module; `tests/ladder-reason.test.ts` asserts route/reason agreement in all three bands AND against `routeOf` |
 
 ---

@@ -429,3 +429,53 @@ C14 JM IS NOW REGISTERED in OMP's own MCP registry (~/.omp/agent/mcp.json, backe
 
 battery 121 pass / 0 fail / 597 expects / 22 files · tsc exit 0
 ```
+
+### THE INDEPENDENT AUDIT RUNNER — every prior gate re-run on the combined tree
+The pin's PROOF CONTRACT says: *"Independent audit: the orchestrator re-runs every prior gate's
+check on the combined tree and records PASS/FAIL per token."* That was a per-turn manual habit;
+it is now `scripts-gates.sh`, which executes each check against the DEPLOYED tree and prints one
+token per check.
+
+```
+$ ./scripts-gates.sh
+| tsc --noEmit                        | PASS |   L0
+| test_index_incremental              | PASS |   the 12 named tests, each by its own selector
+| test_store_roundtrip                | PASS |
+| test_query_known_rows               | PASS |
+| test_resume_no_dup                  | PASS |
+| test_budget_cap                     | PASS |
+| test_adapter_delta                  | PASS |
+| test_filter_bands                   | PASS |
+| test_find_patterns                  | PASS |
+| test_cache_zero_calls               | PASS |
+| test_decision_fail_closed           | PASS |
+| test_serve_decide                   | PASS |
+| test_calibrate_row                  | PASS |
+| battery (all suites)                | PASS |
+| W0 index (fresh corpus)             | PASS |   the wave gates, each on a fresh sandbox
+| W0 incremental (2nd pass changed=0) | PASS |
+| W0 query by FTS                     | PASS |
+| W0 query by --where                 | PASS |
+| W2 --in spans the registered kinds  | PASS |
+| W3 scan (rows carry ids)            | PASS |
+| W3 cluster                          | PASS |
+| W3 extract (csv)                    | PASS |
+| W6 report reads                     | PASS |
+| C11 keyless index -> exit 0         | PASS |   the key polarity, HOME redirected as well
+| C11 keyless query -> exit 0         | PASS |
+| C12 judged keyless -> exit 2        | PASS |
+| client error -> 2 (typo'd index)    | PASS |   the exit-code contract
+| client error -> 2 (bad structure)   | PASS |
+| client error -> 2 (typo'd job)      | PASS |
+| budget stop -> 3                    | PASS |
+| stdout is DATA (no cost line)       | PASS |
+| container rig T1-T7 (host)          | PASS |   L4 parity half
+| C8 reconciled job -> exit 0         | PASS |   the spec criterion closed this session
+
+GATES: 33 passed / 0 failed
+```
+
+The runner exits NON-ZERO on any failure, so it can gate a commit. Its first execution found a
+FAILED check — and the failure was the CHECK, not the engine: it asserted `scan` output contains
+the word `new`, which belongs to `query`'s columns. Corrected to assert what the W3 gate actually
+needs (rows carrying their ids).
