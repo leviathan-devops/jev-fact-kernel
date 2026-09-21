@@ -1,0 +1,35 @@
+{
+  "rig": "jm-container-rig",
+  "date": "2026-09-21",
+  "spec": "JM_DPL1_SPEC §9 (angles T1-T7; T8/T9 belong to the PARKED W8 and are NOT claimed)",
+  "harness": "tests/container/harness.ts (standalone; tokens emitted only by passing assertions)",
+  "container": {
+    "name": "jm-ct-rig",
+    "image": "omp-ct:master",
+    "os": "Debian GNU/Linux 12 (bookworm)",
+    "kernel": "6.17.0-35-generic",
+    "bun": "1.4.2",
+    "cwd": "/jm",
+    "isolation_verified": {
+      "host_key_file_visible": false,
+      "typesafe_env_in_container": false,
+      "jm_home": "container-local /tmp (mkdtemp)",
+      "host_skills_dir": "VISIBLE at /root/.omp/agent/skills (bind-mounted) — NOT used by T1-T7; recorded for honesty"
+    },
+    "plan_hash": "4163c3b8"
+  },
+  "host_parity": {
+    "note": "the SAME harness file, run on the host before the container run",
+    "result": "7/7 PASS"
+  },
+  "results": [
+    { "angle": "T1", "token": "JM_INDEX_OK files=500", "measured": "files=500 rows=500", "pass": true },
+    { "angle": "T2", "token": "JM_INDEX_DELTA=3", "measured": "changed=3 of 500", "pass": true },
+    { "angle": "T3", "token": "JM_CACHE_HITS=100 JM_JUDGE_CALLS=0", "measured": "first=100 calls, second=0 calls, cached=100", "pass": true },
+    { "angle": "T4", "token": "JM_EXIT=2 JM_DECISIONS_WRITTEN=0", "measured": "exit=2, decisions written=0, JEV_NO_KEY", "pass": true },
+    { "angle": "T5", "token": "JM_RESUME_OK dup=0", "measured": "SIGKILL with 8 orphaned (8 already done) -> resumed, done=400 distinct=400", "pass": true },
+    { "angle": "T6", "token": "JM_BUDGET_STOPPED calls=5", "measured": "stopped=true done=5 of 100", "pass": true },
+    { "angle": "T7", "token": "JM_ADVERSARIAL_SURVIVED", "measured": "no throw across 9 hostile inputs incl. traversal-shaped target name", "pass": true }
+  ],
+  "verdict": "JM_CONTAINER_RIG PASS — 7/7 angles"
+}

@@ -804,3 +804,22 @@ was written first and then executed. That is the point of the exercise: a doc cl
 - **LESSON:** "produced no output" and "produced a noop output" must be different observable
   outcomes. Any stage with an optional input list needs a non-emptiness check at load, because the
   empty case usually degrades into a plausible-looking success.
+
+## EN-034 — building the container rig found two more real defects and one vacuous pass
+- **D-021 (flag silently ignored): `jm index --in a,b --queued` ran the BATCH path and dropped
+  `--queued`.** The caller believed a resumable job existed; they got a fire-and-forget batch, exit
+  0. Found because T5's child never claimed a queue row and the rig timed out waiting for one. FIX:
+  the combination is now a CLIENT error (exit 2) naming the supported single-target form, and
+  `--queued/--job` are in the usage dump for the first time.
+- **A VACUOUS PASS, caught by the rig itself:** T5's first version slept 320 ms and killed the
+  child. The child was still STARTING (bun + TS transpile), so it had claimed zero rows: the
+  scenario reported `orphaned=0` and — with an `orphaned > 0` guard — would have been a green light
+  over a run that proved nothing. FIX: the rig now POLLS the job store until a row is `running`
+  and kills exactly there, then asserts `orphaned > 0` before it will call the angle passed. The
+  scenario now measures a real mid-claim death: 8 orphaned, resumed, done=400 distinct=400.
+- **A probe that could not exist:** T7 tried to create a filename containing a NUL byte; the FS
+  refuses it, so the probe was unrunnable. Replaced with three REACHABLE hostile names (a
+  254-character name, one with a newline and an emoji, a dot-heavy hidden name).
+- **LESSON:** a rig is a probe and probes lie too. The 320 ms guess was the same class of defect
+  the rig exists to catch — a green result over unexercised work — and it was the rig's own
+  self-check (`orphaned > 0`) that refused it.

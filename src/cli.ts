@@ -51,6 +51,7 @@ function usage(): void {
   console.log(`jm — the targetable decision engine
 
   jm index <path|@target> [--name N] [--include G,G] [--exclude G,G] [--limit N] [--json]
+  jm index @<target> --queued [--job ID] [--concurrency N] [--budget-calls N]   resumable, crash-safe
   jm query <name|@target> [--where "size>2000"] [--fts "phrase"] [--tag k=v] [--limit N] [--json]
   jm index --in a,b|all [--name N]                 multi-target ingest (fs | jsonl | sqlite)
   jm query --in a,b|all [--fts P] [--where W]      query the multi-target index
@@ -120,6 +121,13 @@ async function main(): Promise<number> {
   if (verb === "index") {
     // `--in a,b|all` (W2/S8): ingest every resolved target through its adapter into ONE index.
     if (flag("in") !== undefined) {
+      // FAIL LOUD on an unsupported combination: `--in` runs the batch ingest, which has no queue,
+      // so `--queued`/`--job` were previously ACCEPTED AND IGNORED — the caller believed they had
+      // a resumable job and got a fire-and-forget batch.
+      if (has("queued") || flag("job") !== undefined) {
+        console.error("JM_ARGS: --in cannot be combined with --queued/--job (the batch path has no queue). Use the single-target form: jm index @<target> --queued --job <id>");
+        return 2;
+      }
       const spec = flag("in")!;
       const indexName = flag("name") ?? (spec === "all" ? "all" : spec.split(",").map((x) => x.trim()).join("+"));
       const db = openDb(indexPathFor(indexName));
