@@ -535,3 +535,15 @@ AFTER (`excerptAround` centres on the match; `quoteAround` starts the quote at t
   find "theatrical ..."     -> 209 -> 100 -> 3  -> 1   n=3, p=0.89 / 0.87 / 0.67
 battery 129 pass / 0 fail / 626 expects / 24 files · tsc exit 0
 ```
+
+### D-032 — THE SAME CLASS AS D-031, FOUND BY PROBING THE CLASS (not the instance)
+```
+PROBE   "what text is each JUDGE fed, and does it contain the match?"
+FOUND   filter.ts sent a 1500-char HEAD slice; 4 of 6 real candidates had their hit outside it
+        (hits at 9224 / 45892 / 25403 / 58842)
+FIX     src/verbs/excerpt.ts — ONE module for excerptAround() and quoteAround(); both find and
+        filter now anchor on the match; a --where-only run falls back to the head (no seed exists)
+AFTER   6/6 candidates have their match INSIDE the excerpt
+FRONTIER scan's no-regex head excerpt only DISPLAYS (its gate reads the full text) — nothing to fix
+battery 130 pass / 0 fail / 629 expects / 24 files · tsc exit 0
+```

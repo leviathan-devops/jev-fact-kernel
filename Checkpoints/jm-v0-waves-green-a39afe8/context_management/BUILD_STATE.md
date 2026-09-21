@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `2e3962af1f29f8f93fb5c51ad818ca24` (git fe922d8)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `bafc8c3a323122ba9a94704c590ba11e` (git fe68864)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -54,7 +55,7 @@ sealed copy does not belong here.
 | `src/verbs/evaluate.ts` | 136 |
 | `src/verbs/extract.ts` | 88 |
 | `src/verbs/filter.ts` | 46 |
-| `src/verbs/find.ts` | 125 |
+| `src/verbs/find.ts` | 162 |
 | `src/verbs/index.ts` | 164 |
 | `src/verbs/query.ts` | 77 |
 | `src/verbs/report.ts` | 192 |
@@ -62,7 +63,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 25 files)
+## THE TEST INVENTORY (tests/, 26 files)
 
 | file | lines |
 |------|-------|
@@ -75,6 +76,7 @@ sealed copy does not belong here.
 | `tests/container/harness.ts` | 241 |
 | `tests/decide.test.ts` | 202 |
 | `tests/decision.test.ts` | 112 |
+| `tests/find-excerpt.test.ts` | 60 |
 | `tests/find.test.ts` | 115 |
 | `tests/guard-query.test.ts` | 46 |
 | `tests/guards.test.ts` | 88 |
