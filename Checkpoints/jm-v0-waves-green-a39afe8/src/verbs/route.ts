@@ -85,7 +85,12 @@ export async function route(db: Database, opts: RouteOpts): Promise<RouteResult>
   const decided = routeOf(typed, policy);        // the SAME ladder decision-tree uses
   // "reject" folds into "escalate": both hand the decision to a human, so the caller's action
   // set stays three-valued.
-  const folded: RouteResult["route"] = decided.route === "act" ? "act" : decided.route === "noop" ? "noop" : "escalate";
+  // THE MENU IS THE CONTRACT: a judge answer naming an id the catalogue does NOT contain must
+  // never become an act + injection (ADV-2 probe test_adv_route_choice_outside_the_menu: the
+  // engine emitted "[JM ROUTE] Use skill:NOT-IN-MENU" for a capability that does not exist).
+  const inMenu = winner[0] !== "none" && cat.entries.some((e) => e.id === winner[0]);
+  const ladder: "act" | "escalate" | "noop" = decided.route === "act" ? "act" : decided.route === "noop" ? "noop" : "escalate";
+  const folded: RouteResult["route"] = ladder === "act" && !inMenu ? "escalate" : ladder;
 
   return {
     choice: folded === "act" ? winner[0] : "",
@@ -101,6 +106,6 @@ export async function route(db: Database, opts: RouteOpts): Promise<RouteResult>
     costUsd: res.costUsd,
     reason: folded === "act"
       ? `${winner[0]} at p=${winner[1].toFixed(3)} >= act ${policy.act}`
-      : `${decided.reason} -> ${folded}`,
+      : !inMenu && ladder === "act" ? `judge chose ${winner[0]} at p=${winner[1].toFixed(3)} but it is NOT in the catalogue -> escalate` : `${decided.reason} -> ${folded}`,
   };
 }

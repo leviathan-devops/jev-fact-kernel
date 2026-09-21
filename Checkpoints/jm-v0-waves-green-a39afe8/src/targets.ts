@@ -28,6 +28,14 @@ export interface Adapter {
 
 const expand = (p: string) => resolvePath(p.replace(/^~(?=\/|$)/, homedir()));
 
+/** A target name is a NAMESPACE KEY, never a path fragment. A name like `../../evil` would
+ *  otherwise prefix every stored row with `../` and collide with a sibling target's namespace
+ *  (ADV-2 probe `test_adv_target_name_traversal_does_not_escape_the_store`). */
+export function safeTargetName(name: string): string {
+  const cleaned = name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").replace(/^[._]+/, "_").slice(0, 64);
+  return cleaned.length > 0 ? cleaned : "_";
+}
+
 /** `--in all` | `--in a,b` -> resolved targets. A missing name is LOUD (never a silent subset). */
 export function targetsIn(spec: string | undefined): Target[] {
   const reg = loadTargets();
@@ -55,8 +63,8 @@ export const fsAdapter: Adapter = {
     for (const abs of files) {
       const rel = abs.slice(root.length + 1);
       let st; try { st = fileStat(abs); } catch { continue; }
-      // ref = "<target>/<rel>": the SAME key indexFile writes, so enumerate and ingest agree.
-      yield { target: t.name, kind: "fs", ref: `${t.name}/${rel}`, text: "", meta: { abs, size: st.size, mtimeMs: st.mtimeMs } };
+      // ref = "<safe-name>/<rel>": the SAME key indexFile writes, so enumerate and ingest agree.
+      yield { target: t.name, kind: "fs", ref: `${safeTargetName(t.name)}/${rel}`, text: "", meta: { abs, size: st.size, mtimeMs: st.mtimeMs } };
     }
   },
   text: (item) => item.text,
@@ -116,7 +124,7 @@ export async function ingestTarget(db: Database, t: Target, opts: { limit?: numb
     for await (const it of fsAdapter.enumerate(t, opts)) {
       rows++;
       try {
-        const r = indexFile(db, root, String((it.meta as { abs: string }).abs), { prefix: `${t.name}/` });
+        const r = indexFile(db, root, String((it.meta as { abs: string }).abs), { prefix: `${safeTargetName(t.name)}/` });
         if (r.changed) changed++;
         if (r.textIndexed) textIndexed++;
       } catch { /* one bad file never aborts the batch */ }

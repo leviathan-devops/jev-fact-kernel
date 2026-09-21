@@ -1,8 +1,8 @@
 # CHECKPOINT MANIFEST - jm-v0-waves-green-a39afe8
 
 date: 2026-09-21 (sealed) | seal mode: **B (no lock - living snapshot, refreshed after every wave)
-source tree sha256: `a75230e39e862224460a9bbf971ae8ad` (33 src + 15 test files)
-battery (run from THIS COPY): **71 pass / 0 fail / 281 expects / 15 files** | tsc exit 0
+source tree sha256: `cb5cb3c593d5a77ee0ad81866359a684` (33 src + 16 test files)
+battery (run from THIS COPY): **84 pass / 0 fail / 310 expects / 16 files** | tsc exit 0
 git: branch master @ 40f20e9
 
 ## 1. CONTENTS - every sealed file

@@ -215,3 +215,37 @@ battery 71 pass / 0 fail / 281 expects / 15 files · tsc exit 0
 ```
 **SECOND-OPERATOR GATE: PASSED** (the operator completed the work; the engine's defects it exposed
 are fixed and pinned; the residual doc gaps are named as N-10..N-16 rather than papered over).
+
+### ADV-2 — THE ADVERSARIAL PASS OVER THE SURFACES ADDED AFTER THE FIRST SWEEP
+```
+13 probes: targets/adapters · scan/cluster/extract · route/evaluate · mcp/watch/report
+RESULT: 2 CONFIRMED DEFECTS on the first run, both fixed, both pinned.
+
+D-015 target NAME used as a path fragment -> a row key prefixed `../` and collided with a
+      sibling namespace. FIX safeTargetName(); VERIFIED `_evil/a.md`.
+D-016 `route` emitted an injection for a choice OUTSIDE the catalogue (`skill:NOT-IN-MENU` at
+      p=0.99) -> a model would be told to use a non-existent capability. FIX: the menu is the
+      contract; an out-of-menu winner escalates and the reason names it.
+
+PASSED NEGATIVE HALF (recorded, so silence is never read as proof): catastrophic-regex bound,
+regex metachars literal, no-capture-group extract, hostile MCP frames, symlink loop, empty store,
+zero-table sqlite, malformed jsonl, probabilities not summing to 1.
+battery 84 pass / 0 fail / 310 expects / 16 files · tsc exit 0
+```
+**ADV-2: PASSED (with a non-empty defect ledger — a zero-defect sweep would have been the red flag).**
+
+### THE AUDIT GATE, FINAL STATE (2026-09-21, end of session)
+```
+CHUNKED METHOD (the only one that completes under upstream rate limits):
+  tests/  4 files  status=complete  findings 6 -> all fixed -> re-run: COMPLETE, 0 findings
+  root    3 files  status=complete  0 findings
+  src/   36 files  status=PARTIAL in EVERY attempt (18-file and 21-file halves also failed)
+                   findings seen: 1 low + 1 high + 3 low/medium + 1 high + 1 medium
+                   ALL adjudicated: 9 fixed, 6 REFUTED by probe (see AUDIT_SUMMARY §4)
+  lanes at close: openrouter-laguna-xs-free 0 tokens · poolside-laguna-s 0 tokens ·
+                  muse-free 0 tokens (a 2-file probe returns nothing on any lane)
+```
+**AUDIT GATE: BLOCKED.** Not FAIL (the known state is clean), not PASS (the largest chunk never
+completed). Retry condition: any lane returning non-zero tokens across the full 36-file source
+scope -> expect status=complete; zero findings flips the gate to PASS.
+Full method + ledger + the paste-ready re-run sequence: `AUDIT_SUMMARY.md`.

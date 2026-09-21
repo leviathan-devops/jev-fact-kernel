@@ -703,3 +703,56 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 - **VERIFICATION:** battery 71/0; `jm report f6` and `--json` both live off the surviving handler.
 - **LESSON:** an insert-above-the-old-handler refactor leaves a corpse that a diff will not show.
   A grep for the verb name across the file would have caught it; the audit caught it instead.
+
+## EN-030 — the ADV-2 sweep found two more real defects (both fixed, both pinned)
+The first adversarial sweep predated W2/W3/W5/W6, so the NEW surfaces had NO probes. The second
+sweep (13 probes: targets/adapters · scan/cluster/extract · route/evaluate · mcp/watch/report)
+found two confirmed defects on its first run.
+
+- **D-015 — a target NAME was used as a path fragment.** A target registered as `../../evil`
+  prefixed every stored row key with `../`, so its namespace collided with a sibling target's and
+  the row path was a lie about where the data lives. FIX: `safeTargetName()` — a name is a
+  NAMESPACE KEY, never a path fragment (separators and `..` runs collapse; a leading dot run is
+  neutralised; bounded to 64 chars). VERIFIED: the same target now stores `_evil/a.md`.
+  The store key is not a filesystem path, but a key that LOOKS like a traversal will collide,
+  which is the same class as D-008.
+- **D-016 — `route` emitted an injection for a capability OUTSIDE the catalogue.** With the judge
+  answering `skill:NOT-IN-MENU` at p=0.99 the ladder said act, and the engine produced
+  `[JM ROUTE] Use skill:NOT-IN-MENU` — an instruction to use something that does not exist, which
+  a model would then hallucinate around. FIX: the menu is the contract — an out-of-menu winner
+  cannot act (it escalates, and the reason names the mismatch). VERIFIED by the probe.
+- **PROBES THAT PASSED (the negative half, recorded so silence is not read as proof):**
+  catastrophic-regex hang (bounded), regex metacharacters as literal input (the table survives),
+  extract with no capture group (no `"undefined"` values), signature on empty/giant input, cluster
+  on an empty candidate set, probabilities that do not sum to 1 (finite p, defined route), MCP
+  hostile frames (missing name, missing params, wrong arg types, null id), a symlink loop in a
+  watched tree (no hang), report on an empty store, a sqlite DB with zero tables, a malformed JSONL
+  line kept and marked.
+- **LESSON:** a probe plan must be regenerated whenever the SURFACE MAP grows. The first sweep was
+  green on the surface it knew; the new verbs were unprobed until now — and two of them were wrong.
+
+## EN-031 — the ledger of audit adjudications (what was fixed, what was REFUTED, and how)
+The audit lanes stayed rate-limited all session, so most runs came back `partial`. Every finding
+that DID land was adjudicated against the runtime by probe before any edit. The record:
+
+| # | claim | severity | verdict | evidence |
+|---|-------|----------|---------|----------|
+| A4-1 | db.run(sql) applies only the FIRST statement | critical | **REFUTED** | probe: all 13 tables created |
+| A4-2 | cachePut's INSERT OR REPLACE resets `hits` to 0 | high | **REFUTED** | probe: hits=7 preserved; pinned at the REAL call site |
+| A5-1 | the `processed >= budget` check is non-atomic | high | CONFIRMED -> fixed | concurrency 8 + cap 5 overshot; now `claimSlot()` |
+| A5-2 | `db.close()` skipped on the exception path | high | CONFIRMED -> fixed | try/finally |
+| A5-3 | `jobId` is an unused constructor param | medium | CONFIRMED -> fixed | surfaced as `Queue.job()` |
+| A5-4 | `changed++`/`textIndexed++` can be lost | medium | **REFUTED** | JS has no shared-memory parallelism; a `++` is atomic per turn |
+| A6-1 | package.json lacks a trailing newline | low | CONFIRMED -> fixed | appended |
+| A7-1 | `join(full, "..")` should be `dirname(full)` | low | CONFIRMED -> fixed | readability |
+| A7-2 | empty catch blocks swallow errors | medium | CONFIRMED -> fixed | the contract is now stated in the comment |
+| A7-3 | comments use a non-ASCII em dash | low | CONFIRMED -> fixed | helpers.ts is ASCII-only now |
+| A7-4 | `rel` is an unclear variable name | low | CONFIRMED -> fixed | renamed `relativePath` |
+| A8-1 | `src/pools/budget.ts` comment is inaccurate (off-by-one) | low | **REFUTED** | the comment already says "a cap of N allows exactly N calls" |
+| A8-2 | the duplicate `report` handler is dead code | high | CONFIRMED -> fixed | two handlers, the second unreachable (EN-029) |
+| A8-3 | extract's return has a DUPLICATE `total` property | high | **REFUTED** | `grep -c "total,"` = 1; the auditor invented it |
+| A8-4 | extract's `re` should be `const` (never modified) | medium | **REFUTED** | line 31 reassigns it: `re = new RegExp(...)` |
+| A8-5 | the STOP set contains an unreachable CJK entry | low | CONFIRMED -> fixed | the tokenizer emits ASCII only; the entry was dead data |
+
+**TALLY: 9 confirmed + fixed · 6 refuted by probe.** A refuted finding is recorded, never dropped:
+the six refutations are what tells a future reader that these are NOT defects.
