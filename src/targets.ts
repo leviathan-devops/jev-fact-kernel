@@ -33,7 +33,14 @@ const expand = (p: string) => resolvePath(p.replace(/^~(?=\/|$)/, homedir()));
  *  (ADV-2 probe `test_adv_target_name_traversal_does_not_escape_the_store`). */
 export function safeTargetName(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").replace(/^[._]+/, "_").slice(0, 64);
-  return cleaned.length > 0 ? cleaned : "_";
+  const base = cleaned.length > 0 ? cleaned : "_";
+  // COLLISION-PROOF: `same name` and `same/name` both sanitise to `same_name`, and two targets
+  // sharing a key merge their row namespaces — 2 files became 1 row, silently (D-027, found by the
+  // ADV-3 sweep; the same class as D-008, reached through the NAME instead of the path). When the
+  // name needed changing at all, a short digest of the ORIGINAL disambiguates it. A name that was
+  // already safe is returned UNCHANGED, so existing targets keep their keys.
+  if (base === name) return base;
+  return `${base.slice(0, 48)}-${createHash("sha256").update(name).digest("hex").slice(0, 8)}`;
 }
 
 /** `--in all` | `--in a,b` -> resolved targets. A missing name is LOUD (never a silent subset). */

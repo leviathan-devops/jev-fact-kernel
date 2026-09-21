@@ -303,3 +303,26 @@ THE PIN NAMED `test_find_patterns`; IT DID NOT EXIST. Writing it found three def
 battery 96 pass / 0 fail / 399 expects / 19 files · tsc exit 0
 ```
 **W4: GREEN** (with the named test that the contract required and the code never had).
+
+### ADV-3 — THE RE-SWEEP OF THE SURFACE CHANGED SINCE ADV-2
+```
+12 probes over: Budget.claim/settle · validateRecipe · safeTargetName · the FTS input path ·
+the watch tick · the index roots.   RESULT: 12 pass / 0 fail / 120 expects
+
+D-027 CONFIRMED by the sweep (the only defect it found, and it was a CRITICAL class):
+  `same name` and `same/name` both sanitised to `same_name` -> one namespace -> 2 files became
+  1 row, silently. The sanitiser is now injective (a digest disambiguates any name it had to
+  change; an already-safe name keeps its exact key). 2 rows, both bodies findable, pinned.
+
+PASSED (the negative half, recorded so silence is not read as proof): 20 synchronous claims
+against a cap of 5 grant exactly 5; cached settles refund; phantom settles create no credit;
+9 hostile recipe shapes all refuse; 10 hostile target-name shapes all neutralise; 10 hostile FTS
+expressions all become JM_FTS_INVALID while the valid ones still match; two concurrent ticks on
+one index leave 2 clean rows; a vanished root is survivable; a file root and a directory root
+agree; a missing root is loud.
+battery 110 pass / 0 fail / 534 expects / 20 files · tsc exit 0
+```
+**ADV-3: PASSED with a non-empty ledger.** The full-surface adversarial frontier is now: ADV-1
+(the W0 surface), ADV-2 (post-W1 surfaces), ADV-3 (everything changed since ADV-2) — all three run,
+all findings fixed, the unswept frontier NAMED as the parked W8 surface (the fire gate has no code
+to probe).

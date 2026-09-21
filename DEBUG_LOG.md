@@ -958,3 +958,22 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
 - **NOTE FOR THE NEXT RUN:** this lane's refutation rate is ~1 in 3. Its findings are still worth
   the run — it found ten silent wrong answers the battery could not see — but every claim it makes
   is a HYPOTHESIS until a probe settles it.
+
+## EN-042 — D-027: two target NAMES that sanitise alike merged their rows (the D-008 class, via the name)
+- **FOUND BY:** the ADV-3 sweep. The probe was written to check that a hostile name cannot escape;
+  the interesting case turned out to be two LEGITIMATE-ISH names colliding.
+- **PROBE (7 lines):** register `same name` and `same/name` (both pointing at real dirs holding a
+  file each), then `jm index --in all`. Measured: each target reported `changed=1`, but the index
+  held **1 row** (`same_name/f.md`) and one body was gone. Silent.
+- **ROOT CAUSE:** an earlier fix (D-015) made the target name a NAMESPACE KEY and sanitised it; the
+  sanitiser was not INJECTIVE. `same name` and `same/name` both became `same_name`, so both targets
+  wrote into one namespace and the second overwrote the first.
+- **FIX:** the sanitiser disambiguates with a digest of the ORIGINAL name whenever it had to change
+  the name at all: `same_name-26acda61` vs `same_name-f03c3f37`. A name that was ALREADY safe is
+  returned unchanged, so every existing target keeps its key (verified: `plain.name/f.md`).
+- **VERIFICATION:** 2 rows, 2 distinct namespaces, both bodies findable by FTS; pinned by
+  `test_two_targets_cannot_collide_by_name_sanitisation`, which now asserts the row count, the
+  namespace count and both bodies — not the weak `>= 1` the first draft used.
+- **LESSON:** a sanitiser that is not injective is a MERGE, not a sanitisation. Two fixes in a row
+  (D-008 paths, D-015 names) each closed one door into the same room; the ADV sweep is what walked
+  through the third. When a value becomes a KEY, prove the mapping is one-to-one.
