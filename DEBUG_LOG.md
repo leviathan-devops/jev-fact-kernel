@@ -1415,3 +1415,29 @@ ONE SURFACE AND NOT ON ANOTHER.
   Pinned by `tests/judge-answer-shape.test.ts` — five cases including the polarity.
 - **LESSON:** `x ?? 0` on a judge's answer is a silent lie generator. Decide explicitly what a
   MISSING answer means, and make "missing" a failure rather than a value.
+
+## EN-057 — D-043: the stored confidence was REGEX-PARSED out of the row's own prose
+- **HOW FOUND:** the D-042 lens one level deeper — after fixing how an ANSWER is read, the next
+  question is what the engine WRITES. A `grep '?? 0'` over the verbs surfaced
+  `decision-tree.ts:140`: `const val = Number((d.reason.match(/agg=([0-9.]+)/)?.[1]) ?? 0);`
+- **THE DEFECT:** the value stored as a decision's `conf` came from a REGEX OVER THE REASON STRING
+  — a field whose format is written for a human to read. `d.reason` carries `agg=` only on the
+  normal path; a degraded row reads `gate_unavailable: …` and an errored row reads `error: …`, so
+  for exactly those rows the regex found nothing and the stored confidence became **0**.
+  **A 0 there says "the judge answered no"; the truth is "the judge never answered".**
+- **WHY IT WAS INVISIBLE:** every test exercised the normal path, which HAS `agg=`, so the parse
+  always succeeded. And a fabricated 0 is a plausible number — nothing looked wrong.
+- **FIX:** `DecisionRow` carries `signal: number | null` (set to the aggregate on the normal path,
+  `null` on both degraded paths) and the insert stores `d.signal`. The artifact stays
+  `{i, route, reason, answers, model}` — byte-identical across replays, the determinism contract
+  untouched, verified: two runs produced the same sha `21c0982e…`.
+- **VERIFICATION:**
+  ```
+  a healthy row  -> conf=0.46     (the real signal)
+  a degraded row -> conf=NULL     (unknown, NOT a confident zero)
+  two replays    -> identical sha256
+  ```
+  Pinned in `tests/judge-policy.test.ts`.
+- **LESSON:** never parse your own prose back into data. If a number matters, carry the number.
+  And ANY `?? 0` on a value that can be absent is a place where "unknown" is being laundered into
+  a specific answer.
