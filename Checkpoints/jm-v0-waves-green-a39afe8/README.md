@@ -586,7 +586,9 @@ jm journal --limit 20           # read the journal back
 ```
 
 A tick **re-ingests the scoped targets through their adapters and journals the result**. It is
-**idempotent**: a second tick on an unchanged corpus writes `changed=0`. The journal is real
+**idempotent**: a second tick on an unchanged corpus writes `changed=0` (it still appends a
+journal line — every tick is journaled whether or not anything changed, so the journal grows by one
+line per tick). The journal is real
 JSONL at **`$JM_HOME/watch/journal.jsonl`**, one object per tick:
 
 ```json
@@ -595,11 +597,12 @@ JSONL at **`$JM_HOME/watch/journal.jsonl`**, one object per tick:
 ```
 
 A broken target is **journaled in `errors`**, never fatal: a daemon that dies on a bad config
-cannot reconcile anything. **The tick's index name is derived from `--in`** (`a,b` -> `a+b`), so a
-tick does NOT write into an index you built with `--name` unless you scope it that way — if you
-want the tick and your manual runs to share an index, give them the same `--in` set or index with
-`--in` yourself. Of §13's four named duties, **only index-watch is implemented**; the other three
-are planned and are stated here so silence is not read as proof.
+cannot reconcile anything. **The tick writes to the index named by `--name`, or to `all` when you give none** — it is NOT
+derived from the `--in` set. (An earlier version of this paragraph claimed `a,b` -> `a+b`; a
+zero-context operator measured `index/all.sqlite` and the claim was corrected.) To share an index
+with your manual runs, pass the same `--name` to both. Of §13's four named duties, **only
+index-watch is implemented**; the other three are planned and are stated here so silence is not
+read as proof.
 
 ### 18.10 report: every field, defined (G5, G15)
 

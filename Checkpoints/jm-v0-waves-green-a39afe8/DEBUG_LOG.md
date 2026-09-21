@@ -958,3 +958,75 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
 - **NOTE FOR THE NEXT RUN:** this lane's refutation rate is ~1 in 3. Its findings are still worth
   the run — it found ten silent wrong answers the battery could not see — but every claim it makes
   is a HYPOTHESIS until a probe settles it.
+
+## EN-042 — D-027: two target NAMES that sanitise alike merged their rows (the D-008 class, via the name)
+- **FOUND BY:** the ADV-3 sweep. The probe was written to check that a hostile name cannot escape;
+  the interesting case turned out to be two LEGITIMATE-ISH names colliding.
+- **PROBE (7 lines):** register `same name` and `same/name` (both pointing at real dirs holding a
+  file each), then `jm index --in all`. Measured: each target reported `changed=1`, but the index
+  held **1 row** (`same_name/f.md`) and one body was gone. Silent.
+- **ROOT CAUSE:** an earlier fix (D-015) made the target name a NAMESPACE KEY and sanitised it; the
+  sanitiser was not INJECTIVE. `same name` and `same/name` both became `same_name`, so both targets
+  wrote into one namespace and the second overwrote the first.
+- **FIX:** the sanitiser disambiguates with a digest of the ORIGINAL name whenever it had to change
+  the name at all: `same_name-26acda61` vs `same_name-f03c3f37`. A name that was ALREADY safe is
+  returned unchanged, so every existing target keeps its key (verified: `plain.name/f.md`).
+- **VERIFICATION:** 2 rows, 2 distinct namespaces, both bodies findable by FTS; pinned by
+  `test_two_targets_cannot_collide_by_name_sanitisation`, which now asserts the row count, the
+  namespace count and both bodies — not the weak `>= 1` the first draft used.
+- **LESSON:** a sanitiser that is not injective is a MERGE, not a sanitisation. Two fixes in a row
+  (D-008 paths, D-015 names) each closed one door into the same room; the ADV sweep is what walked
+  through the third. When a value becomes a KEY, prove the mapping is one-to-one.
+
+## EN-043 — the ROUND-2 second-operator drill: the docs were true for the CLI and false for the surfaces
+The round-2 operator (zero context, 10 steps, docs-only) completed every step — and its report
+exposed three defects plus one false doc line. All four are the same class: A CLAIM THAT HELD ON
+ONE SURFACE AND NOT ON ANOTHER.
+
+- **D-028 (the D-009 defect, alive on the MCP surface).** `jm_query` with a typo'd index returned
+  `{"rows": [], "n": 0}` at JSON-RPC success — the exact silent wrong answer fixed for the CLI in
+  D-009 — AND materialised `index/nosuchindex.sqlite`. `callTool` used `openDb()` (create-if-missing)
+  for every tool. FIX: `jm_query`/`jm_find` are READ tools and use `openIndexExisting`, so a typo is
+  `JM_INDEX_MISSING` as an `isError` result; `jm_index` still creates (it is the write tool).
+  §18.8's sentence "the same semantics as the CLI" is what exposed it — the doc was right and the
+  code was wrong.
+- **W5 (a health check that created state).** `GET /health` called `openDb()` and therefore
+  materialised `index/decisions.sqlite` on a LIVENESS PROBE. FIX: `/health` is now a pure REPORT —
+  200 whenever the process is up, `index_exists: true|false` stated in the body, and a throwaway
+  in-memory db for the judge's key provenance when the index is absent. A health endpoint that
+  404s because a default index is missing cannot do its job, so it reports instead of refusing.
+- **D-029 (the HTTP read path's error shape).** `/find` on a missing index threw out of `fetch` —
+  a 500 with a stack. It is now a **404 carrying the engine's own sentence**, because the caller
+  needs the same text the CLI prints.
+- **W1 (a FALSE DOC LINE, corrected).** §18.9 claimed a tick's index name is derived from `--in`
+  (`a,b` -> `a+b`). Measured: a tick writes to `--name`, defaulting to `all`. The operator measured
+  `index/all.sqlite` where the doc promised `ta+tb`. The paragraph is corrected, `--name` is added
+  to the watch usage line, and the journal-per-tick fact (a tick appends a line whether or not
+  anything changed) is now stated.
+- **VERIFICATION:** MCP refuses + creates nothing; MCP on a real index still answers; `/health`
+  200 with `index_exists:false` and ZERO files created; `/find` 404 with `JM_INDEX_MISSING`; the
+  full battery 111/0. Pinned by `test_mcp_read_tools_refuse_a_missing_index`.
+- **LESSON:** fixing a defect on ONE surface does not fix the CLASS. D-009 was "a read verb must
+  refuse a missing index"; the CLI learned it, the MCP and HTTP surfaces did not, and only a
+  zero-context operator following the docs walked into the gap. When a rule is stated as a
+  CONTRACT ("the same semantics"), grep every surface that claims it.
+
+## EN-044 — the audit's HIGH about `index --in`, REFUTED by execution (and the name that caused it)
+- **CLAIM (high):** "In 'index --in' path, output iterates over 'stats' which is an object, not an
+  array. This will iterate over object keys ('result', …)".
+- **PROBE (execution):** `jm index --in all --name ix` printed one line PER TARGET —
+  `ix fs rows=1 changed=1 19ms`. An object-keys iteration would have printed `result` / `stats` /
+  `costUsd`. The value IS the per-target array: `withLedger` returns `result`, which is what
+  `ingestAll` produced.
+- **WHAT ACTUALLY CAUSED THE MISREAD:** the variable was NAMED `stats` while holding an array.
+  A name is a claim too. FIX: renamed to `perTarget` with a comment stating its shape.
+- **FIXED IN THE SAME PASS (two real findings from the same run):**
+  - the `--cases`/`--questions` JSON.parse sat OUTSIDE any try, so a malformed file leaked a raw
+    `SyntaxError` through the top-level boundary. Now `JM_EVAL_JSON` (exit 2), and a non-array
+    `--cases` is `JM_EVAL_CASES` (exit 2). VERIFIED on both shapes.
+  - `--apply` (the calibrate verb's calibration-row writer) was in no help text. Now documented.
+- **DISPOSITION OF THE REST:** the chained-ternary style note is accepted as-is (it is one
+  expression with a clear comment); the package.json "bun not in devDependencies" note is REFUTED
+  by the auditor's own concession — bun is the RUNTIME, not a dependency.
+- **LESSON:** a misleading variable name generated a false HIGH. Renaming is not cosmetic when the
+  next reader is an auditor.

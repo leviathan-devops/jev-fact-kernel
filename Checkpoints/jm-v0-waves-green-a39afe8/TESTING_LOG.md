@@ -303,3 +303,49 @@ THE PIN NAMED `test_find_patterns`; IT DID NOT EXIST. Writing it found three def
 battery 96 pass / 0 fail / 399 expects / 19 files · tsc exit 0
 ```
 **W4: GREEN** (with the named test that the contract required and the code never had).
+
+### ADV-3 — THE RE-SWEEP OF THE SURFACE CHANGED SINCE ADV-2
+```
+12 probes over: Budget.claim/settle · validateRecipe · safeTargetName · the FTS input path ·
+the watch tick · the index roots.   RESULT: 12 pass / 0 fail / 120 expects
+
+D-027 CONFIRMED by the sweep (the only defect it found, and it was a CRITICAL class):
+  `same name` and `same/name` both sanitised to `same_name` -> one namespace -> 2 files became
+  1 row, silently. The sanitiser is now injective (a digest disambiguates any name it had to
+  change; an already-safe name keeps its exact key). 2 rows, both bodies findable, pinned.
+
+PASSED (the negative half, recorded so silence is not read as proof): 20 synchronous claims
+against a cap of 5 grant exactly 5; cached settles refund; phantom settles create no credit;
+9 hostile recipe shapes all refuse; 10 hostile target-name shapes all neutralise; 10 hostile FTS
+expressions all become JM_FTS_INVALID while the valid ones still match; two concurrent ticks on
+one index leave 2 clean rows; a vanished root is survivable; a file root and a directory root
+agree; a missing root is loud.
+battery 110 pass / 0 fail / 534 expects / 20 files · tsc exit 0
+```
+**ADV-3: PASSED with a non-empty ledger.** The full-surface adversarial frontier is now: ADV-1
+(the W0 surface), ADV-2 (post-W1 surfaces), ADV-3 (everything changed since ADV-2) — all three run,
+all findings fixed, the unswept frontier NAMED as the parked W8 surface (the fire gate has no code
+to probe).
+
+### THE SECOND-OPERATOR DRILL, ROUND 2 — the operating contract put to the test
+```
+OPERATOR   SecondOperator3 (zero context, docs-only: README 10/13/18 + RUNTIME_SEAT)
+RESULT     all 10 steps completed · 1 docs-insufficient verdict · 3 defects · 1 false doc line
+REPO       nothing modified by the operator
+
+WHAT §18 GOT RIGHT (verified by an operator who had never seen the engine):
+  steps 1,2,3,5,6,7,8 = docs-sufficient, each citing its §18.x sub-section
+  (targets/--in, pointers-vs-body, report fields, serve+health, the MCP session shape,
+   the tick and its journal object) — the round-1 gaps are CLOSED.
+
+WHAT IT STILL FOUND:
+  D-028  `jm_query` with a typo'd index returned {"rows":[],"n":0} at success AND created a
+         phantom index — the D-009 defect, alive on the MCP surface (fixed: read tools refuse)
+  W5     `GET /health` MATERIALISED index/decisions.sqlite (fixed: health is a pure report)
+  D-029  `/find` on a missing index threw a 500 (fixed: 404 with the engine's own sentence)
+  W1     §18.9 said a tick's index comes from `--in` (`a,b`->`a+b`); measured `index/all.sqlite`.
+         The doc line was FALSE and is corrected; `--name` added to the watch usage.
+battery 111 pass / 0 fail / 539 expects / 20 files · tsc exit 0
+```
+**ROUND 2: PASSED** — the documented contract carried a zero-context operator through all ten
+steps, and the three defects it exposed are fixed and pinned.
