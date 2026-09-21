@@ -59,7 +59,9 @@
 - **Blocker:** the operator's F1/F6 rulings + the `pi` wrap points opened.
 
 ### N-9 — The MCP surface and the watch daemon
-- **What:** `jm mcp` (tools `jm_find`, `jm_decide`, `jm_extract`, `jm_index_status`) and `jm watch`
+- **What:** `jm mcp` (tools `jm_query`, `jm_find`, `jm_decide`, `jm_index` — BUILT, verified by
+  handshake + a real tools/call; the design doc's `jm_extract`/`jm_index_status` were never
+  built) and `jm watch` (BUILT: an idempotent tick with a real JSONL journal)
   (manager-machine frame: index-watch, judge-drain, cache-gc, calibration-tick).
 - **Acceptance:** an OMP session calls `jm_find` and receives rows; the daemon ticks with a recorded
   kill path.

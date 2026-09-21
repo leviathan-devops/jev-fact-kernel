@@ -124,7 +124,12 @@ judgment, free repeats.
 |---------|------|-------------|
 | CLI `jm` | the primary; composition via pipes | the operator, scripts |
 | `jm serve` (HTTP :7777) | `POST /decide {schema, state}` → `{answers, cached}`; `POST /find`; `GET /jobs` | any process on the host; the daemon-less "point at it" path |
-| `jm mcp` | tools: `jm_find`, `jm_decide`, `jm_extract`, `jm_index_status` | agents mid-turn ("Jev manager, filter these 500 rows") |
+| `jm mcp` | tools: `jm_find`, `jm_decide`, `jm_extract`, `jm_index_status` | agents mid-turn
+
+> **SUPERSEDED (2026-09-21, build-time):** the shipped tool set is `jm_query`, `jm_find`,
+> `jm_decide`, `jm_index` — the implementation chose the CLI names verb-for-verb so an agent's
+> answer and a curl answer cannot drift. `jm_extract` and `jm_index_status` were never built.
+> This blueprint is a DESIGN RECORD and is annotated rather than rewritten (README §17). ("Jev manager, filter these 500 rows") |
 | `jm watch` | daemon (manager-machine frame): Desireds = index-watch, judge-drain, cache-gc, calibration-tick | standing services, reconcile loop |
 
 The MCP surface is what makes it *targetable by agents* — an OMP session says

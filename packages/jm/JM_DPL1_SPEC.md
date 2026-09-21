@@ -299,6 +299,9 @@ backpressure = queue depth.
 `POST /find`; `GET /jobs`; `GET /health`.
 
 **S18 mcp.** Tools `jm_find`, `jm_decide`, `jm_extract`, `jm_index_status`.
+> **AS-BUILT (2026-09-21):** the shipped set is `jm_query` · `jm_find` · `jm_decide` · `jm_index`.
+> The spec's list was the intent; the implementation aligned the MCP tool names with the CLI
+> verbs so one mental model serves both surfaces. This line is a build note, not a spec edit.
 
 **S19 watch.** manager-machine frame copied: `Supervisor`, `Desired`s
 (index-watch, judge-drain, cache-gc, calibration-tick), reconcile tick, resume
