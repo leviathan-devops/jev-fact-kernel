@@ -479,3 +479,42 @@ The runner exits NON-ZERO on any failure, so it can gate a commit. Its first exe
 FAILED check — and the failure was the CHECK, not the engine: it asserted `scan` output contains
 the word `new`, which belongs to `query`'s columns. Corrected to assert what the W3 gate actually
 needs (rows carrying their ids).
+
+### THE REAL-CORPUS RIG — the W2 gate, proven on the host's ACTUAL corpora (not fixtures)
+The wave table's W2 gate reads: *"query spans @shadow + @ocdb end-to-end; C11 green."* Until this
+run, that had only ever been shown on FIXTURES. `scripts-real-corpus.sh` now runs it against the
+host's real opencode storage and the real opencode databases.
+
+```
+$ ./scripts-real-corpus.sh
+--- indexing the real corpora (the 19GB DB is SAMPLED, never copied) ---
+shadow                    fs      rows=11832  changed=11832  16816ms
+ocdb-                     sqlite  rows=30     changed=30       482ms
+ocdb-archive-20260905     sqlite  rows=900    changed=900    17741ms   <- a 13.6 GB database
+ocdb-local                sqlite  rows=30     changed=30       454ms
+ocdb-                     sqlite  rows=1349   changed=1349    21204ms   <- a 19.3 GB database
+real    0m52.9s
+
+  UNCHANGED  opencode-.db
+  UNCHANGED  opencode-archive-20260905.db
+  UNCHANGED  opencode-local.db
+  UNCHANGED  opencode.db
+READ-ONLY LAW: HOLDS
+
+--- the cross-kind query (--fts "theatrical") ---
+  rows: 50 | kinds: {'text': 46, 'sqlite:ocdb-': 4}
+  an fs row: shadow/session_diff/ses_20fef3943ffeOlDE7ZnvTuHKEH.json
+  a db row : /home/leviathan/.local/share/opencode/opencode.db#message/msg_dd4c67f75001Ci674f84rH9wuj
+  CROSS-KIND: YES
+
+REAL-CORPUS RIG: PASS
+```
+
+**What this proves that a fixture cannot:**
+1. A 19 GB source is handled by SAMPLING (300 rows/table) rather than copying — 53 s for 11,832
+   files plus 2,309 database rows drawn from ~33 GB of databases.
+2. One query returns rows from an fs file AND a `message` table row of the live opencode database
+   in a SINGLE result set — the gate's literal requirement.
+3. The four source databases are byte-for-byte untouched, verified by size+mtime before and after.
+   This is the only evidence that means anything for a claim about not writing to someone's
+   database, and it is now checked mechanically instead of asserted.
