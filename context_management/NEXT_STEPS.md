@@ -205,3 +205,25 @@ author's confidence.
 ### AND THE SECOND SENTENCE
 The medium frontier (N-2..N-6) is not busywork: it is where the audit said the risk lives. Each item
 there is a class, not an instance — fixing the pattern prevents the next twelve instances.
+
+## DOC GAPS FROM THE SECOND-OPERATOR DRILL (2026-09-21, zero-context operator, 12/12 stale claims reproduced)
+The drill completed all 9 steps. Its CODE defects were fixed this session (G1 unknown index was a
+silent empty + phantom file; G2 `@target` did not dispatch by kind; `index <file>` was a silent
+no-op with an empty stored path; G9 `--structure csv` rendered markdown; G13 `find` ignored
+JM_HOME; G14 ledger `args` dropped flags). The remaining DOC work:
+
+- **N-10** `README §10` must document the multi-target verbs (`index --in a,b|all`, `query --in`),
+  `scan`/`cluster`/`extract`, `report`, `journal`, `target ls|rm`, and the exit-code table
+  (0 ok / 1 runtime / 2 client error / 2 JEV_NO_KEY).
+- **N-11** Key management: the TWO sources (`TYPESAFE_API_KEY`, `~/.config/typesafe/key`), which
+  verbs need the judge, and the fail-closed contract (CLI exit 2, HTTP 503, nothing written).
+- **N-12** A RECIPE FILE schema (--recipe takes a path; §11 defines a recipe only in prose).
+- **N-13** The MCP operating contract: transport (stdio), a paste-ready JSON-RPC line, the
+  handshake question, and the tool list (now corrected in §13).
+- **N-14** The watch surface: journal location, the auto-derived index name (and the absence of
+  `--name`), idempotency, and which of §13's four named duties a tick actually performs
+  (only index-watch is observable — the other three are STALE-OR-UNBUILT).
+- **N-15** `report`'s field definitions, and that `report <bogus>` reads the GLOBAL registry and
+  ledger (now refusing a missing index, but the global-ledger read remains to document).
+- **N-16** The pointer-vs-body query contract: `query` returns pointer metadata; the row BODY is
+  reachable via `scan`/`extract`.

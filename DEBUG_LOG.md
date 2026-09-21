@@ -656,3 +656,36 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 - **LESSON:** a UNIQUE key built from a ROOT-RELATIVE path is only unique per root. The moment a
   second root is introduced, the key silently merges rows — and the incremental skip turns the
   merge into a DROP. Any multi-source ingest needs a namespacing decision made explicitly.
+
+## EN-028 — THE SECOND-OPERATOR DRILL: six silent defects, all found by a ZERO-CONTEXT operator
+- **METHOD:** a subagent with NO project context, given only README §10/§13 + RUNTIME_SEAT.md, had
+  to complete 9 numbered operations. It completed all 9 and reported 14 doc gaps + 12 reproduced
+  stale/wrong doc claims. Every claim below was re-verified by hand before any fix.
+- **D-009 (CRITICAL, silent wrong answer) — G1: an unknown index returned an empty result, exit 0,
+  and CREATED a phantom index file.** `jm query totally-bogus-index --fts quick` printed only the
+  cost line; `$JM_HOME/index/totally-bogus-index.sqlite` appeared. An operator cannot distinguish
+  "no matches" from "no such index" — the failure mode that makes an empty answer trustworthy.
+  FIX: `openIndexExisting()` — every READ verb (query/scan/cluster/extract/report) refuses a
+  missing index by name. VERIFIED: loud `JM_INDEX_MISSING`, exit 2, no phantom file; a real index
+  reads unchanged. PIN: `test_unknown_index_is_loud_not_empty`.
+- **D-010 — G2: `jm index @sqlite-target` indexed the .sqlite FILE as one row.** The `@target`
+  form bypassed the kind dispatch that `--in` uses, so the DB file itself became the row and the
+  report said success. FIX: `@target` now dispatches by the target's kind (rows via the adapter).
+  VERIFIED: `@optdb` -> `rows=2`, the row's text findable; identical to `--in optdb`.
+- **D-011 — `jm index <file>` was a silent no-op.** A file root was walked as a directory:
+  `files=0 changed=0`, exit 0. Then the naive fix (index the file) stored it under path `""`
+  (`relative(file,file)`), so `text=0` and it was unfindable. FIX: a file root is one target and
+  its stored path is the BASENAME, never empty. VERIFIED: `files=1 changed=1 text=1`, findable as
+  `solo.md`. PIN: `test_single_file_root_indexes_that_file`.
+- **D-012 — G9: `--structure csv` silently rendered MARKDOWN, and `--out x.csv` wrote JSON into a
+  .csv file.** A declared structure the code did not honour. FIX: CSV implemented for real
+  (RFC4180 quoting), `--out`'s extension infers the structure, and an unknown structure is a loud
+  `JM_EXTRACT_STRUCTURE`. VERIFIED: real csv rows; `--out /tmp/op5.csv` alone produced csv.
+- **D-013 — G13: `jm find` wrote its artifact to `/tmp/jm-find-<epoch>.md`, ignoring JM_HOME.**
+  Every other artifact homes under JM_HOME. FIX: `$JM_HOME/find/find-<epoch>.md`. VERIFIED.
+- **D-014 — G14: the ledger `args` dropped the flags the caller passed** (`--out`, `--structure`,
+  `--json`, `--limit`), so a ledger row could not reconstruct the run it claims to prove. FIX: the
+  consumed flags are recorded. VERIFIED: the row now carries `{index, re, structure, out}`.
+- **LESSON:** every one of these was invisible to the test suite because the suite tests the paths
+  the AUTHOR knows. A zero-context operator walks the paths the DOCS imply. The drill is the only
+  instrument that reaches that class — run it after every surface change.

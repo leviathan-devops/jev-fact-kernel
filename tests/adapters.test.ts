@@ -5,8 +5,9 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { makeSandbox, fill } from "./helpers.ts";
-import { openDb, indexPathFor, saveTargets, loadTargets } from "../src/store/db.ts";
+import { openDb, openIndexExisting, indexExists, indexPathFor, saveTargets, loadTargets } from "../src/store/db.ts";
 import { targetsIn, ingestTarget, ingestAll, adapterFor, ADAPTERS } from "../src/targets.ts";
+import { indexTarget } from "../src/verbs/index.ts";
 import { sourceStat } from "../src/adapters/sqlite.ts";
 import { queryIndex } from "../src/verbs/query.ts";
 
@@ -151,6 +152,44 @@ describe("W2 adapters + --in", () => {
       // the new text is findable and the OLD text is gone from FTS (no stale row)
       expect(queryIndex(db, { fts: '"completely new body"' }).length).toBe(1);
       expect(queryIndex(db, { fts: '"sequential scan"' }).length).toBe(0);
+      db.close();
+    } finally { sb.cleanup(); }
+  });
+
+  test("test_unknown_index_is_loud_not_empty", async () => {
+    // DRILL G1 (silent wrong answer): `jm query typo --fts x` printed nothing, exited 0, and
+    // MATERIALISED a phantom index file — an operator could not tell "no matches" from "no such
+    // index". A READ verb must refuse a missing index by name.
+    const sb = makeSandbox();
+    try {
+      process.env.JM_HOME = sb.home;
+      expect(() => openIndexExisting("nope", indexPathFor("nope"))).toThrow(/JM_INDEX_MISSING/);
+      expect(indexExists("nope")).toBe(false);
+      saveTargets([{ name: "s", kind: "jsonl", root: join(sb.root, "x.jsonl") }]);
+      writeFileSync(join(sb.root, "x.jsonl"), '{"a":1}\n');
+      const db = openDb(indexPathFor("real"));
+      await ingestAll(db, "s");
+      db.close();
+      expect(indexExists("real")).toBe(true);
+      expect(() => openIndexExisting("real", indexPathFor("real"))).not.toThrow();
+    } finally { sb.cleanup(); }
+  });
+
+  test("test_single_file_root_indexes_that_file", async () => {
+    // DRILL G2b: `jm index <file>` walked a FILE as a directory, found nothing, and reported
+    // files=0 exit 0. A file root is one target; its stored path is the BASENAME, never "".
+    const sb = makeSandbox();
+    try {
+      fill(sb.root, { "solo.md": "the solo file body" });
+      const db = openDb(indexPathFor("files"));
+      const st = indexTarget(db, "solo", join(sb.root, "solo.md"), {});
+      expect(st.files).toBe(1);
+      expect(st.changed).toBe(1);
+      expect(st.textIndexed).toBe(1);
+      const rows = queryIndex(db, { limit: 10 });
+      expect(rows.length).toBe(1);
+      expect(rows[0].path).toBe("solo.md");                    // basename, NOT ""
+      expect(queryIndex(db, { fts: "solo", limit: 10 }).length).toBe(1);
       db.close();
     } finally { sb.cleanup(); }
   });

@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
-import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
+import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
 import { targetsIn, ingestAll } from "./targets.ts";
 import { serveStdio } from "./mcp.ts";
 import { scanIndex } from "./verbs/scan.ts";
 import { clusterIndex } from "./verbs/cluster.ts";
-import { extractFields, renderExtract } from "./verbs/extract.ts";
+import { extractFields, renderExtract, type Structure } from "./verbs/extract.ts";
 import { route, buildCatalogue } from "./verbs/route.ts";
 import { evaluate, replayDiff } from "./verbs/evaluate.ts";
 import { report, renderReport } from "./verbs/report.ts";
@@ -17,7 +17,9 @@ import { filterIndex } from "./verbs/filter.ts";
 import { find } from "./verbs/find.ts";
 import { startServer } from "./serve.ts";
 import { calibrate, recordTruth, recordCalibration } from "./calibrate.ts";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { queryIndex } from "./verbs/query.ts";
 import { withLedger, readLedger } from "./ledger.ts";
 
@@ -117,6 +119,27 @@ async function main(): Promise<number> {
     }
     const arg = positional[0];
     if (!arg) { console.error("JM_ARGS: jm index <path|@target> [--in a,b|all]"); return 2; }
+    // `@target` DISPATCHES BY KIND: a sqlite/jsonl target goes through its adapter (rows), not
+    // through the fs walker over the DB file. (Second-operator drill G2: `jm index @sqldb`
+    // indexed the .sqlite FILE as one row and reported success.)
+    if (arg.startsWith("@")) {
+      const t = loadTargets().find((x) => x.name === arg.slice(1));
+      if (!t) { console.error(`JM_TARGET_UNKNOWN: ${arg}`); return 2; }
+      if (t.kind !== "fs") {
+        const idxName = flag("name") ?? t.name;
+        const db0 = openDb(indexPathFor(idxName));
+        try {
+          const r = await withLedger("index", { target: t.name, kind: t.kind, name: idxName }, async () => {
+            const st = await ingestAll(db0, t.name);
+            return { result: st, stats: { targets: st.length, rows: st.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
+          });
+          db0.close();
+          if (has("json")) console.log(JSON.stringify(r, null, 2));
+          else for (const x of r) console.log(`${x.target}\t${x.kind}\trows=${x.rows}\tchanged=${x.changed}\t${x.ms}ms`);
+          return 0;
+        } catch (err) { db0.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+      }
+    }
     const { name, root } = resolveTarget(arg);
     const indexName = flag("name") ?? name;
     const dbPath = indexPathFor(indexName);
@@ -158,9 +181,9 @@ async function main(): Promise<number> {
     if (inSpec !== undefined) {
       indexName = flag("name") ?? (inSpec === "all" ? "all" : inSpec.split(",").map((x) => x.trim()).join("+"));
     } else if (arg.startsWith("@")) indexName = resolveTarget(arg).name;
-    const db = openDb(indexPathFor(indexName));
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
     try {
-      const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag") }, async () => {
+      const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag"), limit: flag("limit"), json: has("json") }, async () => {
         const r = queryIndex(db, { where: flag("where"), fts: flag("fts"), tag: flag("tag"), limit: flag("limit") ? Number(flag("limit")) : undefined });
         return { result: r, stats: { rows: r.length }, costUsd: 0 };
       });
@@ -224,6 +247,7 @@ async function main(): Promise<number> {
   if (verb === "find") {
     const phrase = positional[0] ?? flag("phrase");
     if (!phrase) { console.error("JM_ARGS: jm find \"<phrase>\" --in <index> [--common N] [--structure md|json] [--out F]"); return 2; }
+    mkdirSync(join(process.env.JM_HOME ?? join(homedir(), ".jm"), "find"), { recursive: true });   // G13: the artifact home exists
     const indexArg = flag("in") ?? flag("index") ?? "shadow";
     const indexName = indexArg.startsWith("@") ? indexArg.slice(1) : indexArg;
     const db = openDb(indexPathFor(indexName));
@@ -232,7 +256,7 @@ async function main(): Promise<number> {
         const r = await find(db, {
           phrase, common: flag("common") ? Number(flag("common")) : undefined,
           structure: (flag("structure") as "md" | "json") ?? "md",
-          outPath: flag("out") ?? `/tmp/jm-find-${Date.now()}.md`,
+          outPath: flag("out") ?? join(process.env.JM_HOME ?? join(homedir(), ".jm"), "find", `find-${Date.now()}.md`),
           minP: flag("min-p") ? Number(flag("min-p")) : undefined,
           limit: flag("limit") ? Number(flag("limit")) : undefined,
           budgetCalls: flag("budget-calls") ? Number(flag("budget-calls")) : undefined,
@@ -249,9 +273,9 @@ async function main(): Promise<number> {
   if (verb === "scan") {
     // W3/S9: seeds -> candidates. Keyless and deterministic.
     const indexName = flag("name") ?? (positional[0] ?? "all");
-    const db = openDb(indexPathFor(indexName));
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
     try {
-      const r = await withLedger("scan", { index: indexName, lex: flag("lex"), re: flag("re"), limit: flag("limit") }, async () => {
+      const r = await withLedger("scan", { index: indexName, lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") }, async () => {
         const res = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
         return { result: res, stats: { scanned: res.scanned, returned: res.returned, truncated: res.truncated }, costUsd: 0 };
       });
@@ -259,15 +283,15 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else for (const c of r.candidates) console.log(`${c.hits}\t${c.size}\t${c.path}\t${c.excerpt.slice(0, 90)}`);
       return 0;
-    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return String(err).includes("JM_SCAN_RE_INVALID") ? 2 : 1; }
+    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return (String(err).includes("JM_SCAN_RE_INVALID") || String(err).includes("JM_INDEX_MISSING")) ? 2 : 1; }
   }
 
   if (verb === "cluster") {
     // W3/S10: group the scan's candidates. No model.
     const indexName = flag("name") ?? (positional[0] ?? "all");
-    const db = openDb(indexPathFor(indexName));
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
     try {
-      const r = await withLedger("cluster", { index: indexName, lex: flag("lex"), re: flag("re") }, async () => {
+      const r = await withLedger("cluster", { index: indexName, lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit"), min: flag("min") }, async () => {
         const sc = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
         const cl = clusterIndex(db, sc.candidates, { minSize: flag("min") ? Number(flag("min")) : undefined });
         return { result: { scan: { scanned: sc.scanned, returned: sc.returned }, ...cl }, stats: { clusters: cl.clusters.length, grouped: cl.grouped }, costUsd: 0 };
@@ -283,19 +307,23 @@ async function main(): Promise<number> {
     // W3/S9: structured pulls from the scan's candidates -> the RESULT artifact.
     const indexName = flag("name") ?? (positional[0] ?? "all");
     if (!flag("re") && !flag("field")) { console.error("JM_ARGS: jm extract --re <regex|--field K> [--lex L] [--out F]"); return 2; }
-    const db = openDb(indexPathFor(indexName));
+    const db = openIndexExisting(indexName, indexPathFor(indexName));   // G1: a typo is LOUD
     try {
-      const r = await withLedger("extract", { index: indexName, re: flag("re"), field: flag("field"), lex: flag("lex") }, async () => {
+      // G9: the structure comes from --structure, else from --out's extension, else json.
+      const outExt = flag("out")?.toLowerCase();
+      const inferred: Structure | undefined = outExt?.endsWith(".csv") ? "csv" : outExt?.endsWith(".md") ? "md" : outExt?.endsWith(".json") ? "json" : undefined;
+      const structure: Structure = (flag("structure") as Structure) ?? inferred ?? "json";
+      const r = await withLedger("extract", { index: indexName, re: flag("re"), field: flag("field"), lex: flag("lex"), where: flag("where"), limit: flag("limit"), structure, out: flag("out") }, async () => {
         const sc = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
-        const ex = extractFields(db, sc.candidates, { re: flag("re"), field: flag("field"), structure: (flag("structure") as "md" | "json") ?? "json" });
-        return { result: ex, stats: { rows: ex.rows.length, values: ex.total, empty: ex.empty }, costUsd: 0 };
+        const ex = extractFields(db, sc.candidates, { re: flag("re"), field: flag("field"), structure });
+        return { result: ex, stats: { rows: ex.rows.length, values: ex.total, empty: ex.empty, structure }, costUsd: 0 };
       });
       db.close();
-      const out = renderExtract(r, (flag("structure") as "md" | "json") ?? "json");
+      const out = renderExtract(r, structure);
       if (flag("out")) { writeFileSync(flag("out")!, out); console.log(`wrote ${flag("out")} (${r.total} values, ${r.rowsWithValues} rows)`); }
       else process.stdout.write(out + (out.endsWith("\n") ? "" : "\n"));
       return 0;
-    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return String(err).includes("JM_EXTRACT_RE_INVALID") ? 2 : 1; }
+    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return (String(err).includes("JM_EXTRACT_RE_INVALID") || String(err).includes("JM_INDEX_MISSING")) ? 2 : 1; }
   }
 
   if (verb === "route") {
@@ -353,7 +381,8 @@ async function main(): Promise<number> {
 
   if (verb === "report") {
     // W7: a READ-ONLY status report (index · ledger · registry).
-    const db = openDb(indexPathFor(flag("name") ?? (positional[0] ?? "all")));
+    const repName = flag("name") ?? (positional[0] ?? "all");
+    const db = openIndexExisting(repName, indexPathFor(repName));   // G1: a typo is LOUD
     try {
       const r = await withLedger("report", { index: flag("name") ?? positional[0] ?? "all" }, async () => {
         const res = report(db, { index: flag("name") ?? (positional[0] ?? "all") });

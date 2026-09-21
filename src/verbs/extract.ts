@@ -3,10 +3,11 @@
 import type { Database } from "bun:sqlite";
 import type { Candidate } from "./scan.ts";
 
+export type Structure = "md" | "json" | "csv";
 export interface ExtractSpec {
   field?: string;            // a JSON key to pull out of each row's text (jsonl/sqlite rows)
   re?: string;               // a capture-group regex; group 1 (or 0) is emitted
-  structure?: "md" | "json";
+  structure?: Structure;
   maxPerRow?: number;
 }
 
@@ -16,7 +17,7 @@ export interface ExtractResult {
   total: number;             // total values pulled
   rowsWithValues: number;
   empty: number;             // rows that produced nothing
-  structure: "md" | "json";
+  structure: Structure;
   ms: number;
 }
 
@@ -24,13 +25,14 @@ export interface ExtractResult {
 export function extractFields(db: Database, candidates: Candidate[], spec: ExtractSpec = {}): ExtractResult {
   const t0 = Date.now();
   const maxPerRow = spec.maxPerRow ?? 20;
-  const structure = spec.structure ?? "json";
+  const structure: Structure = spec.structure ?? "json";
   let re: RegExp | null = null;
   if (spec.re) {
     try { re = new RegExp(spec.re, "g"); }
     catch (err) { throw new Error(`JM_EXTRACT_RE_INVALID: ${String(err).slice(0, 120)}`); }
   }
   if (!re && !spec.field) throw new Error("JM_EXTRACT_ARGS: --re or --field is required");
+  if (!["md", "json", "csv"].includes(structure)) throw new Error(`JM_EXTRACT_STRUCTURE: ${structure} (have: md, json, csv)`);
 
   const textStmt = db.query("SELECT text FROM docs WHERE path = ?");
   const rows: Extracted[] = [];
@@ -65,9 +67,17 @@ export function extractFields(db: Database, candidates: Candidate[], spec: Extra
   return { rows, total, rowsWithValues: rows.length - empty, empty, structure, ms: Date.now() - t0 };
 }
 
-/** Render an extract result in the requested structure (the RESULT artifact shape). */
-export function renderExtract(res: ExtractResult, structure: "md" | "json"): string {
+/** Render an extract result in the requested structure (the RESULT artifact shape).
+ *  `csv` is REAL here: header + RFC4180 quoting. (Second-operator drill G9: `--structure csv`
+ *  silently rendered markdown — a declared structure that the code did not honour.) */
+export function renderExtract(res: ExtractResult, structure: Structure): string {
   if (structure === "json") return JSON.stringify(res, null, 2);
+  if (structure === "csv") {
+    const q = (v: string): string => `"${v.replace(/"/g, '""')}"`;
+    const lines = ["path,value"];
+    for (const r of res.rows) for (const v of r.values) lines.push(`${q(r.path)},${q(v)}`);
+    return lines.join("\n") + "\n";
+  }
   const lines = [`# extract`, ``, `rows with values: ${res.rowsWithValues} / ${res.rows.length} · values: ${res.total} · empty: ${res.empty}`, ``];
   for (const r of res.rows) {
     if (r.values.length === 0) continue;

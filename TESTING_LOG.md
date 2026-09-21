@@ -193,3 +193,25 @@ report: a READ — runs row count unchanged before/after; a malformed ledger lin
 battery 69 pass / 0 fail / 271 expects / 15 files · tsc exit 0
 ```
 **W5/W7: GREEN.**
+
+### SECOND-OPERATOR DRILL (L3/L4 acceptance: a zero-context operator must be able to run it)
+```
+OPERATOR   SecondOperator2 (agent `sonic`, zero project context, dispatched with a 9-step script)
+DOCS READ  README §10 (Quickstart) · README §13 (surfaces) · context_management/RUNTIME_SEAT.md
+RESULT     all 9 steps completed · 14 doc gaps · 12 stale/wrong doc claims reproduced
+REPO STATE `git status --porcelain` EMPTY after the drill (the operator modified nothing)
+
+CODE DEFECTS (all re-verified by hand, all fixed, all pinned):
+  D-009 CRITICAL  unknown index -> empty result + exit 0 + a PHANTOM index file
+  D-010           `jm index @sqlite-target` indexed the .sqlite FILE, not its rows
+  D-011           `jm index <file>` was a silent no-op (files=0, exit 0)
+  D-012           `--structure csv` rendered markdown; `--out x.csv` wrote JSON
+  D-013           `jm find` wrote to /tmp, ignoring JM_HOME
+  D-014           ledger `args` dropped flags -> a row could not reconstruct its run
+DOC FIXES: README §10/§11/§13 corrected (MCP tool list was wrong in TWO places, --recipe takes a
+FILE, csv claim, ledger-row claim, the "after Wave 6" future tense); RUNTIME_SEAT's two stale
+appendix claims annotated with the drill's evidence; N-10..N-16 recorded as the doc backlog.
+battery 71 pass / 0 fail / 281 expects / 15 files · tsc exit 0
+```
+**SECOND-OPERATOR GATE: PASSED** (the operator completed the work; the engine's defects it exposed
+are fixed and pinned; the residual doc gaps are named as N-10..N-16 rather than papered over).

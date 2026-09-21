@@ -192,7 +192,7 @@ still design.
 
 ---
 
-## 10. Quickstart (what will exist after Wave 6)
+## 10. Quickstart (MEASURED — every line below was run on this host 2026-09-21)
 
 ```bash
 # index a target (no key needed)
@@ -202,11 +202,11 @@ jm index @shadow
 # the three operator asks
 jm query @shadow --where "size>2000"
 jm find "split-brain session bug" --in @ocdb,@shadow --common 12 --structure md
-jm decision-tree --rows scenarios.jsonl --criteria policy.md --recipe screening-escalate
+jm decision-tree --rows scenarios.jsonl --criteria policy.md --recipe recipe.json   # --recipe takes a FILE
 
 # a judgment for an agent mid-turn
 jm serve --port 7777            # POST /decide
-jm mcp                          # tools: jm_find, jm_decide, jm_extract
+jm mcp                          # tools: jm_query, jm_find, jm_decide, jm_index (stdio JSON-RPC)
 
 # the runtime layer
 jef validate reflexes/*.reflex.yaml
@@ -226,14 +226,16 @@ key; decision ops (filter, decision-tree, route, evaluate) use the judge.
 **Recipe** — a versioned JSON question pack: primitives, criteria, thresholds,
 phase, fail rule, status (`shadow` | `active`). The unit of judgment.
 
-**Result** — the declared-structure output (md/json/csv) plus the ledger rows
+**Result** — the declared-structure output (md/json/csv, `--structure` or inferred from `--out`'s extension) plus the ledger rows
 that prove how it was produced.
 
 **Fingerprint** — `sha256(model ⊕ schema ⊕ canonical(redact(state)))`. The
 identity of a decision; the cache key.
 
-**Ledger row** — the append-only record: state hash, answers, thresholds, route,
-cost, later-truth. No row, no run.
+**Ledger row** — the append-only record: `{ts, kind, verb, args, started, ended, status,
+stats, cost_usd, calls, cached}`. A KEYLESS run carries no state hash/route/truth (it judged
+nothing); a JUDGED run's `stats` carries them. `args` records the flags the verb consumed, so a
+row can reconstruct the run it proves. No row, no run.
 
 **Ladder** — a reflex's promotion state: observe → advise → enforce → retired,
 moved only on measured precision with unresolved excluded.
@@ -278,8 +280,8 @@ D2/E1 (compounding knowledge work).
 | Surface | What | Who |
 |---------|------|-----|
 | `jm` CLI | the primary; pipes for composition | operator, scripts |
-| `jm serve` (:7777) | `POST /decide`, `POST /find`, `GET /jobs` | any host process |
-| `jm mcp` | tools `jm_find` `jm_decide` `jm_extract` `jm_index_status` | agents mid-turn |
+| `jm serve` (:7777, `--port`) | `POST /decide`, `POST /find`, `GET /jobs`, `GET /health` | any host process |
+| `jm mcp` (stdio) | tools `jm_query` `jm_find` `jm_decide` `jm_index` | agents mid-turn |
 | `jm watch` | daemon: index-watch, judge-drain, cache-gc, calibration-tick | standing services |
 | `jef` CLI | reflex scripts (validate, lint, shadow-report, bench) | the runtime layer |
 
