@@ -171,3 +171,25 @@ D-008 CRITICAL found + fixed: two targets holding the same relative path merged 
 battery 59 pass / 0 fail / 232 expects / 14 files · tsc exit 0
 ```
 **W3: GREEN** (with D-008 recorded as the wave's critical find).
+
+### W5/W7 GATE — ROUTE · EVALUATE · REPORT — GREEN
+```
+$ jm route --catalogue                                # keyless, pure read
+entries: 456   (the LIVE skill/tool catalogue on this host)
+$ jm route --task "index the shadow corpus"           # HOME redirected: no env key, no key file
+route exit=2   JM_ERROR: JEV_NO_KEY: ... no TYPESAFE_API_KEY and no ~/.config/typesafe/key
+$ jm evaluate --cases F --questions F --key flag      # same sandbox
+evaluate exit=2  JEV_NO_KEY                                        (C12 fail-closed, ZERO decisions)
+$ jm report w2all
+index: w2all (72.0 KB) · files: 6 live · docs/fts: 6/6 · runs: 0 · cache: 0 rows
+kinds: text=2 sqlite:fixDb=2 jsonl:fixRows=2
+ledger: 23 rows · 23 ok · 0 failed · $0.000000 · verbs index=12 query=5 scan=2 cluster=2 extract=2
+
+route ladder (mocked transport): p=0.91 -> act + injection text + runner-up logged;
+                                p=0.60 -> escalate, NO injection (never act on a weak signal)
+evaluate: metrics n/k/agreement/brier/ece/variance; k=3 repeats -> 2 cache hits, variance 0
+          (numerical-zero fix: identical answers reported 1.2e-32 before)
+report: a READ — runs row count unchanged before/after; a malformed ledger line counts as failed
+battery 69 pass / 0 fail / 271 expects / 15 files · tsc exit 0
+```
+**W5/W7: GREEN.**

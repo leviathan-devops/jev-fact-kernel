@@ -6,6 +6,9 @@ import { serveStdio } from "./mcp.ts";
 import { scanIndex } from "./verbs/scan.ts";
 import { clusterIndex } from "./verbs/cluster.ts";
 import { extractFields, renderExtract } from "./verbs/extract.ts";
+import { route, buildCatalogue } from "./verbs/route.ts";
+import { evaluate, replayDiff } from "./verbs/evaluate.ts";
+import { report, renderReport } from "./verbs/report.ts";
 import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
@@ -53,6 +56,9 @@ function usage(): void {
   jm scan <index> [--lex P] [--re R] [--limit N] [--json]      seeds -> candidates (keyless)
   jm cluster <index> [--lex P] [--re R] [--min N] [--json]     group candidates (no model)
   jm extract <index> --re R|--field K [--lex P] [--out F]      structured pulls -> result
+  jm route --task "..." [--catalogue] [--json]               catalogue Choice + injection
+  jm evaluate --cases F --questions F --key K [--k N]         metrics + --replay diff
+  jm report [index] [--json]                                  status over the store + ledger
   jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
   jm watch [--once] [--interval MS] [--in a,b]     the reconcile daemon (journal per tick)
   jm journal [--limit N] [--json]                  the watch journal
@@ -290,6 +296,74 @@ async function main(): Promise<number> {
       else process.stdout.write(out + (out.endsWith("\n") ? "" : "\n"));
       return 0;
     } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return String(err).includes("JM_EXTRACT_RE_INVALID") ? 2 : 1; }
+  }
+
+  if (verb === "route") {
+    // W5/S13: the catalogue Choice. Needs a key (fail polarity: exit 2 without one).
+    if (has("catalogue")) { const c = buildCatalogue(); console.log(JSON.stringify(c, null, 2)); return 0; }   // no key, no judge: a pure read
+    const task = flag("task") ?? positional.join(" ");
+    if (!task) { console.error("JM_ARGS: jm route --task \"<task>\" [--catalogue]"); return 2; }
+    const db = openDb(indexPathFor(flag("name") ?? "decisions"));
+    try {
+      const r = await withLedger("route", { task, context: flag("context") }, async () => {
+        const res = await route(db, { task, context: flag("context") });
+        return { result: res, stats: { route: res.route, p: res.p, candidates: res.candidates }, costUsd: res.costUsd, calls: res.calls, cached: res.cached ? 1 : 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else {
+        console.log(`route=${r.route} choice=${r.choice || "(none)"} p=${r.p.toFixed(3)}${r.runnerUp ? ` runner-up=${r.runnerUp.id}(${r.runnerUp.p.toFixed(3)})` : ""}`);
+        console.log(`reason: ${r.reason}`);
+        if (r.injection) console.log(`injection: ${r.injection}`);
+      }
+      return 0;
+    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "evaluate") {
+    // W5/S14: fixed cases + oracle labels -> metrics. `--replay B` diffs two runs.
+    const casesPath = flag("cases");
+    const qPath = flag("questions");
+    if (!casesPath || !qPath) { console.error("JM_ARGS: jm evaluate --cases F --questions F --key K [--k N] [--replay F]"); return 2; }
+    const cases = JSON.parse(readFileSync(casesPath, "utf8"));
+    const questions = JSON.parse(readFileSync(qPath, "utf8"));
+    const key = flag("key") ?? Object.keys(questions)[0];
+    const db = openDb(indexPathFor(flag("name") ?? "decisions"));
+    try {
+      const r = await withLedger("evaluate", { cases: casesPath, k: flag("k") }, async () => {
+        const res = await evaluate(db, { cases, questions, questionKey: key, repetitions: flag("k") ? Number(flag("k")) : undefined, schema: flag("schema") });
+        return { result: res, stats: { n: res.metrics.n, agreement: res.metrics.agreement, brier: res.metrics.brier }, costUsd: res.metrics.costUsdTotal, calls: res.metrics.n, cached: res.cases.filter((c) => c.cached).length };
+      });
+      db.close();
+      let replay: unknown = null;
+      if (flag("replay")) {
+        const prev = JSON.parse(readFileSync(flag("replay")!, "utf8")) as typeof r;
+        replay = replayDiff(prev, r);
+      }
+      if (has("json")) console.log(JSON.stringify({ ...r, replay }, null, 2));
+      else {
+        const m = r.metrics;
+        console.log(`n=${m.n} k=${m.k} agreement=${(m.agreement * 100).toFixed(1)}% brier=${m.brier.toFixed(4)} ece=${m.ece.toFixed(4)} variance=${m.variance.toFixed(5)}`);
+        console.log(`latency=${m.latencyMsMean.toFixed(0)}ms $/call=${m.costPerCall.toFixed(8)} total=$${m.costUsdTotal.toFixed(6)}`);
+        if (Array.isArray(replay)) { console.log(`replay diffs: ${(replay as unknown[]).length}`); for (const d of replay as { id: string; from: number; to: number; flipped: boolean }[]) console.log(`  ${d.id} ${d.from} -> ${d.to}${d.flipped ? " FLIPPED" : ""}`); }
+      }
+      return 0;
+    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "report") {
+    // W7: a READ-ONLY status report (index · ledger · registry).
+    const db = openDb(indexPathFor(flag("name") ?? (positional[0] ?? "all")));
+    try {
+      const r = await withLedger("report", { index: flag("name") ?? positional[0] ?? "all" }, async () => {
+        const res = report(db, { index: flag("name") ?? (positional[0] ?? "all") });
+        return { result: res, stats: { files: res.files, runs: res.runs, ledger: res.ledger.rows }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else console.log(renderReport(r));
+      return 0;
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
   }
 
   if (verb === "mcp") {
