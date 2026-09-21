@@ -73,6 +73,23 @@ echo "═══ L4 — THE CONTAINER RIG (host parity half) ═══"
 tok "container rig T1-T7 (host)" bash -c "timeout 500 bun run tests/container/harness.ts 2>&1 | grep -q 'JM_CONTAINER_RIG PASS'"
 
 echo ""
+echo "═══ THE HTTP SURFACE UNDER AN OVERSIZED BODY (D-036) ═══"
+# With no body cap, a 2 MB POST /decide BLOCKED THE WHOLE SURFACE — /health and /jobs stopped
+# answering while it was in flight, so a watchdog would judge the service dead. This check asserts
+# the cap refuses it FAST and that the surface stays responsive.
+SRV_HOME=/tmp/jm-gates-serve
+rm -rf "$SRV_HOME"; mkdir -p "$SRV_HOME"
+JM_HOME="$SRV_HOME" $J serve --port 7877 >/tmp/jm-gates-serve.log 2>&1 &
+sleep 2
+python3 -c "import json; open('/tmp/jm-gates-big.json','w').write(json.dumps({'state':{'pad':'y'*2000000},'questions':{'m':{'type':'noul','instructions':'?'}}}))"
+BIG=$(curl -s -o /dev/null -w '%{http_code}' -m 20 -X POST http://127.0.0.1:7877/decide -d @/tmp/jm-gates-big.json)
+HEALTH=$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://127.0.0.1:7877/health)
+JOBS=$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://127.0.0.1:7877/jobs)
+pkill -f "cli.ts serve --port 7877" 2>/dev/null
+tok "an oversized body is refused (413)" bash -c "[ \"$BIG\" = '413' ]"
+tok "the surface survives it (health+jobs up)" bash -c "[ \"$HEALTH\" = '200' ] && [ \"$JOBS\" = '200' ]"
+
+echo ""
 echo "═══ CONCURRENT WRITERS ON ONE INDEX (D-035) ═══"
 # The store had NO busy_timeout while both other openers did, so simultaneous CLI runs failed with
 # `database is locked`. This check runs four indexers at once and requires ALL FOUR to exit 0.

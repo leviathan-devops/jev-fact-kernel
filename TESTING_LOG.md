@@ -621,3 +621,15 @@ AFTER   3 rounds x 4 simultaneous indexers -> exits [0 0 0 0] every round, zero 
 GATED   tests/concurrency.test.ts (four REAL processes + the pragma ORDER) and three new checks in
         scripts-gates.sh
 battery 134 pass / 0 fail / 647 expects / 25 files · tsc exit 0 · GATES 38 passed / 0 failed
+
+### D-036 — THE HTTP SURFACE HAD NO BODY CAP, AND AN OVERSIZED BODY BLOCKED EVERYTHING
+```
+FOUND   a 2 MB POST /decide hung, and /health + /jobs stopped answering WHILE IT WAS IN FLIGHT
+ISOLATED a SMALL /decide in flight -> /health answered in 0.75 ms  => the BODY SIZE, not concurrency
+         (the judge API was verified healthy in parallel: 938 ms)
+ROOT    grep for content-length|maxBody|bodyLimit across src/ -> NOTHING; every body was req.json()
+FIX     readBodyCapped(): a Content-Length check AND a streaming byte cap (1 MiB, JM_SERVE_MAX_BODY)
+AFTER   2 MB -> 413 in 1.8ms · /health 200 in 0.9ms · /jobs 200 · a normal /decide 200 in 0.84s
+        AND a chunked body with no content-length -> 413 (the stream cap bites)
+battery 135 pass / 0 fail / 651 expects / 25 files · GATES 40 passed / 0 failed
+```

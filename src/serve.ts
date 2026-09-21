@@ -12,7 +12,38 @@ import { Judge } from "./judge/client.ts";
 import { find } from "./verbs/find.ts";
 import { readdirSync } from "node:fs";
 
-export interface ServeOpts { port?: number; name?: string; }
+export interface ServeOpts { port?: number; name?: string; maxBodyBytes?: number; }
+
+/** The request-body cap (D-036). The surface had NO limit: a 2 MB `POST /decide` body was
+ *  accepted, forwarded to the judge, and BLOCKED THE WHOLE SURFACE — `/health` and `/jobs` stopped
+ *  answering while it was in flight, so a watchdog or load balancer would have judged the service
+ *  dead. Measured: a small /decide leaves /health answering in 0.75 ms; a 2 MB body hangs
+ *  everything. 1 MB is far above any legitimate payload here (a decision state, a question set, a
+ *  find phrase) and far below what hurts. */
+export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
+
+/** Read a request body with a hard byte cap, so a truncated/oversized/chunked body cannot be
+ *  read into memory unbounded. Returns null when the cap is exceeded. */
+async function readBodyCapped(req: Request, cap: number): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > cap) return null;
+  const reader = req.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > cap) { try { await reader.cancel(); } catch { /* the stream is already gone */ } return null; }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { buf.set(c, at); at += c.byteLength; }
+  return new TextDecoder().decode(buf);
+}
 
 /** The health path's judge needs A db to report the key's provenance, but the health path must not
  *  CREATE one. When the index is absent, a throwaway in-memory db is enough: the key facts do not
@@ -23,6 +54,7 @@ function judgeDbFor(name: string): Database {
 
 export function startServer(opts: ServeOpts = {}) {
   const port = opts.port ?? 7777;
+  const maxBody = opts.maxBodyBytes ?? Number(process.env.JM_SERVE_MAX_BODY ?? DEFAULT_MAX_BODY_BYTES);
   const indexName = opts.name ?? "decisions";
 
   const token = process.env.JM_SERVE_TOKEN;   // optional bearer; loopback-only by default
@@ -71,8 +103,10 @@ export function startServer(opts: ServeOpts = {}) {
       }
       try {
         if (url.pathname === "/decide" && req.method === "POST") {
+          const raw = await readBodyCapped(req, maxBody);
+          if (raw === null) return Response.json({ error: `JM_BODY_TOO_LARGE: the body cap is ${maxBody} bytes (JM_SERVE_MAX_BODY overrides)` }, { status: 413 });
           let body: { schema?: string; state?: unknown; questions?: Record<string, unknown> };
-          try { body = await req.json() as typeof body; }
+          try { body = JSON.parse(raw) as typeof body; }
           catch { return Response.json({ error: "JM_JSON_INVALID" }, { status: 400 }); }   // malformed body is a client error, never a crash
           if (!body.state || !body.questions) return Response.json({ error: "JM_ARGS: state + questions required" }, { status: 400 });
           const judge = new Judge(db, {});
@@ -86,8 +120,10 @@ export function startServer(opts: ServeOpts = {}) {
           }
         }
         if (url.pathname === "/find" && req.method === "POST") {
+          const raw = await readBodyCapped(req, maxBody);
+          if (raw === null) return Response.json({ error: `JM_BODY_TOO_LARGE: the body cap is ${maxBody} bytes (JM_SERVE_MAX_BODY overrides)` }, { status: 413 });
           let body: { phrase?: string; common?: number; structure?: "md" | "json" };
-          try { body = await req.json() as typeof body; }
+          try { body = JSON.parse(raw) as typeof body; }
           catch { return Response.json({ error: "JM_JSON_INVALID" }, { status: 400 }); }
           if (!body.phrase) return Response.json({ error: "JM_ARGS: phrase required" }, { status: 400 });
           const res = await find(db, { phrase: body.phrase, common: body.common, structure: body.structure ?? "json" });

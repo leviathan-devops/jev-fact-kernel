@@ -1218,3 +1218,35 @@ ONE SURFACE AND NOT ON ANOTHER.
   complete).
 - **LESSON:** a default that is safe in one process becomes a data-loss path in two. `SQLite`'s
   default `busy_timeout` is ZERO — a single writer never notices, and the second one fails.
+
+## EN-051 — D-036: one oversized body BLOCKED THE WHOLE HTTP SURFACE (no body cap existed)
+- **FOUND BY:** the boundary-crossing lens applied to the HTTP surface under load — "what happens
+  when a request is bigger than any request we have tried?"
+- **THE MEASUREMENT (three steps, each isolating one variable):**
+  1. Twelve concurrent requests (health/jobs/find): all answered — the surface handles concurrency.
+     (Four returned 404: `/find` refusing the missing `decisions` index, i.e. the D-029 fix doing
+     its job. My probe had used the wrong index name; the 404s were correct, not a finding.)
+  2. A 2 MB `POST /decide`: **no response**, and `/health` AND `/jobs` stopped answering too — the
+     ENTIRE SURFACE was blocked while it was in flight. A watchdog or load balancer would have
+     judged the service dead.
+  3. A SMALL `/decide` in flight: `/health` answered in **0.75 ms**. So the blocker is the BODY
+     SIZE, not judge concurrency. (The judge API itself was verified healthy in parallel: 938 ms,
+     `noul 0.96` — the hang was never the far side.)
+- **ROOT CAUSE:** grep for `content-length|maxBody|bodyLimit` across `src/` returned NOTHING. The
+  surface read every body with `req.json()` and forwarded whatever it found to the judge.
+- **FIX:** `readBodyCapped(req, cap)` — a `Content-Length` fast check AND a streaming read with a
+  hard byte cap (`DEFAULT_MAX_BODY_BYTES = 1 MiB`, `JM_SERVE_MAX_BODY` overrides), wired through
+  both JSON-taking routes. An oversized body is `413 JM_BODY_TOO_LARGE`.
+- **VERIFICATION:**
+  ```
+  2 MB body        -> HTTP 413 in 0.0018s   (was: hang, and the surface blocked)
+  /health after it -> HTTP 200 in 0.0009s   (the surface SURVIVES)
+  /jobs after it   -> HTTP 200
+  normal /decide   -> HTTP 200 in 0.84s     (unaffected)
+  CHUNKED body, no content-length -> HTTP 413   (the STREAM cap bites, not just the header check)
+  ```
+  Pinned by `test_D036_oversized_body_is_refused_and_the_surface_survives` (413 + both liveness
+  routes + a normal payload still served) and two new gates.
+- **LESSON:** an unbounded input is not a performance question, it is an availability question. The
+  failure mode was not "slow" — it was "the health check stopped answering", which makes one bad
+  request look like a dead service.

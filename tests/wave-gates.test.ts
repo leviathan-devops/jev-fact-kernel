@@ -167,4 +167,26 @@ describe("W7 test_calibrate_row", () => {
       db.close();
     } finally { sb.cleanup(); }
   });
+
+  test("test_D036_oversized_body_is_refused_and_the_surface_survives", async () => {
+    // With no body cap the surface accepted a 2 MB POST /decide, forwarded it to the judge, and
+    // BLOCKED EVERYTHING — /health and /jobs stopped answering while it was in flight. A watchdog
+    // would have judged the service dead. The cap refuses it in milliseconds and the surface lives.
+    const { sb, db } = await seeded(1);
+    const srv = startServer({ port: 7896, name: "wg" });
+    try {
+      const big = JSON.stringify({ state: { pad: "y".repeat(2_000_000) }, questions: { m: { type: "noul", instructions: "?" } } });
+      const res = await fetch(`http://127.0.0.1:${srv.port}/decide`, { method: "POST", body: big });
+      expect(res.status).toBe(413);
+      const bodyErr = await res.json() as { error: string };
+      expect(bodyErr.error).toMatch(/JM_BODY_TOO_LARGE/);
+      // THE POINT OF THE FIX: the surface is still serving
+      expect((await fetch(`http://127.0.0.1:${srv.port}/health`)).status).toBe(200);
+      expect((await fetch(`http://127.0.0.1:${srv.port}/jobs`)).status).toBe(200);
+      // a normal payload is unaffected
+      const ok = await fetch(`http://127.0.0.1:${srv.port}/find`, { method: "POST", body: JSON.stringify({ phrase: "x" }) });
+      expect([200, 404]).toContain(ok.status);          // 404 = the missing-index refusal, also fine
+      db.close();
+    } finally { srv.stop(true); sb.cleanup(); }
+  }, 30_000);
 });
