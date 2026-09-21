@@ -20,7 +20,7 @@ export interface Cluster {
 
 export interface ClusterResult { clusters: Cluster[]; grouped: number; ungrouped: number; small: number; ms: number; }
 
-const STOP = new Set(["the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "not", "but", "you", "your", "它"]);
+const STOP = new Set(["the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "not", "but", "you", "your"]);
 
 /** A token signature: the top-N most frequent non-stop tokens >= 4 chars. */
 export function signatureOf(texts: string[], top: number): string[] {
