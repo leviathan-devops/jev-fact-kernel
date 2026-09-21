@@ -27,8 +27,8 @@ function test_adv_route_boundaries() {
     expect(routeOf({ type: "noul", noul: 1 }, P).route).toBe("act");
     expect(routeOf(undefined, P).route).toBe("noop");                        // missing answer = noop
     // choice: MASS policy — the max probability drives the signal
-    expect(signalOf({ type: "choice", probabilities: { a: 0.81, b: 0.19 } })).toBeCloseTo(0.81);
-    expect(signalOf({ type: "choice", confidence: 0.9 })).toBe(0.9);
+    expect(signalOf({ type: "choice", choice: "a", probabilities: { a: 0.81, b: 0.19 } })).toBeCloseTo(0.81);
+    expect(signalOf({ type: "choice", choice: "a", confidence: 0.9 })).toBe(0.9);
     expect(signalOf(undefined)).toBe(0);
   });
 }

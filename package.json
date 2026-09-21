@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "JM — the targetable decision engine (targets -> operations -> recipes -> results)",
+  "description": "JM \u2014 the targetable decision engine (targets -> operations -> recipes -> results)",
   "scripts": {
     "jm": "bun run src/cli.ts",
-    "test": "bun test tests/",
+    "test": "bun test $(find src tests -name '*.test.ts' | tr '\\n' ' ')",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
