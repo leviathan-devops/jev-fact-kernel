@@ -28,6 +28,36 @@ export interface FindResult {
 
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where", "which", "have", "has", "was", "were", "are", "its", "its", "bug", "issue"]);
 
+/** The excerpt a judge is shown: centred on the FIRST seed occurrence, so the text that caused
+ *  the match is IN the excerpt. Falls back to the head when no seed is found (a --where-only or
+ *  phrase-level match), and never exceeds `max` characters. */
+export const EXCERPT_LINE_WIDTH = 6;   // kept for callers that want to align excerpts; unused here
+/** The QUOTE shown to a human: it must START at the match, not at the head of the centred window.
+ *  Measured: after centring the judge's excerpt, the pattern's quotes still began ~600 chars
+ *  before the hit, so a reader could not see WHY the row matched. */
+export function quoteAround(text: string, seeds: string[], len: number): string {
+  let at = -1;
+  for (const s of seeds) {
+    const i = text.toLowerCase().indexOf(s.toLowerCase());
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  return at >= 0 ? text.slice(at, at + len) : text.slice(0, len);
+}
+
+export function excerptAround(text: string, seeds: string[], max: number): string {
+  if (text.length <= max) return text;
+  let at = -1;
+  for (const s of seeds) {
+    const i = text.toLowerCase().indexOf(s.toLowerCase());
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  if (at < 0) return text.slice(0, max);
+  // centre the window on the hit, then clamp to the document
+  const half = Math.floor(max / 2);
+  const start = Math.max(0, Math.min(at - half, text.length - max));
+  return text.slice(start, start + max);
+}
+
 export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   const budget = new Budget({ calls: opts.budgetCalls });
   const judge = new Judge(db, {});
@@ -52,13 +82,20 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     if (budgetStopped) return null;
     if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
-    const excerpt = (doc?.text ?? "").slice(0, maxExcerpt);
+    // THE EXCERPT MUST CONTAIN THE MATCH (D-031). Taking the document HEAD meant the judge was
+    // asked "is this an instance of X?" while being shown text that did not contain X — measured
+    // on the real corpus: the three seeded documents held the phrase at char 1267, 1267 and 9224,
+    // all OUTSIDE a 1200-char head slice, so every true positive was judged `no` and the chain
+    // returned `209 -> 100 -> 0 -> 0` for EVERY phrase. For a structured corpus (JSON session
+    // logs) the head is metadata noise, which is exactly the corpus R2 targets.
+    const text = doc?.text ?? "";
+    const excerpt = excerptAround(text, seeds, maxExcerpt);
     const res = await judge.ask({ target_phrase: opts.phrase, candidate: { path: c.path, excerpt } },
       { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } }, "find@v1");
     const p = (res.answers.is_instance as { noul?: number })?.noul ?? 0;
     budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
     if (!res.cached) { calls++; costUsd += res.costUsd; }
-    if (p >= minP) judged.push({ row: c, p, quote: excerpt.slice(0, 160) });
+    if (p >= minP) judged.push({ row: c, p, quote: quoteAround(text, seeds, 160) });
     return null;
   }, { concurrency: opts.concurrency ?? 6 });
 

@@ -85,5 +85,21 @@ print("  CROSS-KIND:", "YES" if fs and db else "NO")
 sys.exit(0 if (fs and db) else 1)'
 [ $? -eq 0 ] || { echo "FAIL: the query did not span both kinds"; exit 1; }
 
+# 6. the find chain must actually FIND something (D-031: it returned 0 patterns for every phrase
+#    because the judge was shown a head excerpt that did not contain the match)
+echo "--- the find chain on the real corpus (must produce at least one pattern) ---"
+$J find "tombstone" --in real --common 2 --min-p 0.4 --budget-calls 10 --out /tmp/jm-real-find.md 2>&1 | grep -o "trend: .*" | head -1
+python3 -c '
+import re, sys
+txt = open("/tmp/jm-real-find.md", encoding="utf-8").read()
+m = re.search(r"kept: (\d+)", txt)
+kept = int(m.group(1)) if m else 0
+# and every quote must START at the match (the D-031 shape)
+quotes = re.findall(r"\u2014 \"(.{0,12})", txt)
+starts = [q for q in quotes if q.lower().startswith("tombstone")]
+print("  kept:", kept, "| quotes starting at the match:", len(starts), "of", len(quotes))
+sys.exit(0 if kept > 0 and len(starts) == len(quotes) and len(quotes) > 0 else 1)'
+[ $? -eq 0 ] || { echo "FAIL: the find chain produced no pattern, or a quote did not start at the match"; exit 1; }
+
 echo ""
-echo "REAL-CORPUS RIG: PASS — @shadow + @ocdb indexed together, the sources unchanged, one query spanning both."
+echo "REAL-CORPUS RIG: PASS — @shadow + @ocdb indexed together, the sources unchanged, one query spanning both, and the find chain returns patterns whose quotes show the match."
