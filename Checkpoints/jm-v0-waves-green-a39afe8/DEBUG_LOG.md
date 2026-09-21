@@ -944,3 +944,17 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
   `["state_file: Error: EISDIR…"]`, and the happy path still journals `errors: []`.
 - **LESSON:** an error path that was never executed is not a fixed error path. The audit named the
   swallow; only running the failure showed that the repair had two defects of its own.
+
+## EN-041 — the last audit claim (a placeholder mismatch), REFUTED by counting
+- **CLAIM:** "Array parameter has 9 elements but SQL query only has 8 placeholders" in `cachePut`.
+- **PROBE (mechanical):** parsed the SQL literal and counted the `?` -> **8**; counted the bound
+  array -> **8**. The array is `[fp, provider, model, schemaHash, stateHash, answers, iso, fp]` —
+  `fp` appears twice BY DESIGN (once for the column, once for the COALESCE subquery that preserves
+  `hits`).
+- **PROBE (functional):** the row stores with EVERY column correct
+  (`{"fingerprint":"fp","provider":"prov","model":"model","schema_hash":"SH","state_hash":"ST"}`)
+  and reads back correctly. A misalignment would garble exactly these fields.
+- **DISPOSITION:** no change; recorded so it is not "fixed" later.
+- **NOTE FOR THE NEXT RUN:** this lane's refutation rate is ~1 in 3. Its findings are still worth
+  the run — it found ten silent wrong answers the battery could not see — but every claim it makes
+  is a HYPOTHESIS until a probe settles it.

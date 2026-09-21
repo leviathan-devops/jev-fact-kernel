@@ -108,12 +108,36 @@ non-defect into a real one.
 | A16-1 | the watch scope set is rebuilt per element | medium | CONFIRMED -> fixed | computed once into a Set |
 | A16-2 | a 200-char error truncation cuts the tail | low | CONFIRMED -> fixed | bounded at 500, head+tail kept |
 | A16-3 | the state-file catch swallows errors | medium | CONFIRMED -> fixed | recorded on the tick + journal; the fix's own two bugs are in EN-040 |
+| A17-1 | `cachePut` passes 9 params to 8 placeholders (misalignment) | high | REFUTED | counted mechanically: 8 `?` and 8 elements; and the stored row reads back with every column correct |
 
-**TALLY: 22 confirmed + fixed, 12 refuted by probe, 0 open.**
+**TALLY: 22 confirmed + fixed, 13 refuted by probe, 0 open.**
 
 ---
 
-## 5. VERDICT: BLOCKED — and what that word means here
+## 5. THE FINAL COUNT AND THE SHAPE OF THE EVIDENCE (23 runs)
+
+Across 23 audit runs on four lanes, the findings fell into three groups:
+
+- **22 CONFIRMED and fixed**, each with a probe and a pin (or a corrected doc line). Ten of these
+  were **silent wrong answers** — the class that matters most: an unknown index returning an empty
+  result at exit 0, same-named files collapsing into one row, a no-op `index <file>`, a
+  documented-but-unread `--common` flag, a budget cap that overshot 3x under concurrency, a raw
+  driver error leaking from user input, a cost line corrupting piped output.
+- **13 REFUTED by probe**, each recorded with its evidence so the next reader does not "fix" a
+  non-defect into a real one. The refutations cluster into three kinds: (i) claims about SQL/JS
+  semantics that a six-line probe settles (`INSERT OR REPLACE` and `hits`; lost `++`), (ii) claims
+  that misread which function does what (`roomLeft` vs `assert`), and (iii) at least one invented
+  claim (a duplicate `total` property that does not exist; a 9-vs-8 placeholder mismatch that
+  counts 8-vs-8).
+- **0 open.** Every finding is adjudicated in the table above.
+
+The ratio is the honest signal about this lane: it found real defects the battery could not (a
+budget race, a no-op flag, a driver leak) AND it hallucinated findings at a rate near one in three.
+Both facts are why **the gate is not closed by this lane alone** — see §6.
+
+---
+
+## 6. VERDICT: BLOCKED — and what that word means here
 
 **AUDIT GATE: BLOCKED.** The last COMPLETED audit of the whole tree is run 5 (FAIL). Every later
 attempt at the full scope has been cut off by upstream provider rate limits — three lanes
@@ -139,7 +163,7 @@ PASS; if it lands with findings, they go through §4's adjudication before any e
 
 ---
 
-## 6. WHAT THE GATE DID NOT COVER
+## 7. WHAT THE GATE DID NOT COVER
 
 - **The container rig (spec §9 T1–T9)** — every result this session is host-live. A container run
   would test environment-independence (a fresh image, no host key, no host skills dir), which is
@@ -151,7 +175,7 @@ PASS; if it lands with findings, they go through §4's adjudication before any e
 
 ---
 
-## 7. WHY THE METHOD IS TRUSTWORTHY (the anti-theatrical check on THIS document)
+## 8. WHY THE METHOD IS TRUSTWORTHY (the anti-theatrical check on THIS document)
 
 The temptation in a blocked audit is to present the parts that ran as if the whole ran. The
 guards against that here:
@@ -168,7 +192,7 @@ guards against that here:
 5. **The gate line uses the word BLOCKED**, the only one of the three the contract permits when the
    evidence is incomplete (`FAIL` would overstate the known state; `PASS` would be a lie).
 
-## 8. RUNNING THE GATE YOURSELF (the paste-ready sequence)
+## 9. RUNNING THE GATE YOURSELF (the paste-ready sequence)
 
 ```
 cd /home/leviathan/JARVIS_WORKSPACE/Shared_Workspace/JevManager
@@ -194,7 +218,7 @@ done
 A chunk that reports `complete` with `0` comments is a clean pass FOR ITS FILES. The gate closes
 only when all three report so; until then this file's §5 stands.
 
-## 9. THE ONE-LINE VERSION
+## 10. THE ONE-LINE VERSION
 
 Nine real defects were found by audit and fixed; six audit claims were refuted by probe and
 recorded; two of three scope chunks are complete and clean; the third is blocked by an external
