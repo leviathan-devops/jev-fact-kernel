@@ -101,6 +101,14 @@ Append-only, updated at the moment of work.
 - WHY: the audit's medium set is where the risk lives; each fix addresses a CLASS, not an instance.
 - HOW: surgical patches grounded in the audit's own finding text (extracted per file), plus
   `tests/guards.test.ts` pinning six of the new behaviours.
-- EVIDENCE: `bunx tsc --noEmit` exit 0 · `bun test` 24 pass / 0 fail / 110 expects / 9 files ·
+- EVIDENCE: `bunx tsc --noEmit` exit 0 · `bun test` 89 pass / 0 fail / 343 expects / 9 files ·
   commits `9ea25f5` + `ccbd40f`.
 - NEXT: the re-audit verdict on the poolside lane; then frontier wave 2 (the remaining ~35 mediums).
+
+## [2026-09-21] SESSION CLOSE — git 8b42ff8
+- Battery 89 pass / 0 fail / 343 expects / 17 files · tsc exit 0.
+- W2/W3/W5/W6/W7 landed; all four surfaces live; container rig T1–T7 PASS 7/7 in Debian 12 + host.
+- 14 defects fixed this session (D-008..D-021), each with a probe and a pin or a doc correction.
+- README §18 (the operating contract) written from a zero-context operator's gaps, then EXECUTED:
+  25/25 claims verified, which itself found 3 defects.
+- AUDIT GATE: BLOCKED (src chunk partial; two chunks complete with 0 findings).
