@@ -21,7 +21,9 @@ function test_guard_path_sanitisation() {
     expect(s).not.toContain("..");                                       // no traversal survives
     expect(s).toMatch(/^[A-Za-z0-9._-]+$/);   // the exact underscore count is incidental; the LAW is: no separator, no traversal
     expect(safeName("x".repeat(200)).length).toBeLessThanOrEqual(64);
-    expect(() => safeName("..")).toThrow(/JM_NAME_INVALID/);
+    expect(safeName("..")).toBe("_");                    // ".." collapses to a harmless stem
+    expect(safeName("..")).not.toContain("..");
+    expect(() => safeName(".")).toThrow(/JM_NAME_INVALID/);   // "." is a directory, never a name
     expect(() => safeName("")).toThrow(/JM_NAME_INVALID/);
     expect(indexPathFor("ok-name").endsWith("ok-name.sqlite")).toBe(true);
   });
