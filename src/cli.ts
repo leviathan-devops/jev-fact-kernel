@@ -8,7 +8,7 @@ import { clusterIndex } from "./verbs/cluster.ts";
 import { extractFields, renderExtract, type Structure } from "./verbs/extract.ts";
 import { route, buildCatalogue } from "./verbs/route.ts";
 import { evaluate, replayDiff } from "./verbs/evaluate.ts";
-import { report, renderReport } from "./verbs/report.ts";
+import { report, renderReport, jobReport, renderJobReport, lastJobId } from "./verbs/report.ts";
 import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
@@ -180,9 +180,10 @@ async function main(): Promise<number> {
       limit: flag("limit") ? Number(flag("limit")) : undefined,
     };
     if (has("queued")) {
-      const q = await withLedger("index", { arg, name: indexName, root, queued: true }, async () => {
+      const jobId = flag("job") ?? `idx-${indexName}`;
+      const q = await withLedger("index", { arg, name: indexName, root, queued: true, job: jobId }, async () => {
         const r = await runIndexJob({
-          indexDb: db, jobId: flag("job") ?? `idx-${indexName}`,
+          indexDb: db, jobId,
           root, opts, concurrency: flag("concurrency") ? Number(flag("concurrency")) : 8,
           budgetCalls: flag("budget-calls") ? Number(flag("budget-calls")) : undefined,
         });
@@ -421,6 +422,25 @@ async function main(): Promise<number> {
   }
 
   if (verb === "report") {
+    // C8: `jm report --job <id|last>` — the PER-JOB reconciliation the spec names. It REPLACED a
+    // recorded open violation, so the branch comes first: with --job, the index argument is
+    // irrelevant and an index that does not exist must not block a queue-only read.
+    if (flag("job") !== undefined) {
+      const want = flag("job")!;
+      const jobId = want === "last" ? lastJobId() : want;
+      if (!jobId) { console.error("JM_JOB_NONE: no job has a queue yet (run `jm index @t --queued --job <id>`)"); return 2; }
+      const idxName = flag("name") ?? "all";
+      let jr;
+      try {
+        jr = jobReport(indexExists(idxName) ? openDb(indexPathFor(idxName)) : null, jobId);
+      } catch (err) {
+        console.error(`JM_ERROR: ${String(err)}`);
+        return 2;                                   // a client named a job that is not there
+      }
+      if (has("json")) console.log(JSON.stringify(jr, null, 2));
+      else console.log(renderJobReport(jr));
+      return jr.reconciled ? 0 : 3;   // a duplicate or a running row is a NON-ZERO reconciliation
+    }
     // W7: a READ-ONLY status report (index · ledger · registry).
     const repName = flag("name") ?? (positional[0] ?? "all");
     const db = openIndexExisting(repName, indexPathFor(repName));   // G1: a typo is LOUD

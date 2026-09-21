@@ -405,3 +405,27 @@ ALSO FIXED: the seal had NESTED context_management inside itself (20 docs instea
 VERIFIED: 12 docs (the contract's 11 plus RUNTIME_SEAT), every doc that carries a TREE SHA line
   carries the SAME one, and the seal re-verifies from its own copy.
 ```
+
+### C8 CLOSED and C14 ADVANCED (this turn)
+```
+C8  THE SPEC'S INVOCATION NOW EXISTS. `jm report --job last` reconciles BOTH halves:
+      queue   12 rows · 12 done · 0 running · 12 distinct
+      ledger  1 rows total · 1 NAMING THIS JOB · 1 ok · $0.000000        reconciled: YES  exit 0
+    The negative half: a claimed-but-unacked row (what a crash leaves) flips it to
+      reconciled: NO — 1 rows left running                                exit 3
+    A typo'd job id is JM_JOB_MISSING at exit 2 and creates NO job directory (the D-009 phantom
+    class, refused here too — openJob() creates the directory, so the guard is required).
+    TWO gaps in the feature were found by testing it: the verb invented a job for a typo'd id,
+    and the queued index never recorded its job id in the ledger, so no reconciliation was
+    possible even WITH the verb. Both fixed. Pinned by tests/job-report.test.ts (5 tests).
+    The DUP LAW it prints is enforced by the queue's UNIQUE fingerprint constraint, not by the
+    report's arithmetic — stated in the verb's output so the guarantee is not misattributed.
+
+C14 JM IS NOW REGISTERED in OMP's own MCP registry (~/.omp/agent/mcp.json, backed up first)
+    with a cwd-pinning launcher; proven from /tmp to answer tools/list with all four tools.
+    The session-live half needs a session RESTART, which a running session cannot do to itself
+    (and this host's gate refuses headless smoke probes). Recorded as one restart away, with the
+    exact verification command.
+
+battery 121 pass / 0 fail / 597 expects / 22 files · tsc exit 0
+```
