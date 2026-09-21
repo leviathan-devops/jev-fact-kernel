@@ -1505,3 +1505,29 @@ ONE SURFACE AND NOT ON ANOTHER.
   `pkill` calls had not actually killed — the EN-058 pkill fact again).
 - **LESSON:** tests that bind fixed ports, write fixed temp paths, or assume a quiet host are
   flakes with a schedule. Let the OS assign the port.
+
+## EN-061 — D-044: the cache ignores WHICH endpoint answered
+- **HOW FOUND:** enabled by D-040's `JM_JUDGE_URL`. With the endpoint configurable, the question
+  "does the cache know which endpoint it is caching?" became testable — and it did not.
+- **THE PROBE (two local endpoints, one state, answers 0.90 and 0.10):**
+  ```
+  endpoint A says 0.90 -> read 0.90
+  endpoint B says 0.10 -> read 0.90  (CACHED from A)      B's answer was never used
+  ```
+- **ROOT CAUSE:** the fingerprint is (provider, model, schema, state) and `provider` is HARD-CODED
+  to the literal string `"typesafe"`. Two endpoints serving different models under the same NAME
+  are indistinguishable to it. Harmless while the URL was a constant; a silent stale-answer source
+  the moment a mirror is configured — which my own `JM_JUDGE_URL` doc comment now invites.
+- **FIX:** the endpoint joins the fingerprint (`${schemaVersion}#${qHash}#${judgeUrl()}`). The
+  invariant the cache must hold is *same (endpoint, model, schema, state) -> same answer*, not
+  *same model name*.
+- **VERIFICATION:**
+  ```
+  A(0.90)   -> 0.9            (a real call)
+  B(0.10)   -> 0.1  not cached   each endpoint is its own entry
+  A again   -> 0.9  CACHED       A's entry survived — the fix does not disable the cache
+  ```
+  Battery 156/0, so the existing cache-determinism pins still hold. Pinned by
+  `tests/cache-endpoint-scope.test.ts`.
+- **LESSON:** a cache key must include every input that can change the answer. When you make a
+  constant configurable, re-check every key that assumed it.
