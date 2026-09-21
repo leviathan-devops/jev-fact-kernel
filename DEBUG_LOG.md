@@ -1010,3 +1010,23 @@ ONE SURFACE AND NOT ON ANOTHER.
   refuse a missing index"; the CLI learned it, the MCP and HTTP surfaces did not, and only a
   zero-context operator following the docs walked into the gap. When a rule is stated as a
   CONTRACT ("the same semantics"), grep every surface that claims it.
+
+## EN-044 — the audit's HIGH about `index --in`, REFUTED by execution (and the name that caused it)
+- **CLAIM (high):** "In 'index --in' path, output iterates over 'stats' which is an object, not an
+  array. This will iterate over object keys ('result', …)".
+- **PROBE (execution):** `jm index --in all --name ix` printed one line PER TARGET —
+  `ix fs rows=1 changed=1 19ms`. An object-keys iteration would have printed `result` / `stats` /
+  `costUsd`. The value IS the per-target array: `withLedger` returns `result`, which is what
+  `ingestAll` produced.
+- **WHAT ACTUALLY CAUSED THE MISREAD:** the variable was NAMED `stats` while holding an array.
+  A name is a claim too. FIX: renamed to `perTarget` with a comment stating its shape.
+- **FIXED IN THE SAME PASS (two real findings from the same run):**
+  - the `--cases`/`--questions` JSON.parse sat OUTSIDE any try, so a malformed file leaked a raw
+    `SyntaxError` through the top-level boundary. Now `JM_EVAL_JSON` (exit 2), and a non-array
+    `--cases` is `JM_EVAL_CASES` (exit 2). VERIFIED on both shapes.
+  - `--apply` (the calibrate verb's calibration-row writer) was in no help text. Now documented.
+- **DISPOSITION OF THE REST:** the chained-ternary style note is accepted as-is (it is one
+  expression with a clear comment); the package.json "bun not in devDependencies" note is REFUTED
+  by the auditor's own concession — bun is the RUNTIME, not a dependency.
+- **LESSON:** a misleading variable name generated a false HIGH. Renaming is not cosmetic when the
+  next reader is an auditor.

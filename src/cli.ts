@@ -66,7 +66,8 @@ function usage(): void {
   jm watch [--once] [--interval MS] [--in a,b] [--name I]   the reconcile daemon (journal per tick)
   jm journal [--limit N] [--json]                  the watch journal
   jm serve [--port N] [--name I]                   the HTTP surface (POST /decide, /find)
-  jm calibrate [--name I] [--truth ID --truth-value V]   band counts + an operator truth
+  jm calibrate [--name I] [--apply [--apply-note S]] [--truth ID --truth-value V]
+                                                   band counts; --apply records a calibration row
 `);
 }
 
@@ -134,13 +135,15 @@ async function main(): Promise<number> {
       const indexName = flag("name") ?? (spec === "all" ? "all" : spec.split(",").map((x) => x.trim()).join("+"));
       const db = openDb(indexPathFor(indexName));
       try {
-        const stats = await withLedger("index", { in: spec, name: indexName }, async () => {
+        // This is the PER-TARGET ARRAY (one entry per resolved target), not a stats object — the
+        // old name made an auditor read it as one and file a HIGH that execution refutes.
+        const perTarget = await withLedger("index", { in: spec, name: indexName }, async () => {
           const r = await ingestAll(db, spec);
           return { result: r, stats: { targets: r.length, rows: r.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
         });
         db.close();
-        if (has("json")) console.log(JSON.stringify(stats, null, 2));
-        else for (const r of stats) console.log(`${r.target}\t${r.kind}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
+        if (has("json")) console.log(JSON.stringify(perTarget, null, 2));
+        else for (const r of perTarget) console.log(`${r.target}\t${r.kind}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
         return 0;
       } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
     }
@@ -382,8 +385,17 @@ async function main(): Promise<number> {
     const casesPath = flag("cases");
     const qPath = flag("questions");
     if (!casesPath || !qPath) { console.error("JM_ARGS: jm evaluate --cases F --questions F --key K [--k N] [--replay F]"); return 2; }
-    const cases = JSON.parse(readFileSync(casesPath, "utf8"));
-    const questions = JSON.parse(readFileSync(qPath, "utf8"));
+    // A malformed --cases/--questions file is a CLIENT error: name it, do not leak a SyntaxError
+    // through the top-level boundary (an audit flagged the parse sitting outside any try).
+    let cases: unknown; let questions: Record<string, unknown>;
+    try {
+      cases = JSON.parse(readFileSync(casesPath, "utf8"));
+      questions = JSON.parse(readFileSync(qPath, "utf8")) as Record<string, unknown>;
+    } catch (err) {
+      console.error(`JM_EVAL_JSON: ${String(err).slice(0, 160)}`);
+      return 2;
+    }
+    if (!Array.isArray(cases)) { console.error("JM_EVAL_CASES: --cases must be a JSON ARRAY of {id, state, oracle}"); return 2; }
     const key = flag("key") ?? Object.keys(questions)[0];
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     try {

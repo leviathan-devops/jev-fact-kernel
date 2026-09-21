@@ -109,8 +109,16 @@ non-defect into a real one.
 | A16-2 | a 200-char error truncation cuts the tail | low | CONFIRMED -> fixed | bounded at 500, head+tail kept |
 | A16-3 | the state-file catch swallows errors | medium | CONFIRMED -> fixed | recorded on the tick + journal; the fix's own two bugs are in EN-040 |
 | A17-1 | `cachePut` passes 9 params to 8 placeholders (misalignment) | high | REFUTED | counted mechanically: 8 `?` and 8 elements; and the stored row reads back with every column correct |
+| A21-1 | `index --in` iterates a stats OBJECT, not an array | high | REFUTED | execution prints one line per TARGET; the value is the array (`withLedger` returns `result`). The misleading NAME is now `perTarget` |
+| A21-2 | `--cases`/`--questions` JSON.parse outside any try | medium | CONFIRMED -> fixed | `JM_EVAL_JSON` / `JM_EVAL_CASES`, exit 2 |
+| A21-3 | `--apply` is undocumented | medium | CONFIRMED -> fixed | added to the usage |
+| A21-4 | the structure-inference ternary is chained | medium | ADJUDICATED -> kept | one expression, commented |
+| A22-1 | `bun` is not in devDependencies | low | REFUTED | bun is the RUNTIME; the auditor concedes it |
+| A2-1 | the MCP tools returned empty-at-success for a missing index | CRITICAL | CONFIRMED -> fixed | the round-2 drill; the read tools now refuse (D-028) |
+| A2-2 | `GET /health` materialised an index | medium | CONFIRMED -> fixed | health is now a pure report (W5) |
+| A2-3 | the doc said a tick's index comes from `--in` | low | CONFIRMED -> doc corrected | measured `index/all.sqlite` (W1) |
 
-**TALLY: 22 confirmed + fixed, 13 refuted by probe, 0 open.**
+**TALLY: 26 confirmed + fixed, 16 refuted by probe, 0 open.**
 
 ---
 
