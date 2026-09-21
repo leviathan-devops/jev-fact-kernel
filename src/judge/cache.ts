@@ -9,7 +9,7 @@ export function redact(value: unknown): unknown {
       .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email]")
       .replace(/\+?\d[\d ()-]{7,}\d/g, "[phone]")
       .replace(/\b[a-f0-9]{32,}\b/gi, "[hex]")
-      .replace(/(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,}/g, "[secret]");
+      .replace(/\b(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,}/g, "[secret]");
   }
   if (Array.isArray(value)) return value.map(redact);
   if (value && typeof value === "object") {

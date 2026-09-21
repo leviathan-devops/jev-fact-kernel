@@ -1,0 +1,56 @@
+// src/job/queue.ts — crash-first rows, ack-on-complete, resume-by-sweep.
+// A kill -9 leaves rows in 'running'; the sweep returns them to 'pending'.
+// The fingerprint UNIQUE constraint makes re-processing idempotent (dup=0 by construction).
+import type { Database } from "bun:sqlite";
+
+export interface QueueItem { id: number; fingerprint: string; kind: string; payload: unknown; attempts: number; }
+
+export class Queue {
+  constructor(private db: Database, private jobId: string) {}
+
+  enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): number {
+    const now = new Date().toISOString();
+    const ins = this.db.query(
+      "INSERT OR IGNORE INTO queue(fingerprint, kind, payload, state, created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)",
+    );
+    let added = 0;
+    const tx = this.db.transaction(() => { for (const it of items) added += ins.run(it.fingerprint, kind, JSON.stringify(it.payload), now, now).changes; });
+    tx();
+    return added;
+  }
+
+  /** Claim up to n pending rows. Returns them with state='running' already persisted. */
+  claim(n: number): QueueItem[] {
+    const now = new Date().toISOString();
+    const tx = this.db.transaction(() => {
+      const rows = this.db.query(
+        "SELECT id, fingerprint, kind, payload, attempts FROM queue WHERE state='pending' ORDER BY id LIMIT ?",
+      ).all(n) as { id: number; fingerprint: string; kind: string; payload: string; attempts: number }[];
+      const upd = this.db.query("UPDATE queue SET state='running', attempts=attempts+1, updated_at=? WHERE id=?");
+      for (const r of rows) upd.run(now, r.id);
+      return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as unknown }));
+    });
+    return tx() as QueueItem[];
+  }
+
+  complete(id: number, result: unknown): void {
+    this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=?",
+      [JSON.stringify(result ?? null), new Date().toISOString(), id]);
+  }
+  fail(id: number, error: string): void {
+    this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=?",
+      [error, new Date().toISOString(), id]);
+  }
+
+  /** THE RESUME SWEEP: rows left 'running' by a dead process return to 'pending'. */
+  sweep(): number {
+    const now = new Date().toISOString();
+    const res = this.db.run("UPDATE queue SET state='pending', updated_at=? WHERE state='running'", [now]);
+    return res.changes;
+  }
+
+  stats(): { pending: number; running: number; done: number; failed: number; total: number } {
+    const g = (s: string) => (this.db.query("SELECT COUNT(*) AS n FROM queue WHERE state=?").get(s) as { n: number }).n;
+    return { pending: g("pending"), running: g("running"), done: g("done"), failed: g("failed"), total: g("done") + g("failed") + g("pending") + g("running") };
+  }
+}
