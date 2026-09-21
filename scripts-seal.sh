@@ -19,6 +19,7 @@ done
 for f in TESTING_LOG.md FAILURE_LOG.md DEBUG_LOG.md BUILD_REPORT.md AUDIT_SUMMARY.md \
          README.md THEATRICALITY_LOG.md VIOLATION_LOG.md \
          scripts-container-rig.sh scripts-gates.sh scripts-jm-mcp.sh scripts-real-corpus.sh \
+         scripts-jm-watch.sh \
          package.json tsconfig.json bunfig.toml; do
   [ -e "$f" ] && cp "$f" "$CP/$f"
 done

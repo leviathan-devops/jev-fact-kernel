@@ -137,3 +137,37 @@ was never experienced, so it was never proven. This pass crosses that boundary.
 **OPS 01-12 remain as recorded.** The residual this pass adds: the daemon has not been run under a
 SERVICE MANAGER (systemd), so restart-on-crash and boot-time start are unproven — named, not
 claimed.
+
+
+## THE SERVICE-MANAGER BOUNDARY (systemd --user, 2026-09-21 session 2)
+
+The residual the daemon pass named — "never run under a SERVICE MANAGER, so restart-on-crash and
+boot-time start are unproven" — is closed here. `OP-17`'s lesson (bun run = wrapper + child, so
+signalling the wrapper orphans the daemon) shaped the launcher: it `exec`s.
+
+| # | I DID | I EXPECTED | IT DID |
+|---|-------|-----------|--------|
+| OP-19 | wrote `scripts-jm-watch.sh` with `exec` and a systemd user unit (`Restart=on-failure`, `RestartSec=5s`, `NoNewPrivileges`, `PrivateTmp`) | systemd accepts the unit; the tracked PID IS the daemon | `systemctl --user start` -> active, `MainPID=2049058` and `ps -o comm=` says **bun** (the `exec` worked: no wrapper to orphan) |
+| OP-20 | watched the first ticks | the journal fills | `[jm watch] … targets=3 rows=11901 changed=1 81ms` — it indexed the REAL `@shadow` corpus (11,832 files) plus the reports target |
+| OP-21 | — THE BREAK — | a service with a populated registry to index | **`targets=0 rows=0`** every tick, and NO journal file anywhere. The registry plainly existed at the path the unit was given |
+| OP-22 | tested `PrivateTmp` as the cause by pointing `JM_HOME` at a real path | the ticks become real | `targets=3 rows=11901 changed=0 errors=[]` — the daemon had been seeing an EMPTY directory |
+| OP-23 | `kill -9` the daemon; then `systemctl --user stop` | systemd restarts a crash; a stop is graceful | **restart: a new pid, `NRestarts=1`, ticking again in under 8 s. Stop: inactive, no orphan, and the restart counter is not incremented** |
+
+**THE MECHANISM BEHIND OP-21 (worth more than the pass itself):** `PrivateTmp=true` gives the
+service its OWN `/tmp` namespace. A **target root under `/tmp` is therefore INVISIBLE to it** — the
+daemon starts, reads the registry, and reports `JM_INDEX_MISSING: /tmp/… does not exist` for a
+directory that plainly exists outside. It looks like a config error and it is a NAMESPACE error. The
+law is now written IN the unit file beside the directive that causes it: a target root must live on
+a REAL path (home, `/srv`, `/var`), never under `/tmp`.
+
+**THE RUNTIME LEDGER (what RUNNING taught that READING could not):**
+1. `exec` in the launcher is what makes a daemon signalable — the unit's `MainPID` is the daemon,
+   not a shell. This is OP-17's lesson turned into a file.
+2. A service manager proves things a manual run cannot: restart-on-crash and the difference between
+   a crash and a stop are now OBSERVED (a new pid and a counter) rather than assumed.
+3. **Hardening directives carry laws.** `PrivateTmp` is good practice and it silently isolates any
+   data path under `/tmp`; the failure looks like a missing file.
+
+**INSTALLED BUT LEFT STOPPED.** The unit is at `~/.config/systemd/user/jm-watch.service` with a 60 s
+interval and the start/enable lines documented in it. A daemon that writes to `~/.jm` continuously
+is the operator's call to run, not the builder's.
