@@ -1470,3 +1470,38 @@ ONE SURFACE AND NOT ON ANOTHER.
   TOOLCHAIN before the subject — and never hide a tool's stderr (`2>/dev/null`) on a line whose
   exit code you are about to trust. The exit code 2 was there the whole time; the redirect was
   mine.
+
+## EN-059 — D-042 closed in the last verb: `evaluate` read its answers by key too
+- **HOW FOUND:** the same lens applied until it stops yielding — after filter, find and route were
+  fixed, `grep -rn 'answers as Record<string, unknown>' src/` returned exactly one site left:
+  `evaluate.ts:57`.
+- **WHY IT MATTERED MORE THERE:** the other verbs produce decisions; `evaluate` produces METRICS.
+  A renamed key made `answered` `undefined`, `pOf` returned 0 for every case, and the run then
+  published an agreement/Brier/ECE computed entirely from fabricated zeros — a MEASUREMENT that
+  looks like a measurement.
+- **FIX:** `answerFrom(answers, expectedKey)` in `judge/policy.ts` resolves WHICH answer to read
+  (the key asked for, else the only one present), and `evaluate` scores what it returns. `noulFrom`
+  keeps its own fuller resolution for the probability itself.
+- **VERIFICATION:** against a judge that answers `{verdict:{noul:0.95}}` while the verb asks for
+  `flag`: `p = 0.95, 0.95` (was `0, 0`) and `agreement = 50%` — the correct metric for a
+  uniformly-positive judge against one yes-oracle and one no-oracle. A healthy judge still measures
+  (`n=1 agreement=100% p=0.99`). Pinned in `tests/judge-answer-shape.test.ts`.
+- **THE LENS IS NOW CLOSED:** four answer-reading verbs, one resolver, and the order — asked key,
+  then the only answer present, then throw — is the same everywhere.
+- **LESSON:** an answer-reader is infrastructure. Four verbs each reading their own answers is four
+  chances to read the wrong one, and the failure is always a plausible number.
+
+## EN-060 — the fixture fix that came out of it: a FIXED PORT in a test is a flake
+- **SYMPTOM:** the new evaluate pin passed in the full battery and failed in isolation with
+  `EADDRINUSE: Failed to start server. Is port 7891 in use?`
+- **CAUSE:** port 7891 was held by MY OWN stray probe server from the D-042 investigation — so the
+  immediate problem was litter. But the deeper point is that a test binding a FIXED port fails
+  whenever ANYTHING holds it, which on a shared host is a matter of when, not if.
+- **FIX:** every test server in the suite now uses `port: 0` and reads `server.port` for its URLs
+  (three files). The OS assigns a free port; nothing else can collide with it.
+- **VERIFICATION:** the three server-backed suites run 3x consecutively: 15 pass / 0 fail each, and
+  the full battery is clean.
+- **ALSO:** the strays that caused it are cleaned (two judges and a probe server my earlier
+  `pkill` calls had not actually killed — the EN-058 pkill fact again).
+- **LESSON:** tests that bind fixed ports, write fixed temp paths, or assume a quiet host are
+  flakes with a schedule. Let the OS assign the port.

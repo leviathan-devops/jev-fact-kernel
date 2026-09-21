@@ -2,6 +2,7 @@
 // agreement · Brier · ECE · variance · latency · $/call, and --replay diffs two runs' routes.
 import type { Database } from "bun:sqlite";
 import { Judge } from "../judge/client.ts";
+import { answerFrom } from "../judge/policy.ts";
 import { routeOf } from "../judge/policy.ts";
 
 export interface EvalCase { id: string; state: unknown; oracle: string | number; note?: string; }
@@ -54,7 +55,11 @@ export async function evaluate(db: Database, opts: EvalOpts): Promise<EvalResult
     for (let r = 0; r < k; r++) {
       const s = Date.now();
       const res = await judge.ask(c.state, opts.questions, opts.schema ?? "eval@v1");
-      const answered = (res.answers as Record<string, unknown>)[opts.questionKey];
+      // RESOLVE BY SHAPE (D-042): reading `answers[questionKey]` directly meant a renamed key made
+      // every case score 0 — and a metric computed from fabricated zeros still LOOKS like a
+      // measurement. An answer with no usable signal throws instead.
+      const resolved = answerFrom(res.answers, opts.questionKey);
+      const answered = resolved.answer;
       const p = pOf(answered, threshold);
       const truth = typeof c.oracle === "number" ? c.oracle : /^(yes|true|act|1)$/i.test(String(c.oracle)) ? 1 : 0;
       cases.push({

@@ -16,12 +16,13 @@ import { find } from "../src/verbs/find.ts";
 import { fatalJudgeError } from "../src/judge/policy.ts";
 import { decisionTree as decisionTreeExport, validateRecipe as validateRecipeExport } from "../src/verbs/decision-tree.ts";
 
-const PORT = 7894;
+// A FIXED PORT IN A TEST IS A FLAKE: it fails whenever anything (a stray probe, another suite)
+// holds it. `port: 0` lets the OS assign one and `server.port` reports it.
 let server: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
   server = Bun.serve({
-    port: PORT,
+    port: 0,
     fetch(req) {
       const u = new URL(req.url);
       if (u.pathname === "/err500") return new Response('{"detail":"boom"}', { status: 500 });
@@ -60,7 +61,7 @@ describe("D-041 the judge-failure policy", () => {
   test("test_filter_refuses_a_judge_outage", async () => {
     const { sb, db } = await seeded();
     const prev = process.env.JM_JUDGE_URL;
-    process.env.JM_JUDGE_URL = `http://127.0.0.1:${PORT}/err500`;
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/err500`;
     try {
       // FAIL-CLOSED (the default): a refusal, not an empty result
       await expect(filterIndex(db, { fts: "tombstone", question: "?", minP: 0.8, limit: 4 }))
@@ -77,7 +78,7 @@ describe("D-041 the judge-failure policy", () => {
   test("test_find_refuses_a_judge_outage", async () => {
     const { sb, db } = await seeded();
     const prev = process.env.JM_JUDGE_URL;
-    process.env.JM_JUDGE_URL = `http://127.0.0.1:${PORT}/err500`;
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/err500`;
     try {
       await expect(find(db, { phrase: "tombstone", common: 2 })).rejects.toThrow(/JM_JUDGE_HTTP_500/);
     } finally {
@@ -89,7 +90,7 @@ describe("D-041 the judge-failure policy", () => {
   test("test_a_healthy_judge_still_works_for_both", async () => {
     const { sb, db } = await seeded();
     const prev = process.env.JM_JUDGE_URL;
-    process.env.JM_JUDGE_URL = `http://127.0.0.1:${PORT}/ok`;
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/ok`;
     try {
       const f = await filterIndex(db, { fts: "tombstone", question: "?", minP: 0.8, limit: 4 });
       expect(f.kept).toBe(4);                       // p=0.9 clears the bar for every row
@@ -110,7 +111,7 @@ describe("D-041 the judge-failure policy", () => {
     const { sb, db } = await seeded();
     const sqlite = db;
     const prev = process.env.JM_JUDGE_URL;
-    process.env.JM_JUDGE_URL = `http://127.0.0.1:${PORT}/err500`;
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/err500`;
     const rows = join(sb.root, "d43.jsonl");
     await Bun.write(rows, JSON.stringify({ i: 1, title: "x", body: `d43-${Date.now()}` }) + "\n");
     try {

@@ -1490,3 +1490,18 @@ ONE SURFACE AND NOT ON ANOTHER.
   then the only answer present, then throw — is the same everywhere.
 - **LESSON:** an answer-reader is infrastructure. Four verbs each reading their own answers is four
   chances to read the wrong one, and the failure is always a plausible number.
+
+## EN-060 — the fixture fix that came out of it: a FIXED PORT in a test is a flake
+- **SYMPTOM:** the new evaluate pin passed in the full battery and failed in isolation with
+  `EADDRINUSE: Failed to start server. Is port 7891 in use?`
+- **CAUSE:** port 7891 was held by MY OWN stray probe server from the D-042 investigation — so the
+  immediate problem was litter. But the deeper point is that a test binding a FIXED port fails
+  whenever ANYTHING holds it, which on a shared host is a matter of when, not if.
+- **FIX:** every test server in the suite now uses `port: 0` and reads `server.port` for its URLs
+  (three files). The OS assigns a free port; nothing else can collide with it.
+- **VERIFICATION:** the three server-backed suites run 3x consecutively: 15 pass / 0 fail each, and
+  the full battery is clean.
+- **ALSO:** the strays that caused it are cleaned (two judges and a probe server my earlier
+  `pkill` calls had not actually killed — the EN-058 pkill fact again).
+- **LESSON:** tests that bind fixed ports, write fixed temp paths, or assume a quiet host are
+  flakes with a schedule. Let the OS assign the port.

@@ -7,7 +7,10 @@
 // because its reader walks `Object.values()`; the problem was already solved in one verb out of
 // three.
 import { test, expect, describe } from "bun:test";
-import { noulFrom } from "../src/judge/policy.ts";
+import { noulFrom, answerFrom } from "../src/judge/policy.ts";
+import { evaluate } from "../src/verbs/evaluate.ts";
+import { openDb, indexPathFor } from "../src/store/db.ts";
+import { makeSandbox } from "./helpers.ts";
 
 describe("D-042 the answer reader", () => {
   test("test_reads_the_asked_key_first", () => {
@@ -35,4 +38,42 @@ describe("D-042 the answer reader", () => {
     expect(() => noulFrom(null, "match")).toThrow(/JM_JUDGE_ANSWER_INVALID/);
     expect(() => noulFrom({ match: { noul: NaN } }, "match")).toThrow(/JM_JUDGE_ANSWER_INVALID/);
   });
+
+  test("test_answerFrom_resolves_the_same_way", () => {
+    // the resolver a metrics verb needs: WHICH answer, before scoring it
+    expect(answerFrom({ match: { noul: 0.8 } }, "match").key).toBe("match");
+    expect(answerFrom({ verdict: { noul: 0.8 } }, "match").key).toBe("verdict");
+    expect(() => answerFrom({ a: {}, b: {} }, "match")).toThrow(/JM_JUDGE_ANSWER_INVALID/);
+  });
+
+  test("test_D042_evaluate_reads_a_renamed_key_and_measures_correctly", async () => {
+    // `evaluate` read `answers[questionKey]` directly, so a renamed key made every case score 0 —
+    // and a METRIC computed from fabricated zeros still looks like a measurement. Now it resolves
+    // the answer by shape first.
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({ model: "wrongkey", answers: { verdict: { type: "noul", noul: 0.95 } }, usage: { input_tokens: 5, output_tokens: 1 } });
+      },
+    });
+    const sb = makeSandbox();
+    const prev = process.env.JM_JUDGE_URL;
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/x`;
+    try {
+      const db = openDb(indexPathFor("ev"));
+      const r = await evaluate(db, {
+        cases: [{ id: "c1", state: { n: 1 }, oracle: "yes" }, { id: "c2", state: { n: 2 }, oracle: "no" }],
+        questions: { flag: { type: "noul" } },
+        questionKey: "flag",
+      });
+      // the judge said 0.95 for both: c1 (oracle yes) agrees, c2 (oracle no) does not
+      expect(r.cases.map((c) => c.p)).toEqual([0.95, 0.95]);
+      expect(r.metrics.agreement).toBeCloseTo(0.5, 6);
+      db.close();
+    } finally {
+      if (prev === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev;
+      server.stop(true);
+      sb.cleanup();
+    }
+  }, 30_000);
 });

@@ -13,12 +13,13 @@ import { makeSandbox, fill } from "./helpers.ts";
 import { openDb, indexPathFor, saveTargets } from "../src/store/db.ts";
 import { decisionTree, validateRecipe, type Recipe } from "../src/verbs/decision-tree.ts";
 
-const PORT = 7893;
+// A FIXED PORT IN A TEST IS A FLAKE: it fails whenever anything (a stray probe, another suite)
+// holds it. `port: 0` lets the OS assign one and `server.port` reports it.
 let server: ReturnType<typeof Bun.serve>;
 
 beforeAll(() => {
   server = Bun.serve({
-    port: PORT,
+    port: 0,
     async fetch(req) {
       const u = new URL(req.url);
       if (u.pathname === "/err500") return new Response('{"detail":"boom"}', { status: 500 });
@@ -53,7 +54,7 @@ async function runWith(endpoint: string, policy: Recipe, nonce: string) {
 describe("D-040 judge outage", () => {
   test("test_fail_closed_propagates_every_outage_not_just_a_missing_key", async () => {
     for (const path of ["err500", "err429"]) {
-      const r = await runWith(`http://127.0.0.1:${PORT}/${path}`, RECIPE_CLOSED, `${path}-${Date.now()}`);
+      const r = await runWith(`http://127.0.0.1:${server.port}/${path}`, RECIPE_CLOSED, `${path}-${Date.now()}`);
       expect({ path, threw: r.err !== null }).toEqual({ path, threw: true });
       expect(r.err).toMatch(/JM_JUDGE_HTTP_(500|429)/);
       expect({ path, written: r.written }).toEqual({ path, written: 0 });   // ZERO decisions
@@ -61,14 +62,14 @@ describe("D-040 judge outage", () => {
   }, 30_000);
 
   test("test_fail_open_degrades_with_a_MARKED_row", async () => {
-    const r = await runWith(`http://127.0.0.1:${PORT}/err500`, RECIPE_OPEN, `open-${Date.now()}`);
+    const r = await runWith(`http://127.0.0.1:${server.port}/err500`, RECIPE_OPEN, `open-${Date.now()}`);
     expect(r.err).toBeNull();                                  // the run completes
     expect(r.written).toBe(1);                                 // with a row...
     expect(r.res!.bands.noop).toBe(1);                          // ...that is a noop
   }, 30_000);
 
   test("test_a_healthy_endpoint_still_decides", async () => {
-    const r = await runWith(`http://127.0.0.1:${PORT}/ok`, RECIPE_CLOSED, `ok-${Date.now()}`);
+    const r = await runWith(`http://127.0.0.1:${server.port}/ok`, RECIPE_CLOSED, `ok-${Date.now()}`);
     expect(r.err).toBeNull();
     expect(r.res!.calls).toBe(1);                              // a REAL judge call was made
     expect(r.res!.bands.act).toBe(1);                           // p=0.9 -> act

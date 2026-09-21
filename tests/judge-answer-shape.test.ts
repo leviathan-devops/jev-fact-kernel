@@ -51,14 +51,14 @@ describe("D-042 the answer reader", () => {
     // and a METRIC computed from fabricated zeros still looks like a measurement. Now it resolves
     // the answer by shape first.
     const server = Bun.serve({
-      port: 7891,
+      port: 0,
       fetch() {
         return Response.json({ model: "wrongkey", answers: { verdict: { type: "noul", noul: 0.95 } }, usage: { input_tokens: 5, output_tokens: 1 } });
       },
     });
     const sb = makeSandbox();
     const prev = process.env.JM_JUDGE_URL;
-    process.env.JM_JUDGE_URL = "http://127.0.0.1:7891/x";
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/x`;
     try {
       const db = openDb(indexPathFor("ev"));
       const r = await evaluate(db, {
