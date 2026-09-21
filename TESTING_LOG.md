@@ -388,3 +388,20 @@ TREND ACROSS THE LAST RUNS (38 files = the whole source scope, every time)
 **AUDIT GATE: BLOCKED.** Two chunks COMPLETE with zero findings; the source chunk `partial` in
 every attempt. 26 findings confirmed and fixed (ten of them silent wrong answers), 16 refuted by
 probe and recorded with their evidence. **No ship-ready claim is made.**
+
+### THE DOC-CONTRACT AUDIT (this turn) — two canon docs were MISSING and are now written
+```
+THE CONTRACT: canon = context_management/ 11 docs.
+MEASURED BEFORE: 10 docs present, and TWO OF THE CONTRACT'S ELEVEN WERE ABSENT —
+  TASK_QUEUE.md and BUILD_STATE.md. The set had the right COUNT minus one and the wrong MEMBERS.
+FOUND BY: listing the contract's names against the directory rather than counting files.
+FIXED: both written at the 200-line floor with real content (TASK_QUEUE: per-task evidence chains,
+  the transition rules, the wave-table cross-reference; BUILD_STATE: the SHA chain, the module and
+  test inventories, the four rules each learned from a defect, the instrument table).
+ALSO FIXED: the seal had NESTED context_management inside itself (20 docs instead of 11) because a
+  `cp -r X dest/X` into an existing directory COPIES INTO IT. Both the nesting and the class of
+  error are fixed: scripts-seal.sh REPLACES each subtree and prints the doc count with a warning
+  when it exceeds 11.
+VERIFIED: 12 docs (the contract's 11 plus RUNTIME_SEAT), every doc that carries a TREE SHA line
+  carries the SAME one, and the seal re-verifies from its own copy.
+```
