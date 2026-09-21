@@ -39,3 +39,23 @@ export function routeOf(answer: NoulAnswer | ChoiceAnswer | undefined, p: Policy
   if (s >= p.flag) return { route: "escalate", reason: `signal=${s.toFixed(2)} in [${p.flag},${p.act})` };
   return { route: "noop", reason: `signal=${s.toFixed(2)} < flag=${p.flag}` };
 }
+
+
+/** THE JUDGE-FAILURE POLICY, IN ONE PLACE (D-040, D-041).
+ *
+ * Three verbs judged rows through a pool and each decided for itself what a judge failure meant.
+ * All three checked `JEV_NO_KEY` ONLY, so a missing key aborted a run while a 500, a 429 or a
+ * timeout produced a SILENT EMPTY RESULT — `filter` returning `kept=0` and `find` returning
+ * `0 patterns`, both looking like considered answers to questions the judge never saw.
+ *
+ * The rule here: ANY judge error is fatal unless the caller explicitly opted into degradation.
+ * `JEV_NO_KEY` is fatal even then — a missing key is a configuration failure, never a
+ * data-quality signal.
+ *
+ * Returns the error text that should abort the run, or null when the caller may degrade. */
+export function fatalJudgeError(errors: { error: string }[], opts: { failOpen?: boolean } = {}): string | null {
+  if (errors.length === 0) return null;
+  const noKey = errors.find((e) => e.error.includes("JEV_NO_KEY"));
+  if (noKey) return noKey.error;
+  return opts.failOpen ? null : errors[0].error;
+}
