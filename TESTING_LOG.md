@@ -579,3 +579,30 @@ ALSO  validateRecipe now refuses choice/mcq with the measured reason (it accepte
       recipe using one passed validation and failed on every call)
 battery 132 pass / 0 fail / 641 expects / 24 files · tsc exit 0
 ```
+
+### THE DAEMON BOUNDARY — CROSSED FOR REAL (the fourth surface, as a long-lived process)
+Every previous daemon check ran `jm watch --once` — ONE tick. The loop had never been experienced,
+so it was never proven. This pass ran it for real and found an operational fact that reading the
+loop could not surface.
+
+```
+OP-13  jm watch --interval 2000 --in dc --name dcidx  (nohup, background)
+       20:52:02  targets=1 rows=1 changed=1 15ms      <- the loop is real
+       20:52:04  targets=1 rows=1 changed=0  0ms      <- and the second tick is idempotent
+OP-14  mutate the corpus while it runs
+       20:52:06  targets=1 rows=1 changed=1  6ms      <- it noticed
+       20:52:08  targets=1 rows=1 changed=0  1ms      <- and settled
+OP-15  the journal after ~32s: 16 rows, 2 with changed>0, every row valid JSON
+OP-16  the index it maintains: `query dcidx --fts tombstone` -> dc/a.md (state=changed)
+OP-17  kill <nohup pid>  ->  IT KEPT TICKING
+OP-18  kill -TERM <the real pid> -> clean exit, no orphan
+
+THE FINDING: `bun run <script>` is a WRAPPER plus a CHILD. Signalling the nohup pid signals the
+wrapper and ORPHANS THE DAEMON. The child is the daemon and it exits cleanly on SIGTERM. A
+production unit must exec, or signal the child. This is a fact about the LAUNCHER, and no amount of
+reading the watch loop would surface it — which is what the runtime seat exists for.
+
+GATED: two new checks in scripts-gates.sh (the loop ticks + journals over >=2 ticks; SIGTERM stops
+it). GATES: 35 passed / 0 failed.
+RESIDUAL (named, not claimed): the daemon has not been run under a SERVICE MANAGER, so
+restart-on-crash and boot-time start are unproven.

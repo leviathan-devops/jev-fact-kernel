@@ -107,3 +107,33 @@ re-proven. The zero-bugs red flag is avoided — the defects are enumerated abov
 Operated: yes (17 ops with pre-registered expectations). Found: 6 defects by running, each fixed and
 re-proven. Unexperienced: the escalation band, the @ocdb adapter, @ocws, the fire gate, the MCP/watch
 surfaces. The zero-bugs red flag was avoided by pushing (concurrency, starvation, hostile input).
+
+
+## THE OPERATION STREAM, CONTINUED (the daemon boundary, 2026-09-21 session 2)
+
+The seat's first pass ran `jm watch --once` — a SINGLE tick. The daemon as a LONG-LIVED PROCESS
+was never experienced, so it was never proven. This pass crosses that boundary.
+
+| # | I DID | I EXPECTED | IT DID |
+|---|-------|-----------|--------|
+| OP-13 | started `jm watch --interval 2000 --in dc --name dcidx` with nohup as a real background process | a tick every 2s, journaling | `[jm watch] 20:52:02 changed=1`, then `20:52:04 changed=0` — the loop is real, and the SECOND tick is idempotent |
+| OP-14 | mutated the corpus (`a.md` rewritten) while the daemon ran | the next tick notices | `20:52:06 changed=1 6ms`, then `20:52:08 changed=0` — it noticed, and settled |
+| OP-15 | read the journal after ~32s of running | one row per tick, valid JSONL | 16 rows, 2 of them `changed>0`, every row parses |
+| OP-16 | read the state pointer and the index it maintains | an updated pointer; the new text queryable | `state.json` at the last tick; `query dcidx --fts tombstone` returns `dc/a.md` with state `changed` |
+| OP-17 | `kill <nohup pid>` | the daemon stops | **IT KEPT TICKING.** The nohup pid is the `bun run` WRAPPER, not the daemon: `bun run <script>` is a wrapper plus a CHILD, and signalling the wrapper orphans the child. `ppid=2647` on the surviving process is the tell |
+| OP-18 | `kill -TERM <the real pid>` | a clean exit | exited cleanly, no orphan left (`pgrep -f "cli.ts watch"` -> none) |
+
+**THE RUNTIME LEDGER (what RUNNING taught that READING could not):**
+
+1. **The daemon is correct and the LAUNCH is the trap.** `bun run src/cli.ts watch` produces two
+   processes; a supervisor that signals the one it spawned signals the wrapper and leaves a daemon
+   behind. A production unit must either `exec` or signal the child. This is not a defect in the
+   watch loop — it is a fact about the launcher that no amount of reading the loop would surface.
+2. **Idempotence held under a real clock**, not just between two manual `--once` calls: every
+   post-mutation tick reported `changed=0` and the journal grew by exactly one row per tick.
+3. **The daemon keeps its index current**: the text written DURING the run was queryable
+   afterwards, which is the whole point of the surface.
+
+**OPS 01-12 remain as recorded.** The residual this pass adds: the daemon has not been run under a
+SERVICE MANAGER (systemd), so restart-on-crash and boot-time start are unproven — named, not
+claimed.

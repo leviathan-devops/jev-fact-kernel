@@ -73,6 +73,24 @@ echo "═══ L4 — THE CONTAINER RIG (host parity half) ═══"
 tok "container rig T1-T7 (host)" bash -c "timeout 500 bun run tests/container/harness.ts 2>&1 | grep -q 'JM_CONTAINER_RIG PASS'"
 
 echo ""
+echo "═══ THE DAEMON AS A LONG-LIVED PROCESS (not --once) ═══"
+# The daemon's LOOP had only ever been run as a single tick. This check runs it for real: start
+# it, wait for two ticks, SIGTERM THE CHILD (the wrapper is `bun run`, so the child is the
+# daemon), and assert the journal grew and the process exited.
+DAEMON_HOME=/tmp/jm-gates-daemon
+rm -rf "$DAEMON_HOME"; mkdir -p "$DAEMON_HOME" /tmp/jm-gates-dc
+echo "daemon check body" > /tmp/jm-gates-dc/a.md
+JM_HOME="$DAEMON_HOME" $J target add dc fs /tmp/jm-gates-dc >/dev/null 2>&1
+JM_HOME="$DAEMON_HOME" nohup bun run src/cli.ts watch --interval 1000 --in dc --name dcidx >/tmp/jm-gates-daemon.log 2>&1 &
+sleep 4
+CHILD=$(pgrep -f "cli.ts watch" | head -1)
+ROWS=$(wc -l < "$DAEMON_HOME/watch/journal.jsonl" 2>/dev/null || echo 0)
+kill -TERM "$CHILD" 2>/dev/null; sleep 1
+ALIVE=$(pgrep -f "cli.ts watch" | wc -l)
+tok "daemon loop ticks + journals" bash -c "[ \"$ROWS\" -ge 2 ]"
+tok "daemon exits on SIGTERM" bash -c "[ \"$ALIVE\" -eq 0 ]"
+
+echo ""
 echo "═══ C8 — THE PER-JOB RECONCILIATION ═══"
 tok "C8 reconciled job -> exit 0" bash -c "$J index @gate --queued --job g8 --name gate >/dev/null 2>&1 && $J report --job g8 --name gate >/dev/null 2>&1"
 
