@@ -1,0 +1,13 @@
+{
+  "recipe": "screening-escalate",
+  "version": 1,
+  "status": "shadow",
+  "state_fields": ["title", "body"],
+  "questions": {
+    "flag": {
+      "type": "noul",
+      "instructions": "Is this item a REAL problem that needs a human, rather than noise? Answer with a probability in [0,1]."
+    }
+  },
+  "policy": { "act": 0.8, "flag": 0.5, "fail": "closed" }
+}

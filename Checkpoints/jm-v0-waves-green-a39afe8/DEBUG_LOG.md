@@ -756,3 +756,90 @@ that DID land was adjudicated against the runtime by probe before any edit. The 
 
 **TALLY: 9 confirmed + fixed · 6 refuted by probe.** A refuted finding is recorded, never dropped:
 the six refutations are what tells a future reader that these are NOT defects.
+
+## EN-032 — D-017/D-018: the cost line corrupted piped output; the exit codes were per-verb
+Both were found by VERIFYING the new README operating contract against the live engine — the doc
+was written first and then executed. That is the point of the exercise: a doc claim is a claim.
+
+- **D-017 (silent corruption) — the cost line went to STDOUT.** `jm extract … --structure csv >
+  out.csv` wrote `cost=$0.000000 calls=0 cached=0` as the file's FIRST LINE, so a csv consumer
+  saw a malformed header; `jm query … --json > out.json` produced unparseable json. The old code
+  sent the cost line to stderr ONLY when `--json` was present, which meant every other structure
+  was polluted. FIX: the cost line is a DIAGNOSTIC and goes to stderr for EVERY verb and every
+  structure. VERIFIED: the piped csv's line 1 is `path,value`; the piped json parses; stderr still
+  carries `cost=$…`. PIN: `test_cost_line_never_pollutes_stdout`.
+- **D-018 (unbranchable errors) — the same error class returned different exit codes.** A typo'd
+  index exited 1 from `query`/`report` and 2 from `extract`/`scan`, because the opens that happen
+  BEFORE a verb's try block escaped to the top-level handler, which always exited 1 (and one
+  hand-rolled ternary per catch site). FIX: one `exitCodeFor(err)` — `2` for every `JM_*:` code
+  and `JEV_NO_KEY` (a client error), `1` otherwise — wired into every catch AND the last error
+  boundary. VERIFIED by spawning the real CLI on eight client-error cases plus a success case.
+  PIN: `test_exit_code_policy_is_uniform`.
+- **D-019 — `target add` accepted a root that does not exist.** The mistake surfaced later, at
+  index time, far from where it was made. FIX: the registry is a pointer store and a pointer to
+  nothing is refused at WRITE time (exit 2, the path named, `~` expanded first). VERIFIED by
+  probe. A target that exists is still accepted unchanged.
+- **ALSO CORRECTED: the doc itself.** §18.2 said `target rm` exits 1; the (now uniform) policy
+  makes it 2. The verification sweep caught the doc lying about the engine — the same sweep
+  re-verified all 25 claims after the fix: **25 passed / 0 failed**.
+- **LESSON:** writing the operating contract and then RUNNING it is a defect-finding instrument in
+  its own right — it found three defects (two silent) that the audit, the battery, the runtime
+  seat, the second-operator drill and two adversarial sweeps had all missed. The doc is a probe.
+
+## EN-033 — D-020: a malformed recipe ran to completion and reported a successful triage
+- **FOUND BY:** writing the recipe-schema section of the operating contract and then executing
+  every example — including the bad ones.
+- **SYMPTOM:** `jm decision-tree --rows r.jsonl --recipe '{"recipe":"bad"}'` printed
+  `JM_DECISIONS rows=3 decided=3 act=0 escalate=0 noop=3 calls=0 cached=0` and **exited 0**.
+- **MECHANISM:** a missing `questions` map means no question is asked, so no judge call is made,
+  so every row resolves to `noop` — and nothing in the pipeline distinguishes "the recipe says
+  noop" from "the recipe asked nothing". A run that judged NOTHING reported a completed triage.
+- **FIX:** `validateRecipe()` runs BEFORE any work and is a CLIENT error (exit 2). It refuses: a
+  non-object, a missing/empty `recipe` or `version`, an empty `questions` map, an unknown question
+  `type` (legal: `noul`, `choice`, `mcq`), a non-numeric or out-of-range policy value, and a
+  `policy` whose `flag` exceeds its `act`.
+- **VERIFICATION:** five malformed shapes -> exit 2 with `JM_RECIPE_INVALID`; a well-formed recipe
+  is accepted and runs (live: `act=1 escalate=1 noop=1 calls=3 $0.000044`, then `calls=0 cached=3`
+  byte-identical on the replay). Both halves pinned by `test_bad_recipe_is_a_client_error_before_any_work`.
+- **LESSON:** "produced no output" and "produced a noop output" must be different observable
+  outcomes. Any stage with an optional input list needs a non-emptiness check at load, because the
+  empty case usually degrades into a plausible-looking success.
+
+## EN-034 — building the container rig found two more real defects and one vacuous pass
+- **D-021 (flag silently ignored): `jm index --in a,b --queued` ran the BATCH path and dropped
+  `--queued`.** The caller believed a resumable job existed; they got a fire-and-forget batch, exit
+  0. Found because T5's child never claimed a queue row and the rig timed out waiting for one. FIX:
+  the combination is now a CLIENT error (exit 2) naming the supported single-target form, and
+  `--queued/--job` are in the usage dump for the first time.
+- **A VACUOUS PASS, caught by the rig itself:** T5's first version slept 320 ms and killed the
+  child. The child was still STARTING (bun + TS transpile), so it had claimed zero rows: the
+  scenario reported `orphaned=0` and — with an `orphaned > 0` guard — would have been a green light
+  over a run that proved nothing. FIX: the rig now POLLS the job store until a row is `running`
+  and kills exactly there, then asserts `orphaned > 0` before it will call the angle passed. The
+  scenario now measures a real mid-claim death: 8 orphaned, resumed, done=400 distinct=400.
+- **A probe that could not exist:** T7 tried to create a filename containing a NUL byte; the FS
+  refuses it, so the probe was unrunnable. Replaced with three REACHABLE hostile names (a
+  254-character name, one with a newline and an emoji, a dot-heavy hidden name).
+- **LESSON:** a rig is a probe and probes lie too. The 320 ms guess was the same class of defect
+  the rig exists to catch — a green result over unexercised work — and it was the rig's own
+  self-check (`orphaned > 0`) that refused it.
+
+## EN-035 — the query verb's identity map, and a refuted "simplification"
+- **FIXED (low, but a latent trap): `const OPS = {">=": ">=", …}` was an IDENTITY MAP.** It mapped
+  each operator to itself and was read back as `OPS[op]`, which yields `undefined` for any op not
+  in the object — interpolating the literal word "undefined" into the SQL. The regex happened to
+  prevent that, so the guard was in the wrong place and the object was dead weight. It is now a
+  `Set` membership CHECK with a loud `JM_WHERE_OP`, and the validated `op` is used directly.
+  Verified: `size ~= 10` refuses; `size >= 10` works; the battery stays green.
+- **REFUTED (the auditor's suggested simplification was WRONG):** it proposed replacing the LIMIT
+  guard with `Math.min(Math.floor(raw), 10_000)`. Probed across six inputs:
+  ```
+  raw=NaN    shipped=50     suggestion=NaN    <- invalid SQL
+  raw=-5     shipped=50     suggestion=-5     <- LIMIT -1 IS UNLIMITED in SQLite
+  raw=2.7    shipped=2      suggestion=2
+  raw=999999 shipped=10000  suggestion=10000
+  ```
+  The shipped guard exists precisely for the NaN/negative cases the suggestion drops. Both halves
+  are pinned by `test_limit_guard_refuses_nan_and_negatives`, which asserts NaN/-5 return the whole
+  set (never an unbounded scan and never a crash).
+- **LESSON:** "simpler" is a claim like any other. Six inputs settled it.

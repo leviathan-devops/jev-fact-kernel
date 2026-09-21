@@ -12,12 +12,12 @@ import { report, renderReport } from "./verbs/report.ts";
 import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
-import { decisionTree, type Recipe } from "./verbs/decision-tree.ts";
+import { decisionTree, validateRecipe, type Recipe } from "./verbs/decision-tree.ts";
 import { filterIndex } from "./verbs/filter.ts";
 import { find } from "./verbs/find.ts";
 import { startServer } from "./serve.ts";
 import { calibrate, recordTruth, recordCalibration } from "./calibrate.ts";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { queryIndex } from "./verbs/query.ts";
@@ -51,6 +51,7 @@ function usage(): void {
   console.log(`jm — the targetable decision engine
 
   jm index <path|@target> [--name N] [--include G,G] [--exclude G,G] [--limit N] [--json]
+  jm index @<target> --queued [--job ID] [--concurrency N] [--budget-calls N]   resumable, crash-safe
   jm query <name|@target> [--where "size>2000"] [--fts "phrase"] [--tag k=v] [--limit N] [--json]
   jm index --in a,b|all [--name N]                 multi-target ingest (fs | jsonl | sqlite)
   jm query --in a,b|all [--fts P] [--where W]      query the multi-target index
@@ -67,6 +68,17 @@ function usage(): void {
 `);
 }
 
+
+/** THE EXIT-CODE POLICY, in one place. 2 = a CLIENT error (your arguments, or the key is absent)
+ *  — every JM_* code the engine raises for bad input, plus JEV_NO_KEY. 1 = a RUNTIME failure
+ *  (the environment is at fault). Before this, the same class of error returned 1 from one verb
+ *  and 2 from another — an operator could not branch on the code. (D-018, found by verifying the
+ *  operating contract's exit-code table against the engine.) */
+function exitCodeFor(err: unknown): number {
+  const m = String(err);
+  return /JM_[A-Z_]+:|JEV_NO_KEY/.test(m) ? 2 : 1;
+}
+
 async function main(): Promise<number> {
   if (!verb || has("help")) { usage(); return verb ? 0 : 2; }
 
@@ -80,6 +92,13 @@ async function main(): Promise<number> {
     if (sub === "add") {
       const [name, kind, root] = [argv[2], argv[3], argv[4]];
       if (!name || !kind || !root) { console.error("usage: jm target add <name> <kind> <root>"); return 2; }
+      // FAIL WHERE THE MISTAKE IS MADE: registering a root that does not exist used to succeed
+      // silently, so the surprise arrived at INDEX time (the drill's G2b). A registry is a
+      // pointer store, and a pointer to nothing is a client error at the moment it is written.
+      if (!existsSync(root.replace(/^~(?=\/|$)/, homedir()))) {
+        console.error(`JM_TARGET_MISSING: ${root} does not exist (the registry stores pointers, not promises)`);
+        return 2;
+      }
       const list = loadTargets().filter((t) => t.name !== name);
       list.push({ name, kind: kind as Target["kind"], root });
       saveTargets(list);
@@ -91,7 +110,7 @@ async function main(): Promise<number> {
       if (!name) { console.error("usage: jm target rm <name>"); return 2; }
       const before = loadTargets();
       const after = before.filter((t) => t.name !== name);
-      if (after.length === before.length) { console.error(`JM_TARGET_UNKNOWN: ${name}`); return 1; }   // LOUD
+      if (after.length === before.length) { console.error(`JM_TARGET_UNKNOWN: ${name}`); return 2; }   // LOUD, client error
       saveTargets(after);
       console.log(`removed ${name}`);
       return 0;
@@ -102,6 +121,13 @@ async function main(): Promise<number> {
   if (verb === "index") {
     // `--in a,b|all` (W2/S8): ingest every resolved target through its adapter into ONE index.
     if (flag("in") !== undefined) {
+      // FAIL LOUD on an unsupported combination: `--in` runs the batch ingest, which has no queue,
+      // so `--queued`/`--job` were previously ACCEPTED AND IGNORED — the caller believed they had
+      // a resumable job and got a fire-and-forget batch.
+      if (has("queued") || flag("job") !== undefined) {
+        console.error("JM_ARGS: --in cannot be combined with --queued/--job (the batch path has no queue). Use the single-target form: jm index @<target> --queued --job <id>");
+        return 2;
+      }
       const spec = flag("in")!;
       const indexName = flag("name") ?? (spec === "all" ? "all" : spec.split(",").map((x) => x.trim()).join("+"));
       const db = openDb(indexPathFor(indexName));
@@ -114,7 +140,7 @@ async function main(): Promise<number> {
         if (has("json")) console.log(JSON.stringify(stats, null, 2));
         else for (const r of stats) console.log(`${r.target}\t${r.kind}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
         return 0;
-      } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+      } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
     }
     const arg = positional[0];
     if (!arg) { console.error("JM_ARGS: jm index <path|@target> [--in a,b|all]"); return 2; }
@@ -136,7 +162,7 @@ async function main(): Promise<number> {
           if (has("json")) console.log(JSON.stringify(r, null, 2));
           else for (const x of r) console.log(`${x.target}\t${x.kind}\trows=${x.rows}\tchanged=${x.changed}\t${x.ms}ms`);
           return 0;
-        } catch (err) { db0.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+        } catch (err) { db0.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
       }
     }
     const { name, root } = resolveTarget(arg);
@@ -190,14 +216,16 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(rows, null, 2));
       else for (const r of rows) console.log(`${r.size}\t${r.state}\t${r.path}`);
       return 0;
-    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "decision-tree") {
     const rowsPath = flag("rows");
     const recipePath = flag("recipe");
     if (!rowsPath || !recipePath) { console.error("JM_ARGS: jm decision-tree --rows F --recipe F [--context F] [--criteria F] [--out F]"); return 2; }
-    const recipe = JSON.parse(readFileSync(recipePath, "utf8")) as Recipe;
+    let recipe: Recipe;
+    try { recipe = validateRecipe(JSON.parse(readFileSync(recipePath, "utf8"))); }
+    catch (err) { console.error(`JM_ERROR: ${String(err)}`); return 2; }   // a bad recipe is a CLIENT error, before any work
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     try {
       const res = await withLedger("decision-tree", { rows: rowsPath, recipe: recipePath }, async () => {
@@ -240,7 +268,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(res, null, 2));
       else { console.log(`JM_FILTER candidates=${res.candidates} judged=${res.judged} kept=${res.kept}`); for (const r of res.kept_rows.slice(0, 10)) console.log(`  p=${r.p.toFixed(2)} ${r.path}`); }
       return res.budgetStopped ? 3 : 0;
-    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "find") {
@@ -266,7 +294,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify({ trend: res.trend, clusters: res.clusters, patterns: res.patterns }, null, 2));
       else console.log(`JM_FIND trend: ${res.trend} · out=${res.out}`);
       return res.budgetStopped ? 3 : 0;
-    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "scan") {
@@ -282,7 +310,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else for (const c of r.candidates) console.log(`${c.hits}\t${c.size}\t${c.path}\t${c.excerpt.slice(0, 90)}`);
       return 0;
-    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return (String(err).includes("JM_SCAN_RE_INVALID") || String(err).includes("JM_INDEX_MISSING")) ? 2 : 1; }
+    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "cluster") {
@@ -299,7 +327,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else for (const c of r.clusters) console.log(`n=${c.n}\t${c.kind}\t${c.source}\t[${c.signature.slice(0, 4).join(",")}]\t${c.exemplars.map((e) => e.path.split("/").pop()).join(", ")}`);
       return 0;
-    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "extract") {
@@ -322,7 +350,7 @@ async function main(): Promise<number> {
       if (flag("out")) { writeFileSync(flag("out")!, out); console.log(`wrote ${flag("out")} (${r.total} values, ${r.rowsWithValues} rows)`); }
       else process.stdout.write(out + (out.endsWith("\n") ? "" : "\n"));
       return 0;
-    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return (String(err).includes("JM_EXTRACT_RE_INVALID") || String(err).includes("JM_INDEX_MISSING")) ? 2 : 1; }
+    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "route") {
@@ -344,7 +372,7 @@ async function main(): Promise<number> {
         if (r.injection) console.log(`injection: ${r.injection}`);
       }
       return 0;
-    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "evaluate") {
@@ -375,7 +403,7 @@ async function main(): Promise<number> {
         if (Array.isArray(replay)) { console.log(`replay diffs: ${(replay as unknown[]).length}`); for (const d of replay as { id: string; from: number; to: number; flipped: boolean }[]) console.log(`  ${d.id} ${d.from} -> ${d.to}${d.flipped ? " FLIPPED" : ""}`); }
       }
       return 0;
-    } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "report") {
@@ -391,7 +419,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else console.log(renderReport(r));
       return 0;
-    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
 
   if (verb === "mcp") {
@@ -446,6 +474,9 @@ async function main(): Promise<number> {
 }
 
 main().then((code) => process.exit(code)).catch((err) => {
+  // The LAST error boundary: a throw that escaped a verb's own catch (e.g. an open that happens
+  // BEFORE the try) still gets the documented exit code. Before this it was always 1, so a
+  // typo'd index exited 1 on one path and 2 on another (D-018).
   console.error(`JM_ERROR: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
+  process.exit(exitCodeFor(err));
 });

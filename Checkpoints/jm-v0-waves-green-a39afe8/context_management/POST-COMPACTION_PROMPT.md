@@ -13,7 +13,7 @@ landed, the **re-audit is the proof owed**. You do not claim ship-ready until th
 
 ```bash
 cd ~/JARVIS_WORKSPACE/Shared_Workspace/JevManager
-bun test && bunx tsc --noEmit          # expect: 18 pass / 0 fail · TSC_EXIT=0
+bun test && bunx tsc --noEmit          # expect: 89 pass / 0 fail · TSC_EXIT=0
 bun src/cli.ts report                  # expect: runs=N cost=$0.000000, plus per-verb counts
 git log --oneline | head -9            # expect: the chain from 7b7f7eb to the fix commit
 ls Checkpoints/                        # expect: the design baseline + the waves-green checkpoint
@@ -91,7 +91,7 @@ battery. If you cannot verify something, say BLOCKED and name the resume conditi
 
 ```bash
 # --- the substrate
-bun test                                  # 24 pass / 0 fail / 110 expects / 9 files
+bun test                                  # 89 pass / 0 fail / 343 expects / 9 files
 bunx tsc --noEmit                         # TSC_EXIT=0
 bun src/cli.ts report                     # runs=N cost=$0.000000 + per-verb counts
 

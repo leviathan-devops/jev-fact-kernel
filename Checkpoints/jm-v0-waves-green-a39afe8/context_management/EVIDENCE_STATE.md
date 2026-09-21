@@ -3,7 +3,7 @@
 Every entry: the run, its verbatim output, the artifact. Nothing here is a claim without a run.
 
 ## SUMMARY (current)
-Battery **24 pass / 0 fail / 110 expects / 9 files** · `tsc` exit 0 · index `@shadow` 11,831 files ·
+Battery **89 pass / 0 fail / 343 expects / 9 files** · `tsc` exit 0 · index `@shadow` 11,831 files ·
 crash-resume dup=ZERO · budget exact · live judge verified · cache replay sha-identical ·
 HTTP `/decide` live · find chain live · adversarial sweep passed after 1 fix (D-007).
 **AUDIT GATE: FAIL (0 critical, 30 high)** — fixes applied (`78cd3be`), **re-audit owed**.
@@ -12,10 +12,10 @@ Artifacts: `artifacts/audit-2026-09-21.json`, `AUDIT_SUMMARY.md`.
 ## E-01 — the battery (2026-09-21)
 ```
 $ bun test
- 24 pass
+ 89 pass
  0 fail
- 110 expect() calls
-Ran 24 tests across 9 files. [175.00ms]
+ 343 expect() calls
+Ran 17 test files across 9 files. [175.00ms]
 $ bunx tsc --noEmit
 TSC_EXIT=0
 ```
@@ -191,7 +191,7 @@ findings are fixed AND the audit is re-run.** The fix pass is a claim; the re-ru
 $ bunx tsc --noEmit
 TSC_EXIT=0
 $ bun test
- 24 pass / 0 fail / 110 expect() calls / Ran 24 tests across 9 files.
+ 89 pass / 0 fail / 343 expect() calls / Ran 17 test files across 9 files.
 $ git log --oneline -1
 78cd3be fix(audit): address the 30 high findings (fail-closed propagation, tombstones, loopback
         bind, NaN guards, fingerprint+questions, per-file index guard) + land the audit artifact
@@ -214,9 +214,50 @@ mechanism proof rather than a calibration.
 ## E-18 — the frontier wave (the medium findings, first pass)
 ```
 $ bunx tsc --noEmit            -> exit 0
-$ bun test                     -> 24 pass / 0 fail / 110 expect() calls / Ran 24 tests across 9 files.
+$ bun test                     -> 89 pass / 0 fail / 343 expect() calls / Ran 17 test files across 9 files.
 $ git log --oneline -2         -> ccbd40f fix(test): the traversal-law probe ... ; 9ea25f5 fix(frontier): medium audit wave — ...
 ```
 14 medium findings fixed across 7 files; 6 new pins in `tests/guards.test.ts`; battery grew 18->24.
 Lane note: the re-audit runs on `poolside-laguna-s` (the muse-free lane failed at 0 tokens; the
 zen-free adapter at :4098 answers 200, so the failure is upstream on that route).
+
+---
+
+## CURRENT (appended 2026-09-21, git 8b42ff8)
+
+**Battery: 89 pass / 0 fail / 343 expects / 17 files · `bunx tsc --noEmit` exit 0.**
+**Container rig (spec §9 T1–T7): PASS 7/7 in a fresh Debian-12 container AND on the host.**
+
+### What landed after the wave-1 foundation
+- **W2 TARGETS** — fs · jsonl · sqlite adapters; `--in a,b|all`; row-level incrementality by
+  content sha; the sqlite SOURCE proven read-only. Fixed D-008 (two targets' same-named files
+  collapsed into ONE row — a silent row loss).
+- **W3 RETRIEVE** — `scan` (regex gate + hit counts + excerpts) · `cluster` (signature groups, no
+  model) · `extract` (capture-group pulls; md/json/csv).
+- **W5 DECIDE** — `route` (the catalogue Choice, injection text on act, runner-up logged) ·
+  `evaluate` (agreement/Brier/ECE/variance + `--replay`).
+- **W6 SURFACES** — the **MCP** stdio surface (jm_query/jm_find/jm_decide/jm_index) and the
+  **watch daemon** (idempotent tick, real JSONL journal). All four surfaces now live.
+- **W7** — `report` (read-only status over the store + ledger).
+- **README §18 — THE OPERATING CONTRACT**, written from a zero-context operator's 14 reported
+  gaps and then EXECUTED: 25 claims verified against the live engine, which found three more
+  defects (the cost line corrupted piped output; per-verb exit codes; `target add` accepted a
+  phantom root).
+
+### The defect ledger (all fixed, all pinned)
+D-008 cross-target row collapse · D-009 unknown index returned empty+exit 0 (and created a phantom
+index file) · D-010 `@sqlite-target` indexed the DB file, not its rows · D-011 `index <file>` was a
+silent no-op · D-012 `--structure csv` rendered markdown · D-013 `find` ignored JM_HOME · D-014 the
+ledger dropped the flags · D-015 a target NAME was a path fragment · D-016 `route` injected an
+out-of-catalogue choice · D-017 the cost line corrupted piped stdout · D-018 per-verb exit codes ·
+D-019 `target add` accepted a nonexistent root · D-020 a questions-less recipe "succeeded" as
+noop=all · D-021 `--in` silently dropped `--queued`.
+
+### The gates
+- **P6 DOCUMENT: BLOCKED.** The audit's tests-chunk and root-chunk are COMPLETE with 0 findings;
+  the src chunk (36 files) is PARTIAL in every attempt — upstream rate limits. Half a dozen runs,
+  every finding adjudicated (9 confirmed+fixed, 6 REFUTED by probe). Method + ledger:
+  `AUDIT_SUMMARY.md`. NEVER PASS while the largest chunk is unmeasured.
+- **W8 FIRE GATE: NOT BUILT** — parked on the operator-owned F1/F6 rulings.
+- Residual, named: the unswept frontier is the src chunk under a working lane; `@ocws` never
+  walked; the escalation band has no live row.

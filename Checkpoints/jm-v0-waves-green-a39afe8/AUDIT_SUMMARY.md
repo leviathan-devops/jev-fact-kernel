@@ -91,8 +91,10 @@ non-defect into a real one.
 | A8-3 | extract's return has a DUPLICATE `total` | high | REFUTED | `grep -c "total,"` = 1; the claim was invented |
 | A8-4 | extract's `re` should be `const` | medium | REFUTED | line 31 reassigns it |
 | A8-5 | the STOP set holds an unreachable CJK entry | low | CONFIRMED -> fixed | the tokenizer emits ASCII only |
+| A9-1 | `OPS` in query.ts is a redundant identity map | low | CONFIRMED -> fixed | it could interpolate `undefined`; now a checked whitelist |
+| A9-2 | the LIMIT guard is "unnecessarily complex" | low | REFUTED | the suggested `Math.min(Math.floor(raw),10000)` yields `LIMIT NaN` / `LIMIT -1` (unlimited) |
 
-**TALLY: 9 confirmed + fixed, 6 refuted by probe, 0 open.**
+**TALLY: 10 confirmed + fixed, 7 refuted by probe, 0 open.**
 
 ---
 

@@ -1,55 +1,60 @@
 # CHECKPOINT MANIFEST - jm-v0-waves-green-a39afe8
 
 date: 2026-09-21 (sealed) | seal mode: **B (no lock - living snapshot, refreshed after every wave)
-source tree sha256: `cb5cb3c593d5a77ee0ad81866359a684` (33 src + 16 test files)
-battery (run from THIS COPY): **84 pass / 0 fail / 310 expects / 16 files** | tsc exit 0
-git: branch master @ 40f20e9
+source tree sha256: `db0384ad025c976702c16ee9be2e853d`
+git: branch master @ 0c711ba
+
+battery (run from THIS COPY): **91 pass / 0 fail / 352 expects / 18 files** | tsc exit 0
+container rig (run from THIS COPY): **JM_CONTAINER_RIG PASS — 7/7 angles**
 
 ## 1. CONTENTS - every sealed file
 
 ### 1.1 src/ (the engine)
 
-- `src/adapters/jsonl.ts` - 38 lines - sha 6aa00c163a48
-- `src/adapters/sqlite.ts` - 62 lines - sha defe2fd585de
 - `src/calibrate.ts` - 50 lines - sha a822a8368e5b
-- `src/cli.ts` - 451 lines - sha a864612c9d39
-- `src/job/indexJob.ts` - 40 lines - sha c1dcf671a13d
-- `src/job/queue.ts` - 83 lines - sha b042d9bf616a
-- `src/job/run.ts` - 71 lines - sha 7640f8ffe1cc
-- `src/job/store.ts` - 38 lines - sha 533c88bdf682
+- `src/cli.ts` - 482 lines - sha ffd1919c9cc0
+- `src/ledger.ts` - 64 lines - sha 54aa12cf7c40
+- `src/mcp.ts` - 178 lines - sha 749b12b2a95b
+- `src/serve.ts` - 60 lines - sha 8ec6c01045b7
+- `src/targets.ts` - 173 lines - sha c605b408f670
+- `src/watch.ts` - 73 lines - sha e7e18601411c
+- `src/pools/budget.ts` - 40 lines - sha 8c181495d519
+- `src/pools/pool.ts` - 27 lines - sha a952c1ddf336
+- `src/store/db.ts` - 74 lines - sha 163ff74f7a3d
+- `src/store/schema.ts` - 69 lines - sha ecbc998d6305
 - `src/judge/cache.ts` - 44 lines - sha c80d39c698d0
 - `src/judge/client.ts` - 49 lines - sha 62ab234766bb
 - `src/judge/key.ts` - 26 lines - sha 36e8b82b844a
 - `src/judge/policy.ts` - 27 lines - sha cb1ccff9d21a
 - `src/judge/transport.ts` - 38 lines - sha 3a9966815a97
-- `src/ledger.ts` - 62 lines - sha 58ce66fb1e63
-- `src/mcp.ts` - 178 lines - sha 749b12b2a95b
-- `src/pools/budget.ts` - 40 lines - sha 8c181495d519
-- `src/pools/pool.ts` - 27 lines - sha a952c1ddf336
-- `src/serve.ts` - 60 lines - sha 8ec6c01045b7
-- `src/store/db.ts` - 74 lines - sha 163ff74f7a3d
-- `src/store/schema.ts` - 69 lines - sha ecbc998d6305
-- `src/targets.ts` - 165 lines - sha 35fbdb81e814
-- `src/verbs/cluster.ts` - 93 lines - sha c4b304021692
-- `src/verbs/decision-tree.ts` - 98 lines - sha 1b21f220917f
+- `src/adapters/jsonl.ts` - 38 lines - sha 6aa00c163a48
+- `src/adapters/sqlite.ts` - 62 lines - sha defe2fd585de
+- `src/verbs/cluster.ts` - 93 lines - sha ad9100fd05da
+- `src/verbs/decision-tree.ts` - 127 lines - sha 9a8acca80008
 - `src/verbs/evaluate.ts` - 136 lines - sha fa7df60491e4
 - `src/verbs/extract.ts` - 88 lines - sha 376a5858c7b9
 - `src/verbs/filter.ts` - 45 lines - sha 43563a5ea2f5
 - `src/verbs/find.ts` - 113 lines - sha 10e63fec61ca
 - `src/verbs/index.ts` - 164 lines - sha 369de0893bcf
-- `src/verbs/query.ts` - 55 lines - sha 7df7b16631fd
+- `src/verbs/query.ts` - 60 lines - sha bdfa3b9baaf2
 - `src/verbs/report.ts` - 91 lines - sha ac09b54ec8b2
-- `src/verbs/route.ts` - 106 lines - sha 1d84302e56d1
+- `src/verbs/route.ts` - 111 lines - sha fe5f637f3c0e
 - `src/verbs/scan.ts` - 82 lines - sha bfd7e0fbb391
-- `src/watch.ts` - 73 lines - sha e7e18601411c
+- `src/job/indexJob.ts` - 40 lines - sha c1dcf671a13d
+- `src/job/queue.ts` - 83 lines - sha b042d9bf616a
+- `src/job/run.ts` - 71 lines - sha 7640f8ffe1cc
+- `src/job/store.ts` - 38 lines - sha 533c88bdf682
 
-### 1.2 tests/ (the battery)
+### 1.2 tests/ (the battery + the rig)
 
 - `tests/adapters.test.ts` - 196 lines - sha d126d01f18d4
 - `tests/adversarial.test.ts` - 101 lines - sha 80dd74fbda42
+- `tests/adversarial2.test.ts` - 230 lines - sha 9fa078fc4a64
 - `tests/budget.test.ts` - 26 lines - sha fcf6c319a307
+- `tests/cli-contract.test.ts` - 127 lines - sha 064a229c5704
 - `tests/decide.test.ts` - 202 lines - sha 2db444c9752d
 - `tests/decision.test.ts` - 112 lines - sha 22de144905ba
+- `tests/guard-query.test.ts` - 46 lines - sha 3b2121aa9883
 - `tests/guards.test.ts` - 88 lines - sha 8faf90c79b72
 - `tests/helpers.ts` - 30 lines - sha 872806f482d4
 - `tests/index.test.ts` - 57 lines - sha 89f2b8007b9a
@@ -61,31 +66,32 @@ git: branch master @ 40f20e9
 - `tests/retrieve.test.ts` - 192 lines - sha 4b5331b7b8d4
 - `tests/store.test.ts` - 37 lines - sha f9b6edcd9a9d
 - `tests/watch.test.ts` - 82 lines - sha 1aad7e7ca2e4
+- `tests/container/harness.ts` - 241 lines - sha 05d8747126ef
 
 ### 1.3 context_management/ (the 11 canon docs)
 
 - `context_management/CHANGELOG.md` - 201 lines
-- `context_management/COMPACTION_SURVIVAL.md` - 200 lines
-- `context_management/CURRENT_STATE.md` - 202 lines
-- `context_management/DECISION_CHAIN.md` - 201 lines
-- `context_management/EVIDENCE_STATE.md` - 222 lines
-- `context_management/NEXT_STEPS.md` - 229 lines
+- `context_management/COMPACTION_SURVIVAL.md` - 241 lines
+- `context_management/CURRENT_STATE.md` - 243 lines
+- `context_management/DECISION_CHAIN.md` - 242 lines
+- `context_management/EVIDENCE_STATE.md` - 263 lines
+- `context_management/NEXT_STEPS.md` - 272 lines
 - `context_management/POST-COMPACTION_PROMPT.md` - 203 lines
-- `context_management/RUNNING_BUILD_LOG.md` - 106 lines
-- `context_management/RUNNING_DEBUG_LOG.md` - 104 lines
+- `context_management/RUNNING_BUILD_LOG.md` - 114 lines
+- `context_management/RUNNING_DEBUG_LOG.md` - 112 lines
 - `context_management/RUNTIME_SEAT.md` - 109 lines
 
 ### 1.4 ship docs
 
 - `BUILD_REPORT.md` - 523 lines
-- `DEBUG_LOG.md` - 705 lines
-- `TESTING_LOG.md` - 217 lines
+- `DEBUG_LOG.md` - 845 lines
+- `TESTING_LOG.md` - 289 lines
 - `FAILURE_LOG.md` - 114 lines
 - `THEATRICALITY_LOG.md` - 36 lines
-- `AUDIT_SUMMARY.md` - 82 lines
-- `README.md` - 399 lines
+- `AUDIT_SUMMARY.md` - 186 lines
+- `README.md` - 725 lines
 
-### 1.5 artifacts/ (every audit run preserved; none overwritten)
+### 1.5 artifacts/ (every audit + rig run preserved)
 
 - `artifacts/audit-2026-09-21-reaudit-BLOCKED.json` - 194529 bytes
 - `artifacts/audit-2026-09-21.json` - 161398 bytes
@@ -94,24 +100,19 @@ git: branch master @ 40f20e9
 - `artifacts/audit-2026-09-22-reaudit3.json` - 104616 bytes
 - `artifacts/audit-2026-09-22-reaudit4-partial.json` - 71794 bytes
 - `artifacts/audit-2026-09-22-scoped-BLOCKED.json` - 50863 bytes
+- `artifacts/container-rig-2026-09-21.json` - 1874 bytes
 
-### 1.6 packages/ (the build package)
+### 1.6 packages/ + recipes/ + the runner
 
 - `packages/jm/00-INDEX.md` - 353 lines
 - `packages/jm/00-MISSION.md` - 248 lines
 - `packages/jm/01-DISCOVERY.md` - 253 lines
 - `packages/jm/06-WAVES.md` - 298 lines
 - `packages/jm/07-GOALS.md` - 314 lines
-- `packages/jm/JM_DPL1_SPEC.md` - 492 lines
+- `packages/jm/JM_DPL1_SPEC.md` - 495 lines
 - `packages/jm/MASTER_PROMPT.md` - 222 lines
-
-### 1.7 root
-
-- `package.json`
-- `tsconfig.json`
-- `bunfig.toml`
-- `SOURCE_TREE.sha256`
-
+- `recipes/screening-escalate.json`
+- `scripts-container-rig.sh` - the one-command runner for the spec §9 rig
 ## 2. STATE — what is VALIDATED (each line has a run behind it, in TESTING_LOG)
 
 ### 2.1 W0 CORE CLI — GREEN

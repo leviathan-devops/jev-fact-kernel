@@ -102,3 +102,11 @@ Updated at the MOMENT of the work (fresh-capture rule).
 - VERIFICATION: `wc -l` per doc (E-17); nothing was padded with whitespace or restated content.
 - LESSON: a floor is a statement about the material, not about formatting. If the floor is not met,
   the material was not gathered.
+
+## [2026-09-21] SESSION CLOSE — git 8b42ff8
+- EN-024..EN-034 landed in DEBUG_LOG.md (11 entries): the FTS mirror, the sha-on-update upsert,
+  the second-operator drill's six defects, the ADV-2 pair, the audit-2 adjudication ledger, the
+  stdout-corruption + exit-code pair, the recipe validation, and the rig's own vacuous pass.
+- The through-line: EVERY silent defect this session was found by RUNNING or by executing a DOC,
+  never by reading. The audit found 2 of the 14; the battery found 2; the drill found 6; the
+  doc-execution sweep found 3; the container rig found 1.

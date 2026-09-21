@@ -108,7 +108,7 @@ Append with this shape:
 
 ```
  NEW (source)      src/{cli,serve,ledger,calibrate}.ts + src/{store,judge,job,pools,verbs}/  (22 files, 1,405 lines)
- NEW (tests)       tests/*.test.ts (9 files, 24 tests, 110 assertions)
+ NEW (tests)       tests/*.test.ts (9 files, 17 test files, 110 assertions)
  NEW (package)     packages/jm/ (mission, discovery, DPL1 spec, waves, goals, index, master prompt)
  NEW (docs)        BUILD_REPORT · DEBUG_LOG · TESTING_LOG · FAILURE_LOG · THEATRICALITY_LOG · AUDIT_SUMMARY
  NEW (canon)       context_management/ (11 docs incl. the 2 high-frequency logs + the seat record)
@@ -183,7 +183,7 @@ one borderline case (T-05: a calibration row at n=3, labelled as a mechanism pro
                 budgets · HTTP · calibration (mechanism) · the battery · the audit lane
  NOT BUILT      W2 sqlite/jsonl adapters · route/evaluate verbs · MCP surface · watch daemon · W8
  GATE           AUDIT GATE: FAIL (0 critical, 30 high) — the fix pass landed; the re-audit is the proof
- SESSION TOTAL  9 commits · 22 src files (1,405 lines) · 9 test files (24 tests, 110 assertions) ·
+ SESSION TOTAL  9 commits · 22 src files (1,405 lines) · 9 test files (17 test files, 110 assertions) ·
                 15 debug entries · 61 recorded rulings/positions · 2 checkpoints · 1 audit artifact
 ```
 

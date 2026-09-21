@@ -249,3 +249,41 @@ CHUNKED METHOD (the only one that completes under upstream rate limits):
 completed). Retry condition: any lane returning non-zero tokens across the full 36-file source
 scope -> expect status=complete; zero findings flips the gate to PASS.
 Full method + ledger + the paste-ready re-run sequence: `AUDIT_SUMMARY.md`.
+
+### THE OPERATING CONTRACT AS A PROBE (README §18) — 25 claims, 3 defects found
+```
+METHOD  every claim in README §18 was executed against the live CLI before being trusted
+RESULT  first run: 20 passed / 5 failed
+        2 failures were the VERIFIER's own stale expectations (corrected)
+        3 were REAL DEFECTS:
+          D-017 the cost line went to STDOUT -> a piped csv/json was CORRUPTED (silent)
+          D-018 exit codes were per-verb (a typo'd index: 1 from query, 2 from extract)
+          D-019 `target add` accepted a root that does not exist
+        after the fixes: 25 passed / 0 failed, and the doc's own `target rm` line was corrected
+
+battery 88 pass / 0 fail / 331 expects / 17 files · tsc exit 0
+```
+
+### THE CONTAINER RIG (spec §9, angles T1–T7) — PASS 7/7 IN THE CONTAINER AND ON THE HOST
+```
+HARNESS  tests/container/harness.ts  (standalone; a passToken is emitted ONLY by the assertion
+         that names it — it cannot be typed into existence; exit 1 when any angle fails)
+CONTAINER jm-ct-rig  image=omp-ct:master  Debian GNU/Linux 12 (bookworm)  kernel 6.17.0-35
+          bun 1.4.2  cwd=/jm  JM_HOME=container-local /tmp
+          isolation: NO host key file, NO TYPESAFE env var. (The host skills dir IS bind-mounted
+          and visible; T1–T7 do not use it — recorded rather than glossed.)
+HOST      the SAME harness file, run before the container run
+
+PASS  T1  JM_INDEX_OK files=500                     files=500 rows=500
+PASS  T2  JM_INDEX_DELTA=3                          changed=3 of 500
+PASS  T3  JM_CACHE_HITS=100 JM_JUDGE_CALLS=0        first=100 calls, second=0, cached=100
+PASS  T4  JM_EXIT=2 JM_DECISIONS_WRITTEN=0          exit=2, 0 decisions, JEV_NO_KEY
+PASS  T5  JM_RESUME_OK dup=0                        SIGKILL mid-claim: 8 orphaned -> resumed,
+                                                    done=400 distinct=400
+PASS  T6  JM_BUDGET_STOPPED calls=5                 stopped=true, done=5 of 100
+PASS  T7  JM_ADVERSARIAL_SURVIVED                   no throw across 9 hostile inputs
+JM_CONTAINER_RIG PASS — 7/7 angles                  (identical on both)
+
+artifact: artifacts/container-rig-2026-09-21.json · runner: scripts-container-rig.sh
+```
+**T8/T9 (fire gate twin, token cap) belong to W8 and are NOT claimed.**

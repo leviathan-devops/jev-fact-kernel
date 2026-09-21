@@ -7,7 +7,7 @@
  commits     7b7f7eb (design base) · 715e5e8 (W0) · ad2c8e1 (W1) · bede487 (W3+W5)
              a39afe8 (W4+W6+W7) · 75cf6e4 (docs+checkpoint) · 0deac03 (scoped tests)
              78cd3be (audit fix pass) · e88cbcd (manifest)
- battery     24 pass / 0 fail / 110 expects / 9 files      tsc exit 0
+ battery     89 pass / 0 fail / 343 expects / 9 files      tsc exit 0
  index       @shadow 11,831 files (2.5% incremental re-run) · @reports 57 files
  judge       live-verified (jev-1.13.0) · cache replay 0 calls · sha-identical artifacts
  crash law   SIGKILL -> running:8 -> resume -> done=11831, dup=ZERO
@@ -39,7 +39,7 @@
  canon           context_management/ (this set + RUNNING_BUILD_LOG + RUNNING_DEBUG_LOG + RUNTIME_SEAT)
  ship docs       BUILD_REPORT.md · DEBUG_LOG.md · TESTING_LOG.md · FAILURE_LOG.md · THEATRICALITY_LOG.md · AUDIT_SUMMARY.md
  source          src/{cli,serve,ledger,calibrate}.ts · src/{store,judge,job,pools,verbs}/
- tests           tests/*.test.ts (9 files, 24 tests)
+ tests           tests/*.test.ts (9 files, 17 test files)
  runtime state   ~/.jm/index/*.sqlite · ~/.jm/jobs/<id>/ · ~/.jm/ledger.jsonl · ~/.jm/targets.json
  audit           artifacts/audit-2026-09-21.json (+ the re-audit when it lands)
  checkpoints     Checkpoints/jm-design-baseline-7b7f7eb/ · Checkpoints/jm-v0-waves-green-a39afe8/
@@ -141,7 +141,7 @@ recorded (a doc that contradicts the artifact is stale, not authoritative).
  find over 30 candidates                     $0.000890 (measured)
  HTTP /decide                                ~$0.0000124 per novel decision (measured); replays $0
  the audit (ocr review, full range)          ~6 minutes, ~2.4M tokens (measured once)
- the battery                                 ~0.2s (24 tests) — run it after EVERY change
+ the battery                                 ~0.2s (17 test files) — run it after EVERY change
 ```
 
 ## 12. THE LEDGER AND CACHE, IN ONE REMINDER
@@ -198,3 +198,44 @@ recorded (a doc that contradicts the artifact is stale, not authoritative).
 4. **A blocked verification** (the audit lane down, a provider dead) -> record BLOCKED with the resume
    condition; never PASS.
 5. **A security class** (a secret in a log, a key in a repo) -> stop, rotate, log, then continue.
+
+---
+
+## CURRENT (appended 2026-09-21, git 8b42ff8)
+
+**Battery: 89 pass / 0 fail / 343 expects / 17 files · `bunx tsc --noEmit` exit 0.**
+**Container rig (spec §9 T1–T7): PASS 7/7 in a fresh Debian-12 container AND on the host.**
+
+### What landed after the wave-1 foundation
+- **W2 TARGETS** — fs · jsonl · sqlite adapters; `--in a,b|all`; row-level incrementality by
+  content sha; the sqlite SOURCE proven read-only. Fixed D-008 (two targets' same-named files
+  collapsed into ONE row — a silent row loss).
+- **W3 RETRIEVE** — `scan` (regex gate + hit counts + excerpts) · `cluster` (signature groups, no
+  model) · `extract` (capture-group pulls; md/json/csv).
+- **W5 DECIDE** — `route` (the catalogue Choice, injection text on act, runner-up logged) ·
+  `evaluate` (agreement/Brier/ECE/variance + `--replay`).
+- **W6 SURFACES** — the **MCP** stdio surface (jm_query/jm_find/jm_decide/jm_index) and the
+  **watch daemon** (idempotent tick, real JSONL journal). All four surfaces now live.
+- **W7** — `report` (read-only status over the store + ledger).
+- **README §18 — THE OPERATING CONTRACT**, written from a zero-context operator's 14 reported
+  gaps and then EXECUTED: 25 claims verified against the live engine, which found three more
+  defects (the cost line corrupted piped output; per-verb exit codes; `target add` accepted a
+  phantom root).
+
+### The defect ledger (all fixed, all pinned)
+D-008 cross-target row collapse · D-009 unknown index returned empty+exit 0 (and created a phantom
+index file) · D-010 `@sqlite-target` indexed the DB file, not its rows · D-011 `index <file>` was a
+silent no-op · D-012 `--structure csv` rendered markdown · D-013 `find` ignored JM_HOME · D-014 the
+ledger dropped the flags · D-015 a target NAME was a path fragment · D-016 `route` injected an
+out-of-catalogue choice · D-017 the cost line corrupted piped stdout · D-018 per-verb exit codes ·
+D-019 `target add` accepted a nonexistent root · D-020 a questions-less recipe "succeeded" as
+noop=all · D-021 `--in` silently dropped `--queued`.
+
+### The gates
+- **P6 DOCUMENT: BLOCKED.** The audit's tests-chunk and root-chunk are COMPLETE with 0 findings;
+  the src chunk (36 files) is PARTIAL in every attempt — upstream rate limits. Half a dozen runs,
+  every finding adjudicated (9 confirmed+fixed, 6 REFUTED by probe). Method + ledger:
+  `AUDIT_SUMMARY.md`. NEVER PASS while the largest chunk is unmeasured.
+- **W8 FIRE GATE: NOT BUILT** — parked on the operator-owned F1/F6 rulings.
+- Residual, named: the unswept frontier is the src chunk under a working lane; `@ocws` never
+  walked; the escalation band has no live row.
