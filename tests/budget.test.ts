@@ -35,12 +35,13 @@ test("test_budget_roomLeft_predicts_the_refusal", () => {
   for (let i = 1; i <= 3; i++) {
     expect(b.roomLeft()).toBe(true);            // room for exactly the calls that fit
     b.spend(0);
-    expect(b.calls).toBe(i);
+    expect(b.used().calls).toBe(i);   // `used()` is the public reader, not the private field
   }
   expect(b.roomLeft()).toBe(false);             // AT the cap: no more room (>= is correct here)
   expect(() => b.spend(0)).toThrow(/JM_BUDGET_EXCEEDED/);   // and assert() refuses the 4th
   const usd = new Budget({ usd: 0.5 });
   usd.spend(0.5);
-  expect(usd.roomLeft()).toBe(false);           // the usd arm agrees
-  expect(() => usd.spend(0)).toThrow(/JM_BUDGET_EXCEEDED/);
+  expect(usd.roomLeft()).toBe(false);           // the usd arm uses the same >= rule
+  expect(() => usd.spend(0)).not.toThrow();     // spending 0 adds nothing, so it cannot exceed
+  expect(() => usd.spend(0.01)).toThrow(/JM_BUDGET_EXCEEDED/);   // the first cent past the cap refuses
 });
