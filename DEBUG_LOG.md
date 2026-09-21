@@ -1655,3 +1655,38 @@ server (the store error comes later and named); extra argv is ignored, so a call
 verb into a registered launcher.
 
 **PINNED:** `tests/launcher.test.ts` — six cases, positive and negative halves, 6 pass / 0 fail.
+
+## EN-067 — D-050: the gate runner's own cleanup leaked a server, and the NEXT run paid for it
+- **SYMPTOM:** one gate run reported `GATES: 40 passed / 1 failed`; three runs immediately after
+  were `41 passed / 0 failed`. Nothing in the tree changed between them.
+- **ROOT CAUSE — PROVEN, not inferred:** the serve check cleaned up with
+  `pkill -f "cli.ts serve --port 7877"`, and **this host's `pkill` is version 0.2.0, not procps** —
+  it returns exit 2 and kills nothing. The runner's OWN daemon check twenty lines below carries a
+  comment saying exactly that, and the serve check had never been converted. The orphan was
+  **observed alive at the end of the investigation**: `pgrep -af 'cli.ts serve'` ->
+  `2320777 bun run src/cli.ts serve --port 7877`, with `ss` showing `LISTEN 127.0.0.1:7877` held by
+  it. The next run's serve could not bind, its readiness poll timed out, and the big-body check
+  failed **for a reason that had nothing to do with the code under test**.
+- **FIX (three parts, all in the runner):**
+  1. cleanup by `pgrep` + `kill`, then **wait for the port to free** — so the runner starts every
+     run from a clean state;
+  2. the fixed `sleep 4` for "two ticks" (a ~2-second margin against `--interval 1000`) replaced by
+     a **poll to a 25 s deadline** — the assertion is unchanged, only the wait stopped being a
+     lottery;
+  3. the daemon's `sleep 2` before "it exits on SIGTERM" replaced by a poll to a deadline.
+- **THE INSTRUMENT FIX, which is the part that made this diagnosable at all:** the runner now
+  `tee`s its full output to a log and **re-prints the failing rows at the end**. The original
+  failure was reported as a summary line with no failing row — the same class as EN-064's `tail -2`.
+- **PROVEN:** two consecutive runs, `41 passed / 0 failed` each, with **0 serve and 0 watch
+  orphans left behind after each** — the leak is gone, measured, not assumed.
+
+## EN-068 — T-12: the third discipline failure in this session, and the same command shape
+The chain that committed the launcher fix ran `./scripts-gates.sh 2>&1 | tail -2` and then continued
+to the seal and the commit. **The gate had failed** (40/1). Nothing false reached the tree — the
+seal's own battery was green and the failing check was the flake D-050 describes — but a commit
+again landed after a failed gate. Third instance: T-07 (a `;` after `tsc`), T-10 (a `tail` hiding
+the counts), T-12 (a `;` after the gate runner).
+**THE PATTERN IS NOT IGNORANCE; IT IS FORMATTING.** In all three the gate was named in the command
+and joined by the wrong operator. The rule is therefore mechanical, not motivational: every
+verification step is joined by `&&`, and no step's output is filtered by a `tail` that can drop the
+result line.

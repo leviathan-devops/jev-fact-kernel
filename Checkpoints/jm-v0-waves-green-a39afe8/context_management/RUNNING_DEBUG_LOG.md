@@ -241,3 +241,18 @@ the source chunk of the independent audit.
 - **FIVE PROBES BEHAVED** and are recorded so silence is not read as proof: both resolution rungs,
   a bad `JM_BUN`, an unwritable `JM_HOME`, and extra argv being ignored.
 - **PINNED:** `tests/launcher.test.ts`, 6 cases with both halves.
+
+## [2026-09-22] D-050 — the runner leaked a server, and the NEXT run paid for it
+
+- **THE ONE-OFF:** one gate run said `40 passed / 1 failed`; three runs after it said `41 / 0`, with
+  no code change between. **A one-off failure with no failing row in its output is undiagnosable by
+  construction** — which is why the runner now logs and re-prints failing rows.
+- **THE MECHANISM, PROVEN:** the serve check cleaned up with `pkill`, and this host's `pkill` is
+  v0.2.0 (not procps) — it exits 2 and kills nothing. The runner's own daemon check has a comment
+  saying exactly that; the serve check had never been converted. The orphan was found ALIVE:
+  `pgrep -af 'cli.ts serve'` -> `2320777 bun run src/cli.ts serve --port 7877`, `ss` showing it
+  holding the port. The next run could not bind, its readiness poll timed out, and the body-cap
+  check failed for a reason unrelated to the code under test.
+- **FIXED:** pgrep+kill with a wait for the port to free; and three fixed sleeps replaced by polls
+  to deadlines (two already covered this class — this was the third).
+- **PROVEN:** two consecutive runs, `41 / 0` each, **0 orphans after each**.

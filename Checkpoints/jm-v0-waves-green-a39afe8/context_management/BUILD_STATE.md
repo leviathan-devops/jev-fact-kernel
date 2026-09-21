@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `59a00768718ddf8ee4a41ffff58b63b6` (git a18a880)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `5ed0c4cfefcf2253b637a43eacfa6781` (git 0f5f00f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -86,7 +87,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 34 files)
+## THE TEST INVENTORY (tests/, 35 files)
 
 | file | lines |
 |------|-------|
@@ -114,6 +115,7 @@ sealed copy does not belong here.
 | `tests/judge-policy.test.ts` | 128 |
 | `tests/judge-usage.test.ts` | 72 |
 | `tests/ladder-reason.test.ts` | 55 |
+| `tests/launcher.test.ts` | 94 |
 | `tests/ledger.test.ts` | 26 |
 | `tests/mcp.test.ts` | 89 |
 | `tests/query.test.ts` | 37 |

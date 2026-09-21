@@ -11,13 +11,20 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-PASS=0; FAIL=0; TABLE=""
+# THE RUNNER KEEPS ITS OWN OUTPUT. A gate that reports only a summary is undiagnosable after the
+# fact: a one-off "40 passed / 1 failed" with no failing row leaves nothing to investigate, which
+# is exactly what happened once. Every run now tees to a log, and the failing rows are re-printed
+# at the end so the LAST thing on screen is the thing that is wrong.
+LOG="${JM_GATE_LOG:-/tmp/jm-gates-run.log}"
+exec > >(tee "$LOG") 2>&1
+
+PASS=0; FAIL=0; TABLE=""; FAILED_ROWS=""
 tok() { # tok <token> <command...>
   local name="$1"; shift
   local out rc
   out="$("$@" 2>&1)"; rc=$?
   if [ $rc -eq 0 ]; then printf "  PASS  %-34s %s\n" "$name" "$(echo "$out" | tail -1 | cut -c1-70)"; PASS=$((PASS+1)); TABLE="$TABLE\n| $name | PASS |"
-  else printf "  FAIL  %-34s rc=%s %s\n" "$name" "$rc" "$(echo "$out" | tail -1 | cut -c1-60)"; FAIL=$((FAIL+1)); TABLE="$TABLE\n| $name | FAIL |"; fi
+  else printf "  FAIL  %-34s rc=%s %s\n" "$name" "$rc" "$(echo "$out" | tail -1 | cut -c1-60)"; FAIL=$((FAIL+1)); TABLE="$TABLE\n| $name | FAIL |"; FAILED_ROWS="$FAILED_ROWS\n  FAIL  $name  (rc=$rc)\n        $(echo "$out" | tail -3 | tr '\n' '|' | cut -c1-200)"; fi
 }
 J="bun run src/cli.ts"
 export JM_HOME="${JM_GATE_HOME:-/tmp/jm-gates}"
@@ -95,12 +102,28 @@ echo "═══ THE HTTP SURFACE UNDER AN OVERSIZED BODY (D-036) ═══"
 SRV_HOME=/tmp/jm-gates-serve
 rm -rf "$SRV_HOME"; mkdir -p "$SRV_HOME"
 JM_HOME="$SRV_HOME" $J serve --port 7877 >/tmp/jm-gates-serve.log 2>&1 &
-sleep 2
+# readiness by POLLING THE PORT, not by sleeping and hoping (the same flake class as the daemon)
+DEADLINE=$((SECONDS + 20))
+while [ $SECONDS -lt $DEADLINE ]; do
+  (exec 3<>/dev/tcp/127.0.0.1/7877) 2>/dev/null && { exec 3<&- 3>&-; break; }
+  sleep 0.3
+done
 python3 -c "import json; open('/tmp/jm-gates-big.json','w').write(json.dumps({'state':{'pad':'y'*2000000},'questions':{'m':{'type':'noul','instructions':'?'}}}))"
 BIG=$(curl -s -o /dev/null -w '%{http_code}' -m 20 -X POST http://127.0.0.1:7877/decide -d @/tmp/jm-gates-big.json)
 HEALTH=$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://127.0.0.1:7877/health)
 JOBS=$(curl -s -o /dev/null -w '%{http_code}' -m 10 http://127.0.0.1:7877/jobs)
-pkill -f "cli.ts serve --port 7877" 2>/dev/null
+# CLEANUP WITH pgrep + kill, NOT pkill. This host's `pkill` is version 0.2.0, not procps: measured,
+# it returns exit 2 and kills NOTHING (the daemon check below carries the same note). A serve left
+# alive holds port 7877, so the NEXT run's serve cannot bind, its readiness poll times out, and this
+# check fails for a reason that has nothing to do with the code under test. That is the shape of the
+# one-off "40 passed / 1 failed" this runner produced before it kept a log.
+for p in $(pgrep -f "cli.ts serve --port 7877"); do kill -TERM "$p" 2>/dev/null; done
+# and WAIT for the port to actually free, so the next run starts from a clean state
+DEADLINE=$((SECONDS + 10))
+while [ $SECONDS -lt $DEADLINE ]; do
+  pgrep -f "cli.ts serve --port 7877" >/dev/null || break
+  sleep 0.3
+done
 tok "an oversized body is refused (413)" bash -c "[ \"$BIG\" = '413' ]"
 tok "the surface survives it (health+jobs up)" bash -c "[ \"$HEALTH\" = '200' ] && [ \"$JOBS\" = '200' ]"
 
@@ -147,8 +170,17 @@ rm -rf "$DAEMON_HOME"; mkdir -p "$DAEMON_HOME" /tmp/jm-gates-dc
 echo "daemon check body" > /tmp/jm-gates-dc/a.md
 JM_HOME="$DAEMON_HOME" $J target add dc fs /tmp/jm-gates-dc >/dev/null 2>&1
 JM_HOME="$DAEMON_HOME" nohup bun run src/cli.ts watch --interval 1000 --in dc --name dcidx >/tmp/jm-gates-daemon.log 2>&1 &
-sleep 4
-ROWS=$(wc -l < "$DAEMON_HOME/watch/journal.jsonl" 2>/dev/null || echo 0)
+# POLL TO A DEADLINE, never a fixed sleep. `sleep 4` against `--interval 1000` left a ~2-second
+# margin for two ticks, so a loaded machine produced one tick and the gate failed for a reason that
+# had nothing to do with the daemon — a flake with a schedule. The assertion is unchanged (>= 2
+# ticks); only the WAIT is now a deadline, so a slow host is slow rather than wrong.
+DEADLINE=$((SECONDS + 25))
+ROWS=0
+while [ $SECONDS -lt $DEADLINE ]; do
+  ROWS=$(wc -l < "$DAEMON_HOME/watch/journal.jsonl" 2>/dev/null || echo 0)
+  [ "$ROWS" -ge 2 ] && break
+  sleep 0.5
+done
 # SIGNAL EVERY MATCHING PID, not `| head -1`: `bun run` is a WRAPPER plus a CHILD (runtime seat
 # OP-17), and killing whichever pgrep listed first can leave the other ticking — which made this
 # gate fail intermittently while the same commands typed by hand passed.
@@ -157,8 +189,15 @@ ROWS=$(wc -l < "$DAEMON_HOME/watch/journal.jsonl" 2>/dev/null || echo 0)
 # made this gate fail while the identical command typed in a shell worked. `pgrep` finds the pids
 # reliably, and `kill` acts on exactly those.
 for p in $(pgrep -f "cli.ts watch"); do kill -TERM "$p" 2>/dev/null; done
-sleep 2
-ALIVE=$(pgrep -f "cli.ts watch" | wc -l)
+# POLL FOR THE EXIT rather than sleeping a fixed 2s: the assertion is "it exits on SIGTERM", and a
+# slow shutdown on a loaded host is slow, not wrong.
+DEADLINE=$((SECONDS + 15))
+ALIVE=1
+while [ $SECONDS -lt $DEADLINE ]; do
+  ALIVE=$(pgrep -f "cli.ts watch" | wc -l)
+  [ "$ALIVE" -eq 0 ] && break
+  sleep 0.3
+done
 tok "daemon loop ticks + journals" bash -c "[ \"$ROWS\" -ge 2 ]"
 tok "daemon exits on SIGTERM" bash -c "[ \"$ALIVE\" -eq 0 ]"
 
@@ -170,5 +209,6 @@ echo ""
 printf "═══ GATE TABLE ═══\n%b\n" "$TABLE" > /tmp/jm-gates-table.txt
 printf "%b\n" "$TABLE"
 echo ""
-echo "GATES: $PASS passed / $FAIL failed   (JM_HOME=$JM_HOME)"
+if [ $FAIL -gt 0 ]; then printf "═══ THE FAILING ROWS ═══%b\n" "$FAILED_ROWS"; fi
+echo "GATES: $PASS passed / $FAIL failed   (JM_HOME=$JM_HOME, log $LOG)"
 [ $FAIL -eq 0 ] || exit 1

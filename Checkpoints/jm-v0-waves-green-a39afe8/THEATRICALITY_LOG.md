@@ -232,3 +232,17 @@ vs the file's real name `POST-COMPACTION_PROMPT.md`). The `git commit` was joine
 - **WHY THIS ENTRY EXISTS:** T-10 was written one hour before T-11, in this same session, about this
   same command shape. Knowing the rule and writing the rule are not the same act as FOLLOWING it,
   and a log that only records the first two is a log that flatters its author.
+
+### T-12 — A COMMIT AFTER A FAILED GATE, FOR THE THIRD TIME, AND THE FLAKE IT EXPOSED (recorded)
+The launcher-fix chain ran `./scripts-gates.sh 2>&1 | tail -2` then continued to the seal and the
+commit. **The gate had failed** (`GATES: 40 passed / 1 failed`).
+- **WHAT MADE IT SURVIVABLE:** nothing false reached the tree. The seal's own battery was green,
+  the tree was correct, and the failing check turned out to be a real defect in the RUNNER (D-050: a
+  broken `pkill` leaked a server that held port 7877, so the next run's serve could not bind).
+- **WHAT MADE IT A DISCIPLINE FAILURE ANYWAY:** a commit landed after a gate that said FAIL, and the
+  command that reported it printed only the summary — **no failing row**, so the failure was
+  undiagnosable from its own output. Both halves are now fixed in the runner: it keeps a log and
+  re-prints the failing rows at the end.
+- **THE THIRD INSTANCE OF ONE SHAPE:** T-07 (`;` after `tsc`), T-10 (`tail` hiding the counts),
+  T-12 (`;` after the gate runner). In every case the gate was NAMED in the command and joined by
+  the wrong operator. **The rule is formatting, not motivation.**
