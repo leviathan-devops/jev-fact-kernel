@@ -1531,3 +1531,26 @@ ONE SURFACE AND NOT ON ANOTHER.
   `tests/cache-endpoint-scope.test.ts`.
 - **LESSON:** a cache key must include every input that can change the answer. When you make a
   constant configurable, re-check every key that assumed it.
+
+## EN-062 — D-045: the CALIBRATION read an unknown confidence as a zero (and could lower a threshold over an outage)
+- **HOW FOUND:** the D-043 lens applied to the READER side of the same column. D-043 fixed what the
+  writer STORES (`conf = NULL` for a degraded row); `calibrate` then read that NULL as `0`.
+- **THE CODE:** `const s = r.conf ?? 0;` — then the value drives the bands, the mean, and the
+  SUGGESTION.
+- **WHY IT IS THE WORST PLACE FOR THIS:** `calibrate` is the mechanism that proposes THRESHOLD
+  CHANGES. Counting an outage as a batch of confident zeros makes the act band look empty, and the
+  suggestion it emits is "lower the act threshold" — i.e. **a broken endpoint could talk the operator
+  into loosening a gate to accommodate it.** The contamination points at the gate, not at the cause.
+- **FIX:** `unknown` is counted (a new field on the report) and EXCLUDED from the bands and the mean;
+  the suggestion requires a floor of KNOWN rows and names them in its reason.
+- **VERIFICATION:**
+  ```
+  6 known + 6 unknown -> decisions=12 unknown=6 bands=2/2/2 meanSignal=0.567
+                         (counting the unknowns as 0 gave 0.283 — half, and a noop band of 8)
+  all-unknown (12)    -> unknown=12 bands=0/0/0 suggestion:NONE   (an outage is not evidence)
+  12 known, act empty -> suggestion fires, reason names "0 unknown"
+  ```
+  Pinned by `tests/calibrate-unknown.test.ts` (3 tests, both polarities).
+- **LESSON:** the same `?? 0` appeared on the WRITE side (D-043) and the READ side (D-045) of one
+  column. Fixing where a value is stored does not fix where it is read — and the reader that
+  moves THRESHOLDS is the one where a fabricated zero does the most damage.

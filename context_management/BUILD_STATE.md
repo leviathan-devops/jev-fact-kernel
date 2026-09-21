@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `f69a828f298eb96288a431b943f5cf9c` (git b7d7e95)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `7a03525bfc34e4490d104a8ea36e1ef9` (git 464149e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -46,7 +47,7 @@ sealed copy does not belong here.
 |------|-------|
 | `src/adapters/jsonl.ts` | 38 |
 | `src/adapters/sqlite.ts` | 62 |
-| `src/calibrate.ts` | 50 |
+| `src/calibrate.ts` | 61 |
 | `src/cli.ts` | 525 |
 | `src/job/indexJob.ts` | 40 |
 | `src/job/queue.ts` | 83 |
@@ -79,7 +80,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 32 files)
+## THE TEST INVENTORY (tests/, 33 files)
 
 | file | lines |
 |------|-------|
@@ -89,6 +90,7 @@ sealed copy does not belong here.
 | `tests/adversarial3.test.ts` | 242 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |
+| `tests/calibrate-unknown.test.ts` | 66 |
 | `tests/cli-contract.test.ts` | 147 |
 | `tests/concurrency.test.ts` | 95 |
 | `tests/container/harness.ts` | 241 |

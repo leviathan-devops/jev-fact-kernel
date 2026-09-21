@@ -1,6 +1,7 @@
 # DECISION_CHAIN — JM (append-only; every ruling with its cost-if-wrong)
 
-**TREE SHA: `f69a828f298eb96288a431b943f5cf9c` (git b7d7e95)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `7a03525bfc34e4490d104a8ea36e1ef9` (git 464149e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
