@@ -80,6 +80,12 @@ export async function decisionTree(opts: {
                   noop: decisions.filter((d) => d.route === "noop").length };
   // THE ARTIFACT IS THE DECISION: run metadata (cache hit, cost) never enters it, so a
   // replay of the same rows is byte-identical (the determinism contract).
+  // W7 FEEDSTOCK: every decision lands in the decisions table (later_truth in context_ref).
+  const ins = opts.db.query("INSERT INTO decisions(scenario_ref, question, answer_json, conf, policy, context_ref, at) VALUES (?,?,?,?,?,?,?)");
+  for (const d of decisions) {
+    const val = Number((d.reason.match(/agg=([0-9.]+)/)?.[1]) ?? 0);
+    ins.run(String(d.i), `${opts.recipe.recipe}@v${opts.recipe.version}`, JSON.stringify(d.answers), val, JSON.stringify(policy), null, new Date().toISOString());
+  }
   const artifact = decisions.map(({ i, route, reason, answers, model }) => ({ i, route, reason, answers, model }));
   if (opts.outPath) writeFileSync(opts.outPath, JSON.stringify(artifact, null, 2));
   if (opts.escalationPath) writeFileSync(opts.escalationPath, escalations.map((e) => JSON.stringify(e)).join("\n") + (escalations.length ? "\n" : ""));
