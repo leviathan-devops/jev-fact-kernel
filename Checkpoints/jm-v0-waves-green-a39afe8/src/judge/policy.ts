@@ -88,8 +88,17 @@ export function noulFrom(answers: unknown, expectedKey: string): number {
     }
   }
   const keys = Object.keys(map).filter((k) => map[k] !== undefined);
+  const bestOf = (a: { noul?: unknown; probabilities?: Record<string, unknown> } | undefined): number | null => {
+    const direct = finite(a?.noul);
+    if (direct !== null) return direct;
+    if (a?.probabilities) {
+      const vals = Object.values(a.probabilities).map(finite).filter((v): v is number => v !== null);
+      if (vals.length > 0) return Math.max(...vals);
+    }
+    return null;
+  };
   if (keys.length === 1) {                          // the judge renamed the key; use what arrived
-    const only = finite(map[keys[0]]?.noul);
+    const only = bestOf(map[keys[0]]);
     if (only !== null) return only;
   }
   const all = keys.map((k) => finite(map[k]?.noul)).filter((v): v is number => v !== null);

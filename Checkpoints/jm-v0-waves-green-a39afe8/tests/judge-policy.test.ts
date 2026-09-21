@@ -14,6 +14,7 @@ import { ingestAll } from "../src/targets.ts";
 import { filterIndex } from "../src/verbs/filter.ts";
 import { find } from "../src/verbs/find.ts";
 import { fatalJudgeError } from "../src/judge/policy.ts";
+import { decisionTree as decisionTreeExport, validateRecipe as validateRecipeExport } from "../src/verbs/decision-tree.ts";
 
 const PORT = 7894;
 let server: ReturnType<typeof Bun.serve>;
@@ -95,6 +96,29 @@ describe("D-041 the judge-failure policy", () => {
       expect(f.calls).toBe(4);
       const r = await find(db, { phrase: "tombstone", common: 2 });
       expect(r.patterns.length).toBeGreaterThan(0); // a real search produces patterns
+    } finally {
+      if (prev === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev;
+      db.close(); sb.cleanup();
+    }
+  }, 30_000);
+
+  test("test_D043_a_degraded_row_stores_an_UNKNOWN_confidence_not_zero", async () => {
+    // The stored `conf` was recovered by regex-parsing the row's OWN reason string
+    // (`d.reason.match(/agg=([0-9.]+)/)`), so every row whose reason carried no `agg=` — the
+    // degraded and errored rows — silently stored 0. A 0 there reads as "the judge said no" when
+    // the truth is "the judge never answered". The signal now rides on the row.
+    const { sb, db } = await seeded();
+    const sqlite = db;
+    const prev = process.env.JM_JUDGE_URL;
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${PORT}/err500`;
+    const rows = join(sb.root, "d43.jsonl");
+    await Bun.write(rows, JSON.stringify({ i: 1, title: "x", body: `d43-${Date.now()}` }) + "\n");
+    try {
+      const open = validateRecipeExport({ recipe: "d43", version: 1, questions: { flag: { type: "noul", instructions: "?" } }, policy: { act: 0.8, flag: 0.5, fail: "open" } });
+      await decisionTreeExport({ db, rowsPath: rows, recipe: open, concurrency: 1 });
+      const r = sqlite.query("SELECT conf FROM decisions").all() as { conf: number | null }[];
+      expect(r.length).toBe(1);
+      expect(r[0].conf).toBeNull();                  // UNKNOWN, never a fabricated 0
     } finally {
       if (prev === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev;
       db.close(); sb.cleanup();

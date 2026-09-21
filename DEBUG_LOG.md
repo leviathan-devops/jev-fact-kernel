@@ -1441,3 +1441,32 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **LESSON:** never parse your own prose back into data. If a number matters, carry the number.
   And ANY `?? 0` on a value that can be absent is a place where "unknown" is being laundered into
   a specific answer.
+
+## EN-058 — a gate that failed for a TOOLCHAIN reason: this host's `pkill` is not procps
+- **SYMPTOM:** the daemon gate (`daemon exits on SIGTERM`) failed on three consecutive runs while the
+  IDENTICAL commands typed into a shell passed. Daemons accumulated — one more alive per run, each
+  from the run that was supposed to have killed it.
+- **THE INSTRUMENTED REPRODUCTION:** the gate section, run verbatim with the pids echoed:
+  ```
+  started with pid=2310542
+  after 4s: 1 matching
+  pkill returned 2          <- NOT 0 (matched) and NOT 1 (no match): SYNTAX
+  after pkill+2s: ALIVE=1   <- it killed nothing
+  ```
+- **ROOT CAUSE, and it is not the daemon:** `pkill --version` on this host reports **`pkill 0.2.0`** —
+  it is the harness's own utility, not `procps`. Its `-f` pattern handling differs: a pattern
+  containing a space returns exit 2 and signals nothing, while the same call in an interactive
+  shell behaved differently. (The earlier `pkill -f "cli.ts serve"` calls scattered through this
+  session may have been silent no-ops too — a leftover serve process and two test judges were
+  still alive when I checked.)
+- **THE FIX (portable):** `for p in $(pgrep -f "cli.ts watch"); do kill -TERM "$p"; done` —
+  `pgrep` finds the pids reliably on this host (it is what the gate already used to OBSERVE the
+  survivors), and `kill` acts on exactly those. No pattern semantics beyond a regex match.
+- **VERIFICATION:** three consecutive gate runs: **41 passed / 0 failed each**, and **zero daemons
+  left** after all three (was: one more per run).
+- **ALSO CLEANED:** the session's own stragglers — one `serve` and two test judges that earlier
+  `pkill` calls had not actually killed.
+- **LESSON:** when a check fails in a script but the same commands pass by hand, suspect the
+  TOOLCHAIN before the subject — and never hide a tool's stderr (`2>/dev/null`) on a line whose
+  exit code you are about to trust. The exit code 2 was there the whole time; the redirect was
+  mine.

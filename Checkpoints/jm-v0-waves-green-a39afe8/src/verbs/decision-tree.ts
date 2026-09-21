@@ -51,7 +51,14 @@ export function validateRecipe(r: unknown): Recipe {
   return o as Recipe;
 }
 
-export interface DecisionRow { i: number; route: string; reason: string; answers: unknown; cached: boolean; model: string; }
+export interface DecisionRow {
+  i: number; route: string; reason: string; answers: unknown; cached: boolean; model: string;
+  /** The aggregate signal this row was routed on, or null when there WAS no signal (a degraded or
+   *  errored row). Stored as the row's confidence — and `null` means "unknown", never 0, which
+   *  would read as a confident negative. (D-043: this value used to be recovered by regex-parsing
+   *  `reason`, so every degraded row silently stored conf=0.) */
+  signal: number | null;
+}
 
 export interface DecisionTreeResult {
   rows: number; decisions: number; cached: number; calls: number; costUsd: number;
@@ -96,7 +103,7 @@ export async function decisionTree(opts: {
       try {
         res = await judge.ask(state, opts.recipe.questions, `${opts.recipe.recipe}@v${opts.recipe.version}`);
       } catch (err) {
-        if (policy.fail === "open") return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 100)}`, answers: null, cached: false, model: "" } as DecisionRow;
+        if (policy.fail === "open") return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 100)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
         throw err;    // fail-closed (the default): propagate, never a silent success
       }
       const value = answersToPolicyValue(res.answers as never);
@@ -104,7 +111,7 @@ export async function decisionTree(opts: {
       // comes from the SAME ladder the route does (a fixed template here made every row claim
       // ">= act", including the noops and the escalates — D-030).
       const decided = reasonForSignal(value, policy);
-      const d: DecisionRow = { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model };
+      const d: DecisionRow = { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model, signal: value };
       budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
@@ -118,7 +125,7 @@ export async function decisionTree(opts: {
       // error, a non-zero exit. `fail: "open"` is the explicit opt-in for marked degradation.
       const noKey = String(err).includes("JEV_NO_KEY");
       if (noKey || policy.fail === "closed") throw err;
-      return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "" } as DecisionRow;
+      return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
     }
   }, { concurrency: opts.concurrency ?? 6 });
 
@@ -137,8 +144,11 @@ export async function decisionTree(opts: {
   // W7 FEEDSTOCK: every decision lands in the decisions table (later_truth in context_ref).
   const ins = opts.db.query("INSERT INTO decisions(scenario_ref, question, answer_json, conf, policy, context_ref, at) VALUES (?,?,?,?,?,?,?)");
   for (const d of decisions) {
-    const val = Number((d.reason.match(/agg=([0-9.]+)/)?.[1]) ?? 0);
-    ins.run(String(d.i), `${opts.recipe.recipe}@v${opts.recipe.version}`, JSON.stringify(d.answers), val, JSON.stringify(policy), null, new Date().toISOString());
+    // `d.signal`, NOT a regex over `d.reason` (D-043): the reason's FORMAT is prose for a human,
+    // and parsing it back into a number made the stored confidence a fabrication for every row
+    // whose reason carried no `agg=` — i.e. exactly the degraded and errored rows, whose
+    // confidence is UNKNOWN. NULL means unknown; 0 means the judge said no.
+    ins.run(String(d.i), `${opts.recipe.recipe}@v${opts.recipe.version}`, JSON.stringify(d.answers), d.signal, JSON.stringify(policy), null, new Date().toISOString());
   }
   const artifact = decisions.map(({ i, route, reason, answers, model }) => ({ i, route, reason, answers, model }));
   if (opts.outPath) writeFileSync(opts.outPath, JSON.stringify(artifact, null, 2));

@@ -148,9 +148,16 @@ echo "daemon check body" > /tmp/jm-gates-dc/a.md
 JM_HOME="$DAEMON_HOME" $J target add dc fs /tmp/jm-gates-dc >/dev/null 2>&1
 JM_HOME="$DAEMON_HOME" nohup bun run src/cli.ts watch --interval 1000 --in dc --name dcidx >/tmp/jm-gates-daemon.log 2>&1 &
 sleep 4
-CHILD=$(pgrep -f "cli.ts watch" | head -1)
 ROWS=$(wc -l < "$DAEMON_HOME/watch/journal.jsonl" 2>/dev/null || echo 0)
-kill -TERM "$CHILD" 2>/dev/null; sleep 1
+# SIGNAL EVERY MATCHING PID, not `| head -1`: `bun run` is a WRAPPER plus a CHILD (runtime seat
+# OP-17), and killing whichever pgrep listed first can leave the other ticking — which made this
+# gate fail intermittently while the same commands typed by hand passed.
+# pgrep + kill, NOT pkill: this host's `pkill` reports itself as version 0.2.0 and its -f pattern
+# handling differs from procps — measured: it returned exit 2 (syntax) and killed nothing, which
+# made this gate fail while the identical command typed in a shell worked. `pgrep` finds the pids
+# reliably, and `kill` acts on exactly those.
+for p in $(pgrep -f "cli.ts watch"); do kill -TERM "$p" 2>/dev/null; done
+sleep 2
 ALIVE=$(pgrep -f "cli.ts watch" | wc -l)
 tok "daemon loop ticks + journals" bash -c "[ \"$ROWS\" -ge 2 ]"
 tok "daemon exits on SIGTERM" bash -c "[ \"$ALIVE\" -eq 0 ]"

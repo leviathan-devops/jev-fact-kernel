@@ -1415,3 +1415,58 @@ ONE SURFACE AND NOT ON ANOTHER.
   Pinned by `tests/judge-answer-shape.test.ts` — five cases including the polarity.
 - **LESSON:** `x ?? 0` on a judge's answer is a silent lie generator. Decide explicitly what a
   MISSING answer means, and make "missing" a failure rather than a value.
+
+## EN-057 — D-043: the stored confidence was REGEX-PARSED out of the row's own prose
+- **HOW FOUND:** the D-042 lens one level deeper — after fixing how an ANSWER is read, the next
+  question is what the engine WRITES. A `grep '?? 0'` over the verbs surfaced
+  `decision-tree.ts:140`: `const val = Number((d.reason.match(/agg=([0-9.]+)/)?.[1]) ?? 0);`
+- **THE DEFECT:** the value stored as a decision's `conf` came from a REGEX OVER THE REASON STRING
+  — a field whose format is written for a human to read. `d.reason` carries `agg=` only on the
+  normal path; a degraded row reads `gate_unavailable: …` and an errored row reads `error: …`, so
+  for exactly those rows the regex found nothing and the stored confidence became **0**.
+  **A 0 there says "the judge answered no"; the truth is "the judge never answered".**
+- **WHY IT WAS INVISIBLE:** every test exercised the normal path, which HAS `agg=`, so the parse
+  always succeeded. And a fabricated 0 is a plausible number — nothing looked wrong.
+- **FIX:** `DecisionRow` carries `signal: number | null` (set to the aggregate on the normal path,
+  `null` on both degraded paths) and the insert stores `d.signal`. The artifact stays
+  `{i, route, reason, answers, model}` — byte-identical across replays, the determinism contract
+  untouched, verified: two runs produced the same sha `21c0982e…`.
+- **VERIFICATION:**
+  ```
+  a healthy row  -> conf=0.46     (the real signal)
+  a degraded row -> conf=NULL     (unknown, NOT a confident zero)
+  two replays    -> identical sha256
+  ```
+  Pinned in `tests/judge-policy.test.ts`.
+- **LESSON:** never parse your own prose back into data. If a number matters, carry the number.
+  And ANY `?? 0` on a value that can be absent is a place where "unknown" is being laundered into
+  a specific answer.
+
+## EN-058 — a gate that failed for a TOOLCHAIN reason: this host's `pkill` is not procps
+- **SYMPTOM:** the daemon gate (`daemon exits on SIGTERM`) failed on three consecutive runs while the
+  IDENTICAL commands typed into a shell passed. Daemons accumulated — one more alive per run, each
+  from the run that was supposed to have killed it.
+- **THE INSTRUMENTED REPRODUCTION:** the gate section, run verbatim with the pids echoed:
+  ```
+  started with pid=2310542
+  after 4s: 1 matching
+  pkill returned 2          <- NOT 0 (matched) and NOT 1 (no match): SYNTAX
+  after pkill+2s: ALIVE=1   <- it killed nothing
+  ```
+- **ROOT CAUSE, and it is not the daemon:** `pkill --version` on this host reports **`pkill 0.2.0`** —
+  it is the harness's own utility, not `procps`. Its `-f` pattern handling differs: a pattern
+  containing a space returns exit 2 and signals nothing, while the same call in an interactive
+  shell behaved differently. (The earlier `pkill -f "cli.ts serve"` calls scattered through this
+  session may have been silent no-ops too — a leftover serve process and two test judges were
+  still alive when I checked.)
+- **THE FIX (portable):** `for p in $(pgrep -f "cli.ts watch"); do kill -TERM "$p"; done` —
+  `pgrep` finds the pids reliably on this host (it is what the gate already used to OBSERVE the
+  survivors), and `kill` acts on exactly those. No pattern semantics beyond a regex match.
+- **VERIFICATION:** three consecutive gate runs: **41 passed / 0 failed each**, and **zero daemons
+  left** after all three (was: one more per run).
+- **ALSO CLEANED:** the session's own stragglers — one `serve` and two test judges that earlier
+  `pkill` calls had not actually killed.
+- **LESSON:** when a check fails in a script but the same commands pass by hand, suspect the
+  TOOLCHAIN before the subject — and never hide a tool's stderr (`2>/dev/null`) on a line whose
+  exit code you are about to trust. The exit code 2 was there the whole time; the redirect was
+  mine.
