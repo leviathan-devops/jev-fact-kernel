@@ -109,14 +109,23 @@ export async function decisionTree(opts: {
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
     } catch (err) {
-      if (String(err).includes("JEV_NO_KEY")) throw err;    // fail-closed must propagate
-      return { i, route: "noop", reason: `error: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "" } as DecisionRow;
+      // FAIL POLARITY, HONOURED FOR EVERY OUTAGE — NOT JUST A MISSING KEY (D-040).
+      // The check was `includes("JEV_NO_KEY")` alone, so a judge 500, 429 or timeout produced a
+      // `noop` ROW and exit 0 — a run that could not reach the judge reported itself as having
+      // DECIDED. Measured: with policy `fail: "closed"` and a 500, the artifact held
+      // `route=noop reason=error: JM_JUDGE_HTTP_500` and the process exited 0.
+      // `fail: "closed"` (the default) now propagates ANY judge failure: no decision rows, a named
+      // error, a non-zero exit. `fail: "open"` is the explicit opt-in for marked degradation.
+      const noKey = String(err).includes("JEV_NO_KEY");
+      if (noKey || policy.fail === "closed") throw err;
+      return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "" } as DecisionRow;
     }
   }, { concurrency: opts.concurrency ?? 6 });
 
   if (results.errors.length > 0) {
     const noKey = results.errors.find((e) => e.error.includes("JEV_NO_KEY"));
     if (noKey) throw new Error(noKey.error);
+    if (policy.fail === "closed") throw new Error(results.errors[0].error);   // any outage, not just a key
   }
   for (const d of results.ok) if (d) { decisions.push(d); if (d.route === "escalate") escalations.push(d); }
 

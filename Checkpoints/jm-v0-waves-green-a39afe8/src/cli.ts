@@ -80,7 +80,10 @@ function usage(): void {
  *  operating contract's exit-code table against the engine.) */
 function exitCodeFor(err: unknown): number {
   const m = String(err);
-  return /JM_[A-Z_]+:|JEV_NO_KEY/.test(m) ? 2 : 1;
+    // `[A-Z0-9_]+`, NOT `[A-Z_]+`: the codes carry digits (`JM_JUDGE_HTTP_500`), and omitting them
+  // made a fail-closed judge outage exit 1 ("error") instead of 2 ("refused/fail-closed", the
+  // spec's own word for it). Measured: a 500 under `fail: "closed"` returned 1.
+  return /JM_[A-Z0-9_]+:|JEV_NO_KEY/.test(m) ? 2 : 1;
 }
 
 async function main(): Promise<number> {
@@ -251,9 +254,8 @@ async function main(): Promise<number> {
       return res.budgetStopped ? 3 : 0;
     } catch (err) {
       db.close();
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`JM_ERROR: ${msg}`);
-      return msg.includes("JEV_NO_KEY") ? 2 : 1;   // FAIL-CLOSED (L4)
+      console.error(`JM_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+      return exitCodeFor(err);   // ONE policy: 2 = client error or fail-closed refusal, 1 = runtime
     }
   }
 
