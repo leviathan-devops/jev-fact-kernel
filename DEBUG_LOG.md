@@ -843,3 +843,19 @@ was written first and then executed. That is the point of the exercise: a doc cl
   are pinned by `test_limit_guard_refuses_nan_and_negatives`, which asserts NaN/-5 return the whole
   set (never an unbounded scan and never a crash).
 - **LESSON:** "simpler" is a claim like any other. Six inputs settled it.
+
+## EN-036 — a HIGH audit claim about the budget boundary, REFUTED by probe (pinned)
+- **CLAIM:** `roomLeft()`'s `calls >= cap` should be `calls > cap` "to match assert() logic and
+  allow exactly N calls when cap is N".
+- **PROBE (cap=3, printed line by line):** `roomLeft()` is true before calls 1, 2, 3 and **false**
+  once `calls=3`; the 4th spend throws `JM_BUDGET_EXCEEDED: calls=4 cap=3`. So the cap of 3 DOES
+  allow exactly 3 calls — the behaviour the auditor asked for is already the behaviour.
+- **WHY THE SUGGESTION IS WRONG:** `assert()` uses `>` because it runs AFTER a spend and fires only
+  on an EXCEEDED cap; `roomLeft()` uses `>=` because it runs BEFORE a spend and answers "is there
+  room for the NEXT call". At `calls == cap` the honest answer is NO. Under `>`, `roomLeft()` would
+  return true at the cap and a trusting caller would spend into the throw.
+- **DISPOSITION:** no change. Pinned by `test_budget_roomLeft_predicts_the_refusal`, which asserts
+  both halves (the true-window, the false-at-cap, and the throw).
+- **LESSON:** two operators in one file can be correct while being different — the question is
+  where each sits relative to the mutation. An audit that "matches" them is matching the letters,
+  not the jobs.

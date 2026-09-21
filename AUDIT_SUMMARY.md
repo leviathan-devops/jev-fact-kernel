@@ -93,8 +93,9 @@ non-defect into a real one.
 | A8-5 | the STOP set holds an unreachable CJK entry | low | CONFIRMED -> fixed | the tokenizer emits ASCII only |
 | A9-1 | `OPS` in query.ts is a redundant identity map | low | CONFIRMED -> fixed | it could interpolate `undefined`; now a checked whitelist |
 | A9-2 | the LIMIT guard is "unnecessarily complex" | low | REFUTED | the suggested `Math.min(Math.floor(raw),10000)` yields `LIMIT NaN` / `LIMIT -1` (unlimited) |
+| A9-3 | `roomLeft()`'s `>=` should be `>` "to match assert()" | high | REFUTED | boundary probe: cap=3 -> roomLeft true before 1-3, false AT 3; `>` would let a caller spend the call assert() then throws on |
 
-**TALLY: 10 confirmed + fixed, 7 refuted by probe, 0 open.**
+**TALLY: 10 confirmed + fixed, 8 refuted by probe, 0 open.**
 
 ---
 

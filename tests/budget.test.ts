@@ -24,3 +24,23 @@ function test_budget_cap() {
     expect(b.used().calls).toBe(1000);
   });
 }
+
+// ── AUDIT REFUTATION PIN (A9-3): the two comparison operators are NOT the same job ──
+// The audit claimed `roomLeft()`'s `>=` should be `>` "to match assert() logic". A boundary probe
+// shows the opposite: with cap=3, roomLeft() is true before calls 1-3 and FALSE at calls=3 (which
+// is correct — it PREDICTS the refusal that assert() then performs). With `>`, a caller that
+// trusts roomLeft() would spend a 4th call and take JM_BUDGET_EXCEEDED. The pin holds BOTH halves.
+test("test_budget_roomLeft_predicts_the_refusal", () => {
+  const b = new Budget({ calls: 3 });
+  for (let i = 1; i <= 3; i++) {
+    expect(b.roomLeft()).toBe(true);            // room for exactly the calls that fit
+    b.spend(0);
+    expect(b.calls).toBe(i);
+  }
+  expect(b.roomLeft()).toBe(false);             // AT the cap: no more room (>= is correct here)
+  expect(() => b.spend(0)).toThrow(/JM_BUDGET_EXCEEDED/);   // and assert() refuses the 4th
+  const usd = new Budget({ usd: 0.5 });
+  usd.spend(0.5);
+  expect(usd.roomLeft()).toBe(false);           // the usd arm agrees
+  expect(() => usd.spend(0)).toThrow(/JM_BUDGET_EXCEEDED/);
+});
