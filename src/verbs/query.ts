@@ -32,10 +32,10 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   if (opts.fts) {
     sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256
              FROM docs_fts x JOIN files f ON f.path = x.path
-            WHERE docs_fts MATCH ?`;
+            WHERE docs_fts MATCH ? AND f.state != 'gone'`;
     params.push(opts.fts);
   } else {
-    sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256 FROM files f WHERE 1=1`;
+    sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256 FROM files f WHERE f.state != 'gone'`;
   }
   if (opts.where) {
     const w = parseWhere(opts.where);

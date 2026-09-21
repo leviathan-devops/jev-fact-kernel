@@ -20,7 +20,7 @@ function flag(name: string): string | undefined {
   return i >= 0 ? argv[i + 1] : undefined;
 }
 const has = (name: string) => argv.includes(`--${name}`);
-const VALUE_FLAGS = new Set(["name", "include", "exclude", "limit", "where", "fts", "tag"]);
+const VALUE_FLAGS = new Set(["name", "include", "exclude", "limit", "where", "fts", "tag", "rows", "recipe", "context", "criteria", "out", "escalation", "concurrency", "budget-calls", "job", "question", "min-p", "common", "structure", "in", "index", "port", "truth", "truth-value", "apply-note", "phrase"]);
 function positionals(): string[] {
   const out: string[] = [];
   for (let i = 1; i < argv.length; i++) {

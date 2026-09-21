@@ -19,7 +19,7 @@ export interface IndexStats {
 }
 
 const DEFAULT_EXCLUDE = ["node_modules", ".git", ".venv", "dist", "target", "__pycache__"];
-const TEXT_EXT = new Set([".md", ".txt", ".json", ".jsonl", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".toml", ".yml", ".yaml", ".sh", ".sql", ".csv"]);
+const TEXT_EXT = new Set([".md", ".txt", ".json", ".jsonl", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".toml", ".yml", ".yaml", ".sh", ".sql", ".csv", ".c", ".h", ".cpp", ".hpp", ".java", ".go", ".rb", ".php", ".html", ".css", ".scss", ".xml", ".mdx", ".vue", ".svelte", ".kt", ".swift"]);
 
 function globToRe(g: string): RegExp {
   const esc = g.replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -115,18 +115,20 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
   const paths = walk(root, opts);
   const now = new Date().toISOString();
 
-  let changed = 0, textIndexed = 0, bytesHashed = 0, truncated = false;
+  let changed = 0, textIndexed = 0, bytesHashed = 0, truncated = false, skipped = 0, lastError: string | undefined;
   const seen = new Set<string>();
 
   const tx = db.transaction(() => {
     for (const full of paths) {
       const rel = relative(root, full);
       seen.add(rel);
-      const r = indexFile(db, root, full, { ...opts, maxTextBytes: maxText, maxHashBytes: maxHash });
-      if (r.changed) changed++;
-      if (r.textIndexed) textIndexed++;
-      bytesHashed += r.bytesHashed;
-      if (r.truncated) truncated = true;
+      try {
+        const r = indexFile(db, root, full, { ...opts, maxTextBytes: maxText, maxHashBytes: maxHash });
+        if (r.changed) changed++;
+        if (r.textIndexed) textIndexed++;
+        bytesHashed += r.bytesHashed;
+        if (r.truncated) truncated = true;
+      } catch (err) { skipped++; lastError = String(err).slice(0, 120); }   // one bad file never aborts the batch
     }
     const all = db.query("SELECT path FROM files WHERE state != 'gone'").all() as { path: string }[];
     const gone = db.query("UPDATE files SET state='gone', indexed_at=? WHERE path=?");

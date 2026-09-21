@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { resolveKey } from "./key.ts";
 import { callSystemOne, TYPESAFE_MODEL, type JudgeResponse } from "./transport.ts";
 import { fingerprint, cacheGet, cachePut } from "./cache.ts";
+import { createHash } from "node:crypto";
 
 export const JEV_NO_KEY = "JEV_NO_KEY";
 export const USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;   // published rate; no output charge
@@ -33,7 +34,8 @@ export class Judge {
 
   async ask(state: unknown, questions: Record<string, unknown>, schemaVersion = "v1"): Promise<AskResult> {
     const model = this.model();
-    const fp = fingerprint(model, schemaVersion, state);
+    const qHash = createHash("sha256").update(JSON.stringify(questions)).digest("hex").slice(0, 16);
+    const fp = fingerprint(model, `${schemaVersion}#${qHash}`, state);   // questions are part of the decision's identity
     const hit = cacheGet(this.db, fp);
     if (hit) return { answers: hit.answers as JudgeResponse["answers"], model: hit.model, cached: true, inputTokens: 0, costUsd: 0, fingerprint: fp };
 

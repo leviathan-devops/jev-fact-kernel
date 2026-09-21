@@ -1,0 +1,73 @@
+# RUNNING_DEBUG_LOG — JM build
+
+Append-only. Every bug: symptom → root cause → fix → verification → lesson.
+Updated at the MOMENT of the work (fresh-capture rule).
+
+## [2026-09-21] W0 — D-001 glob depth bug: index returned files=0
+- SYMPTOM: `jm index @shadow --include '*.json'` → files=0 changed=0, exit 0 (a silent zero)
+- ROOT CAUSE: `globToRe('*.json')` compiled to `^[^/]*\.json$`; the walk yields
+  repo-relative paths (`session_diff/ses_x.json`) and `[^/]*` cannot cross `/`,
+  so no nested file ever matched the include filter.
+- FIX: `matchesAny` now tests both the full rel path AND its basename, so a
+  depth-insensitive glob matches at any depth (src/verbs/index.ts).
+- VERIFICATION: re-probe → `JM_INDEX_OK files=200 changed=200`; full run → `files=11831`.
+- LESSON: an empty result plus exit 0 is the dangerous class — the walk succeeded,
+  the filter ate everything, and nothing complained. Counts must be asserted, not trusted.
+
+## [2026-09-21] W0 — D-002 --json stdout pollution
+- SYMPTOM: `jm query … --json | python3 -m json.tool` → JSONDecodeError at char 0.
+- ROOT CAUSE: `withLedger` printed the `cost=$…` line to stdout before the JSON payload;
+  machine consumers parsed "cost=" as JSON.
+- FIX: under `--json` the cost line goes to stderr; stdout stays pure JSON (src/ledger.ts).
+- VERIFICATION: `jm query shadow --where "size>2000" --limit 10000 --json` piped clean →
+  `rows= 1182`; `--fts "theatrical"` → `rows= 341`.
+- LESSON: the human line and the machine payload want different streams; the contract is
+  "stdout = the declared structure, stderr = the chatter".
+
+## [2026-09-21] W0 — ENV-001 STTGF inline-exec block (host enforcement, NOT a JM bug)
+- SYMPTOM: `bun -e '…'` → `[STTGF BLOCK] INLINE_EXEC — Inline exec is smoke test. Use container.`
+- ROOT CAUSE: the host's behavior firewall forbids inline exec as a smoke-test substitute.
+- DISPOSITION: not a defect — the enforcement working. All probes now run as real
+  scripts (`bun run <file>` / heredoc python), never `-e` one-liners.
+- LESSON: on this host, inline exec is unavailable by design; build the check as a file.
+
+## [2026-09-21] W1 — D-003 Budget off-by-one: a cap of N refused the Nth call
+- SYMPTOM: `new Budget({calls:5})` threw `JM_BUDGET_EXCEEDED: calls=5 cap=5` on the 5th spend
+- ROOT CAUSE: `assert()` used `calls >= cap`, so the call that REACHES the cap was refused
+  instead of the call that would EXCEED it.
+- FIX: `calls > cap` (src/pools/budget.ts) + the queue now claims only the remaining room,
+  so a stop is exact (done == cap, never cap + batch).
+- VERIFICATION: budget run → `done=100 ... budget_stopped=true`, exit 3, `pending=11731` preserved.
+- LESSON: the two classic boundary errors in one day — the filter that eats everything (D-001) and
+  the cap that refuses its own last unit (D-003). Boundaries are where the tests must live.
+
+## [2026-09-21] W1 — D-004 Flaky crash test (probe error)
+- SYMPTOM: `expect(stuck).toBeGreaterThan(0)` failed intermittently — batch boundaries meant a
+  clean run could end with zero orphaned rows.
+- ROOT CAUSE: the first draft simulated a crash by relying on how many items a pool batch happened
+  to process; with 50 items / concurrency 4 the last batch landed exactly on the budget.
+- FIX: the test now simulates the crash explicitly (enqueue, claim 10, complete 1, close the db) —
+  deterministic, and it tests the real law (sweep returns orphaned rows).
+- VERIFICATION: `test_resume_no_dup` green ×2; the live kill -9 run left exactly `running: 8`.
+- LESSON: a test that depends on timing is a test that lies sometimes. Simulate the failure mode
+  directly instead of hoping the scheduler produces it.
+
+## [2026-09-21] W5 — D-005 Budget checked AFTER the call (3 calls under a cap of 2)
+- SYMPTOM: `decision-tree --budget-calls 2` made 3 calls before stopping.
+- ROOT CAUSE: the budget asserted only at the top of the worker; with the post-call spend
+  the third call slipped through the boundary.
+- FIX: `Budget.roomLeft()` — the caller checks room BEFORE the call, spends after; the cap is
+  now exact (cap=2 → 2 calls, then stop).
+- VERIFICATION: `test_decision_budget_stop` green (`calls=2`, `budgetStopped=true`).
+- LESSON: check capacity before the action, account after it. Two boundary bugs in the same
+  family (D-003/D-005) — the boundary is where the money and the lies both live.
+
+## [2026-09-21] W5 — D-006 Artifact carried run metadata, breaking replay determinism
+- SYMPTOM: two identical runs produced different decisions.json (only `cached` differed).
+- ROOT CAUSE: the written artifact included the transport bookkeeping (`cached`), so the
+  second (cache-hit) run could never be byte-identical to the first.
+- FIX: the artifact is the DECISION (`i, route, reason, answers, model`); run metadata lives
+  only in the ledger/console.
+- VERIFICATION: fresh pair → identical sha a3bc30351f68dad8, calls=0 cached=3.
+- LESSON: an artifact that includes HOW it was produced can never be replayed. Separate the
+  decision from the delivery.

@@ -17,11 +17,16 @@
 - **What:** boundaries, redaction, cache key, SQL-injection shapes, empty inputs, live injection.
 - **PASS criteria:** a full pass with ZERO confirmed defects AFTER the fixes; unswept frontier named.
 
-### AUDIT — the code-audit gate — Status: **BLOCKED**
+### AUDIT — the code-audit gate — Status: **FAIL**
 - **What:** the qwen-code-audit artifact + its `AUDIT GATE:` line.
 - **Why blocked:** the audit lane was not run in this session (no `qwen-code-audit` invocation on this diff).
 - **Resume condition:** run the audit lane over the W0–W7 diff, write the artifact, quote the verdict line.
-- **AUDIT GATE: BLOCKED (audit lane not run this session — never reported as PASS)**
+- **AUDIT GATE: FAIL (0 critical, 30 high)** — the lane RAN (`ocr review --from 7b7f7eb --to HEAD`),
+  provider muse-free, 6m2s, 174 comments / 50 files; canonical (src+tests) = 91 findings
+  (30 high / 49 medium / 12 low). Artifact: `artifacts/audit-2026-09-21.json`; summary:
+  `AUDIT_SUMMARY.md`. A fix pass addressed the high set (fail-closed propagation, tombstone
+  filtering, loopback bind, NaN guards, fingerprint covering the questions, per-file index guard,
+  failed-row recording, arg-parser completeness). **The gate stays FAIL until a RE-AUDIT passes.**
 
 ## ZONE 2 — THE RESULTS (what was observed)
 

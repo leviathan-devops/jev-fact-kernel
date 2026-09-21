@@ -6,7 +6,7 @@
   "description": "JM \u2014 the targetable decision engine (targets -> operations -> recipes -> results)",
   "scripts": {
     "jm": "bun run src/cli.ts",
-    "test": "bun test $(find src tests -name '*.test.ts' | tr '\\n' ' ')",
+    "test": "bun test",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

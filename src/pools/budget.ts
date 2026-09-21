@@ -4,7 +4,12 @@ export const JM_BUDGET_EXCEEDED = "JM_BUDGET_EXCEEDED";
 export class Budget {
   private calls = 0;
   private usd = 0;
-  constructor(private caps: { calls?: number; usd?: number } = {}) {}
+  constructor(private caps: { calls?: number; usd?: number } = {}) {
+    for (const [k, v] of Object.entries(caps)) {
+      if (v === undefined) continue;
+      if (!Number.isFinite(v) || v < 0) throw new Error(`JM_BUDGET_INVALID: ${k}=${v} (must be a finite number >= 0)`);
+    }
+  }
 
   spend(usd: number): void { this.calls += 1; this.usd += usd; this.assert(); }
 

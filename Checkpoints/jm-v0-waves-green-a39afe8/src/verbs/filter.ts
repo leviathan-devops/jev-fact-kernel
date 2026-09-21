@@ -24,7 +24,7 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
   let calls = 0, costUsd = 0, budgetStopped = false;
   const rows: FilterRow[] = [];
 
-  await runPool(candidates, async (c) => {
+  const { errors } = await runPool(candidates, async (c) => {
     if (budgetStopped) return null;
     if (!budget.roomLeft()) { budgetStopped = true; return null; }
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
@@ -39,6 +39,8 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
     return rows[rows.length - 1];
   }, { concurrency: opts.concurrency ?? 6 });
 
+  const noKey = errors.find((e) => e.error.includes("JEV_NO_KEY"));
+  if (noKey) throw new Error(noKey.error);          // FAIL-CLOSED: never a silent empty success
   const kept = rows.filter((r) => r.keep).sort((a, b) => b.p - a.p);
   return { candidates: candidates.length, judged: rows.length, kept: kept.length, kept_rows: kept, calls, costUsd, budgetStopped };
 }

@@ -1,7 +1,7 @@
 # CHECKPOINT MANIFEST — jm-v0-waves-green-a39afe8
 
 date: 2026-09-21 · seal mode: **B (no lock — living snapshot)**
-source tree sha256: `3c05e1af3737a5188e05c9995cb40003` · files: 31 .ts · lines: 1838
+source tree sha256: \ (post-audit fix pass)
 battery (from this copy):  18 pass  0 fail 
 git: branch master @ a39afe8 (+ the W7 follow-ups uncommitted at seal time — see the follow-up commit)
 

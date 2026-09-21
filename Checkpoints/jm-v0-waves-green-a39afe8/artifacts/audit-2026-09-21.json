@@ -1,0 +1,2395 @@
+{
+  "status": "complete",
+  "llm": {
+    "provider": "muse-free",
+    "model": "muse-spark-1.3-contributor-free"
+  },
+  "message": "Review complete: 174 finding(s) across 50 selected item(s).",
+  "summary": {
+    "files_reviewed": 50,
+    "comments": 174,
+    "total_tokens": 2435557,
+    "input_tokens": 2287473,
+    "output_tokens": 148084,
+    "cache_read_tokens": 1748870,
+    "elapsed": "6m2s"
+  },
+  "tool_calls": {
+    "total": 164,
+    "by_tool": {
+      "code_comment": 36,
+      "code_search": 49,
+      "file_find": 5,
+      "file_read": 72,
+      "file_read_diff": 2
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "src/store/db.ts",
+      "content": "saveTargets() is sync void but Bun.write() returns a Promise. Caller in src/cli.ts calls saveTargets(list) then immediately logs and may exit, so fire-and-forget write can be lost leaving targets.json stale/missing. Make it async/await or use synchronous write (Bun.writeSync or node:fs writeFileSync).",
+      "suggestion_code": "  await Bun.write(p, JSON.stringify(list, null, 2) + \"\\n\"); // + make saveTargets async: Promise\u003cvoid\u003e",
+      "existing_code": "  Bun.write(p, JSON.stringify(list, null, 2) + \"\\n\");",
+      "start_line": 35,
+      "end_line": 35,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "indexPathFor() interpolates caller-controlled name directly into join(). CLI/serve pass --name, positional index, @target-sliced values straight through (src/cli.ts, src/serve.ts) with no sanitization, so `../escape` or `/abs` traverses out of indexDir() into arbitrary SQLite creation/overwrite. Validate against allowlist (e.g. /^[A-Za-z0-9_-]+$/) and reject path separators.",
+      "suggestion_code": "export const indexPathFor = (name: string): string =\u003e {\n  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`JM_INDEX_INVALID: ${name}`);\n  return join(indexDir(), `${name}.sqlite`);\n};",
+      "existing_code": "export const indexPathFor = (name: string): string =\u003e join(indexDir(), `${name}.sqlite`);",
+      "start_line": 24,
+      "end_line": 24,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "loadTargets() casts JSON.parse directly to Target[] and swallows all errors to []. Corrupt targets.json then silently becomes empty list, turning into confusing JM_TARGET_UNKNOWN downstream. Validate shape and surface parse errors instead of hiding them.",
+      "suggestion_code": "  try {\n    const v: unknown = JSON.parse(readFileSync(p, \"utf8\"));\n    if (!Array.isArray(v)) throw new Error('invalid targets.json');\n    return v as Target[];\n  } catch (e) { throw new Error(`JM_TARGETS_CORRUPT: ${p}: ${String(e)}`); }",
+      "existing_code": "  try { return JSON.parse(readFileSync(p, \"utf8\")) as Target[]; } catch { return []; }",
+      "start_line": 29,
+      "end_line": 29,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "openDb() only inserts schema_version when missing, never checks mismatch. Old DB files are silently reused with stale schema; no migration path exists (SCHEMA_VERSION only referenced here). Compare stored version to SCHEMA_VERSION and throw/migrate on mismatch.",
+      "suggestion_code": "  if (!row) db.run(\"INSERT INTO meta(key, value) VALUES ('schema_version', ?)\", [String(SCHEMA_VERSION)]);\n  else if (row.value !== String(SCHEMA_VERSION)) throw new Error(`JM_SCHEMA_MISMATCH: got ${row.value} want ${SCHEMA_VERSION}`);",
+      "existing_code": "  if (!row) db.run(\"INSERT INTO meta(key, value) VALUES ('schema_version', ?)\", [String(SCHEMA_VERSION)]);",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "jmHome() falls back to join('.', '.jm') when HOME is unset, creating a relative .jm directory dependent on cwd. Combined with duplicated helper in src/job/store.ts this scatters indexes/ledger. Default to os.homedir() or absolute path and fail fast if unresolvable.",
+      "suggestion_code": "export const jmHome = (): string =\u003e process.env.JM_HOME ?? join(os.homedir(), \".jm\");",
+      "existing_code": "export const jmHome = (): string =\u003e process.env.JM_HOME ?? join(process.env.HOME ?? \".\", \".jm\");",
+      "start_line": 7,
+      "end_line": 7,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/store/schema.ts",
+      "content": "docs and docs_fts are disconnected (no content-sync triggers, no FK on docs.file_id). Writers must manually dual-write (see src/verbs/index.ts DELETE/INSERT docs + docs_fts); crash between statements or missed path leaves stale/divergent FTS results plus orphans. Use FTS5 content='docs' with triggers or wrap in transaction + FK.",
+      "suggestion_code": "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(text, path, content='docs', content_rowid='id');\n-- + triggers docs_ai/docs_ad/docs_au to keep FTS in sync, and FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE on docs",
+      "existing_code": "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(text, path);",
+      "start_line": 30,
+      "end_line": 30,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "saveTargets() is sync void but Bun.write() returns a Promise. Caller in src/cli.ts calls saveTargets(list) then immediately logs and may exit, so fire-and-forget write can be lost leaving targets.json stale/missing. Make it async/await or use synchronous write (Bun.writeSync or node:fs writeFileSync).",
+      "suggestion_code": "  await Bun.write(p, JSON.stringify(list, null, 2) + \"\\n\"); // + make saveTargets async: Promise\u003cvoid\u003e",
+      "existing_code": "  Bun.write(p, JSON.stringify(list, null, 2) + \"\\n\");",
+      "start_line": 35,
+      "end_line": 35,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "indexPathFor() interpolates caller-controlled name directly into join(). CLI/serve pass --name, positional index, @target-sliced values straight through with no sanitization, so `../escape` traverses out of indexDir() into arbitrary SQLite creation/overwrite. Validate against allowlist.",
+      "suggestion_code": "export const indexPathFor = (name: string): string =\u003e {\n  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`JM_INDEX_INVALID: ${name}`);\n  return join(indexDir(), `${name}.sqlite`);\n};",
+      "existing_code": "export const indexPathFor = (name: string): string =\u003e join(indexDir(), `${name}.sqlite`);",
+      "start_line": 24,
+      "end_line": 24,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "loadTargets() casts JSON.parse directly to Target[] and swallows all errors to []. Corrupt targets.json then silently becomes empty list, turning into confusing JM_TARGET_UNKNOWN downstream. Validate shape and surface parse errors.",
+      "suggestion_code": "  try {\n    const v: unknown = JSON.parse(readFileSync(p, \"utf8\"));\n    if (!Array.isArray(v)) throw new Error('invalid targets.json');\n    return v as Target[];\n  } catch (e) { throw new Error(`JM_TARGETS_CORRUPT: ${p}: ${String(e)}`); }",
+      "existing_code": "  try { return JSON.parse(readFileSync(p, \"utf8\")) as Target[]; } catch { return []; }",
+      "start_line": 29,
+      "end_line": 29,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "openDb() only inserts schema_version when missing, never checks mismatch. Old DB files are silently reused with stale schema; no migration path exists. Compare stored version to SCHEMA_VERSION and throw/migrate on mismatch.",
+      "suggestion_code": "  if (!row) db.run(\"INSERT INTO meta(key, value) VALUES ('schema_version', ?)\", [String(SCHEMA_VERSION)]);\n  else if (row.value !== String(SCHEMA_VERSION)) throw new Error(`JM_SCHEMA_MISMATCH: got ${row.value} want ${SCHEMA_VERSION}`);",
+      "existing_code": "  if (!row) db.run(\"INSERT INTO meta(key, value) VALUES ('schema_version', ?)\", [String(SCHEMA_VERSION)]);",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "jmHome() falls back to join('.', '.jm') when HOME is unset, creating a cwd-dependent relative .jm directory that scatters indexes. Default to os.homedir() or absolute path.",
+      "suggestion_code": "export const jmHome = (): string =\u003e process.env.JM_HOME ?? join(os.homedir(), \".jm\");",
+      "existing_code": "export const jmHome = (): string =\u003e process.env.JM_HOME ?? join(process.env.HOME ?? \".\", \".jm\");",
+      "start_line": 7,
+      "end_line": 7,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+      "content": "docs and docs_fts are disconnected (no content-sync triggers, no FK on docs.file_id). Writers must manually dual-write; crash between statements or missed path leaves stale/divergent FTS results plus orphans. Use FTS5 content='docs' with triggers or transaction + FK.",
+      "suggestion_code": "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(text, path, content='docs', content_rowid='id');\n-- + triggers docs_ai/docs_ad/docs_au to keep FTS in sync, and FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE on docs",
+      "existing_code": "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(text, path);",
+      "start_line": 30,
+      "end_line": 30,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "package.json",
+      "content": "Pinned `latest` is non-deterministic: installs are unreproducible and a new @types/bun release can break typecheck. Pin to an exact or caret range.",
+      "suggestion_code": "    \"@types/bun\": \"^1.1.14\",",
+      "existing_code": "    \"@types/bun\": \"latest\",",
+      "start_line": 13,
+      "end_line": 13,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+      "content": "Pinned `latest` is non-deterministic: installs are unreproducible and a new @types/bun release can break typecheck. Pin to an exact or caret range.",
+      "suggestion_code": "    \"@types/bun\": \"^1.1.14\",",
+      "existing_code": "    \"@types/bun\": \"latest\",",
+      "start_line": 13,
+      "end_line": 13,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "tests/helpers.ts",
+      "content": "Overwrites global process.env.JM_HOME/JM_LEDGER without saving/restoring. Runtime (src/store/db.ts:jmHome(), src/ledger.ts) reads these, so stale values leak across tests when run in same worker. Save previous values and restore in cleanup().",
+      "suggestion_code": "  const prevHome = process.env.JM_HOME;\n  const prevLedger = process.env.JM_LEDGER;\n  process.env.JM_HOME = home;\n  process.env.JM_LEDGER = join(home, \"ledger.jsonl\");\n  return {\n    home, root,\n    cleanup: () =\u003e {\n      try { rmSync(home, { recursive: true, force: true }); } catch (e) { console.warn(e); }\n      try { rmSync(root, { recursive: true, force: true }); } catch (e) { console.warn(e); }\n      if (prevHome === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prevHome;\n      if (prevLedger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prevLedger;\n    },\n  };",
+      "existing_code": "  process.env.JM_HOME = home;\n  process.env.JM_LEDGER = join(home, \"ledger.jsonl\");",
+      "start_line": 9,
+      "end_line": 10,
+      "category": "test",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+      "content": "Overwrites global process.env.JM_HOME/JM_LEDGER without saving/restoring. Runtime (src/store/db.ts:jmHome(), src/ledger.ts) reads these, so stale values leak across tests when run in same worker. Save previous values and restore in cleanup().",
+      "suggestion_code": "  const prevHome = process.env.JM_HOME;\n  const prevLedger = process.env.JM_LEDGER;\n  process.env.JM_HOME = home;\n  process.env.JM_LEDGER = join(home, \"ledger.jsonl\");\n  return {\n    home, root,\n    cleanup: () =\u003e {\n      try { rmSync(home, { recursive: true, force: true }); } catch (e) { console.warn(e); }\n      try { rmSync(root, { recursive: true, force: true }); } catch (e) { console.warn(e); }\n      if (prevHome === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prevHome;\n      if (prevLedger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prevLedger;\n    },\n  };",
+      "existing_code": "  process.env.JM_HOME = home;\n  process.env.JM_LEDGER = join(home, \"ledger.jsonl\");",
+      "start_line": 9,
+      "end_line": 10,
+      "category": "test",
+      "severity": "medium"
+    },
+    {
+      "path": "tests/helpers.ts",
+      "content": "Fragile parent-dir handling via join(full, \"..\") instead of dirname(), inconsistent with src/store/db.ts and src/ledger.ts which use dirname(). Also join(root, rel) without normalization allows rel like \"../evil\" to escape the sandbox. Resolve and validate containment.",
+      "suggestion_code": "    const full = resolve(root, rel);\n    if (full !== resolve(root) \u0026\u0026 !full.startsWith(resolve(root) + sep)) throw new Error(`fill: path escapes sandbox: ${rel}`);\n    mkdirSync(dirname(full), { recursive: true });",
+      "existing_code": "    const full = join(root, rel);\n    mkdirSync(join(full, \"..\"), { recursive: true });",
+      "start_line": 19,
+      "end_line": 20,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+      "content": "Fragile parent-dir handling via join(full, \"..\") instead of dirname(), inconsistent with src/store/db.ts and src/ledger.ts which use dirname(). Also join(root, rel) without normalization allows rel like \"../evil\" to escape the sandbox. Resolve and validate containment.",
+      "suggestion_code": "    const full = resolve(root, rel);\n    if (full !== resolve(root) \u0026\u0026 !full.startsWith(resolve(root) + sep)) throw new Error(`fill: path escapes sandbox: ${rel}`);\n    mkdirSync(dirname(full), { recursive: true });",
+      "existing_code": "    const full = join(root, rel);\n    mkdirSync(join(full, \"..\"), { recursive: true });",
+      "start_line": 19,
+      "end_line": 20,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "tests/helpers.ts",
+      "content": "Empty catch {} silently swallows rmSync teardown failures, hiding permission/locking issues. At minimum log the error.",
+      "suggestion_code": "    cleanup: () =\u003e { try { rmSync(home, { recursive: true, force: true }); } catch (e) { console.warn(`cleanup home failed: ${e}`); } try { rmSync(root, { recursive: true, force: true }); } catch (e) { console.warn(`cleanup root failed: ${e}`); } },",
+      "existing_code": "    cleanup: () =\u003e { try { rmSync(home, { recursive: true, force: true }); } catch {} try { rmSync(root, { recursive: true, force: true }); } catch {} },",
+      "start_line": 13,
+      "end_line": 13,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+      "content": "Empty catch {} silently swallows rmSync teardown failures, hiding permission/locking issues. At minimum log the error.",
+      "suggestion_code": "    cleanup: () =\u003e { try { rmSync(home, { recursive: true, force: true }); } catch (e) { console.warn(`cleanup home failed: ${e}`); } try { rmSync(root, { recursive: true, force: true }); } catch (e) { console.warn(`cleanup root failed: ${e}`); } },",
+      "existing_code": "    cleanup: () =\u003e { try { rmSync(home, { recursive: true, force: true }); } catch {} try { rmSync(root, { recursive: true, force: true }); } catch {} },",
+      "start_line": 13,
+      "end_line": 13,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/judge/client.ts",
+      "content": "Fingerprint excludes `questions`: ask() keys cache on (model, schemaVersion, state) only. Different question sets over identical state with same schemaVersion collide and return wrong answers. Include canonical(questions) in fingerprint or require schemaVersion to hash question content.",
+      "suggestion_code": "  async ask(state: unknown, questions: Record\u003cstring, unknown\u003e, schemaVersion = \"v1\"): Promise\u003cAskResult\u003e {\n    const model = this.model();\n    const fp = fingerprint(model, schemaVersion, { state, questions });",
+      "existing_code": "  async ask(state: unknown, questions: Record\u003cstring, unknown\u003e, schemaVersion = \"v1\"): Promise\u003cAskResult\u003e {\n    const model = this.model();\n    const fp = fingerprint(model, schemaVersion, state);",
+      "start_line": 34,
+      "end_line": 36,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/judge/client.ts",
+      "content": "Raw `state` sent to network: redact() is applied only in canonical()/fingerprint, but callSystemOne body uses unredacted `state`. PII/secrets redacted for cache are still exfiltrated. Redact/minimize payload before transport or document that transport intentionally sends raw state.",
+      "suggestion_code": "    const key = this.requireKey();\n    const resp = await callSystemOne(key, { state: redact(state), model, questions });",
+      "existing_code": "    const key = this.requireKey();\n    const resp = await callSystemOne(key, { state, model, questions });",
+      "start_line": 40,
+      "end_line": 41,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/judge/cache.ts",
+      "content": "Phone/hex/secret regexes overbroad and canonical fragile: `\\+?\\d[\\d ()-]{7,}\\d` redacts IDs/dates, `[a-f0-9]{32,}` redacts hashes, and bare JSON.stringify drops undefined/functions non-deterministically. Narrow patterns and use stable canonicalization with sorted keys and explicit undefined handling.",
+      "suggestion_code": "      .replace(/\\+?\\d[\\d ()-]{7,}\\d/g, (m) =\u003e isPhoneLike(m) ? \"[phone]\" : m)\n      .replace(/\\b[a-f0-9]{32,}\\b/gi, \"[hex]\") // TODO: restrict to secret/id fields to avoid hash false-positives",
+      "existing_code": "      .replace(/\\+?\\d[\\d ()-]{7,}\\d/g, \"[phone]\")\n      .replace(/\\b[a-f0-9]{32,}\\b/gi, \"[hex]\")",
+      "start_line": 10,
+      "end_line": 11,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "src/judge/cache.ts",
+      "content": "Unsafe cache read/increment: JSON.parse on answer_json can throw on corrupt row, and SELECT then UPDATE hits is non-atomic (lost increments under concurrency). Wrap parse with try/catch and do atomic UPDATE ... RETURNING or single transaction.",
+      "suggestion_code": "  const row = db.query(\"SELECT answer_json, model FROM cache WHERE fingerprint = ?\").get(fp) as { answer_json: string; model: string } | null;\n  if (!row) return null;\n  db.run(\"UPDATE cache SET hits = hits + 1 WHERE fingerprint = ?\", [fp]);\n  try { return { answers: JSON.parse(row.answer_json), model: row.model }; } catch { return null; }",
+      "existing_code": "  const row = db.query(\"SELECT answer_json, model FROM cache WHERE fingerprint = ?\").get(fp) as { answer_json: string; model: string } | null;\n  if (!row) return null;\n  db.run(\"UPDATE cache SET hits = hits + 1 WHERE fingerprint = ?\", [fp]);\n  return { answers: JSON.parse(row.answer_json), model: row.model };",
+      "start_line": 32,
+      "end_line": 35,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/judge/transport.ts",
+      "content": "Unawaited Bun.write + unvalidated counter + Bun coupling: mock path fires async write without await (lost increments/races in parallel tests), Number() without NaN check yields call-NaN.json, and Bun global breaks Node portability. Await write (or use sync fs) and validate counter.",
+      "suggestion_code": "    const raw = existsSync(ctrPath) ? readFileSync(ctrPath, \"utf8\") : \"0\";\n    const n = Number(raw);\n    if (!Number.isInteger(n) || n \u003c 0) throw new Error(`JM_MOCK_COUNTER_CORRUPT: ${ctrPath}`);\n    writeFileSync(ctrPath, String(n + 1));",
+      "existing_code": "    const n = existsSync(ctrPath) ? Number(readFileSync(ctrPath, \"utf8\")) : 0;\n    Bun.write(ctrPath, String(n + 1));",
+      "start_line": 20,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/judge/policy.ts",
+      "content": "Dead fail policy: Policy.fail and Route 'reject' are never read/returned by routeOf(). Claimed fail-open/fail-closed behavior is unenforced; low-signal/undefined answers silently map to noop. Branch on p.fail for error/undefined paths or remove the field.",
+      "suggestion_code": "export function routeOf(answer: NoulAnswer | ChoiceAnswer | undefined, p: Policy): { route: Route; reason: string } {\n  if (!answer) return { route: p.fail === \"closed\" ? \"reject\" : \"noop\", reason: `missing answer fail=${p.fail}` };\n  const s = signalOf(answer);\n  if (s \u003e= p.act) return { route: \"act\", reason: `signal=${s.toFixed(2)} \u003e= act=${p.act}` };\n  if (s \u003e= p.flag) return { route: \"escalate\", reason: `signal=${s.toFixed(2)} in [${p.flag},${p.act})` };\n  return { route: \"noop\", reason: `signal=${s.toFixed(2)} \u003c flag=${p.flag}` };",
+      "existing_code": "export function routeOf(answer: NoulAnswer | ChoiceAnswer | undefined, p: Policy): { route: Route; reason: string } {\n  const s = signalOf(answer);\n  if (s \u003e= p.act) return { route: \"act\", reason: `signal=${s.toFixed(2)} \u003e= act=${p.act}` };\n  if (s \u003e= p.flag) return { route: \"escalate\", reason: `signal=${s.toFixed(2)} in [${p.flag},${p.act})` };\n  return { route: \"noop\", reason: `signal=${s.toFixed(2)} \u003c flag=${p.flag}` };",
+      "start_line": 18,
+      "end_line": 22,
+      "category": "maintainability",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/run.ts",
+      "content": "Worker never calls Queue.fail and ignores runPool errors: runPool swallows worker exceptions into {ok,errors} (src/pools/pool.ts), so a throwing opts.work leaves the row in 'running' forever, stats.failed stays 0, and resume will loop. Wrap work in try/catch and call q.fail on error, and handle runPool errors.",
+      "existing_code": "    await runPool(batch, async (item) =\u003e {\n      if (processed \u003e= budget) return null;        // simulated crash point: leave the row 'running'\n      const out = await opts.work(item.payload as I, item.fingerprint);\n      q.complete(item.id, out);\n      processed++;\n      return out;",
+      "start_line": 34,
+      "end_line": 39,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/run.ts",
+      "content": "DB handle leaks on error path: db.close() is only reached on happy path. If DUP check throws (or future work throws out of loop), WAL handle/lock is leaked, hurting crash-recovery. Use try/finally for db.close().",
+      "existing_code": "  const d = db.query(\"SELECT COUNT(*) AS n, COUNT(DISTINCT fingerprint) AS uniq FROM queue WHERE state='done'\").get() as { n: number; uniq: number };\n  if (d.n !== d.uniq) throw new Error(`JM_DUP_VIOLATION: done=${d.n} distinct_done=${d.uniq}`);\n  db.close();",
+      "start_line": 48,
+      "end_line": 50,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/run.ts",
+      "content": "Budget/stopAfter accounting races under concurrency: `processed` is checked then incremented across concurrent runPool lanes, and `room` is computed from stats().done per batch without counting in-flight claims. This can overshoot budgetCalls HARD CAP and distorts resumed/processed metrics.",
+      "existing_code": "    const room = opts.budgetCalls !== undefined ? Math.max(0, opts.budgetCalls - doneNow) : Infinity;\n    const batch = q.claim(Math.min(opts.concurrency ?? 4, 16, room));",
+      "start_line": 31,
+      "end_line": 32,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/pools/budget.ts",
+      "content": "Check-then-act TOCTOU: `roomLeft()` is checked before `await judge.ask()`, then `spend()` after. With `runPool` concurrency 6 (decision-tree/find/filter), N lanes can all pass `roomLeft()` before any `spend()` runs, overshooting calls/usd caps. The spend already happened (cost incurred) and `spend()` throw is swallowed into noop/errors. Make budget reservation atomic (e.g. `tryReserve():boolean` that increments synchronously before the async call, rollback on failure) or serialize the budgeted section.",
+      "suggestion_code": "  /** Atomic reservation: returns false if no room, otherwise reserves one call synchronously. */\n  tryReserve(): boolean {\n    if (this.caps.calls !== undefined \u0026\u0026 this.calls \u003e= this.caps.calls) return false;\n    this.calls += 1;\n    this.assert();\n    return true;\n  }",
+      "existing_code": "  /** True while another call fits inside the caps (callers check this BEFORE spending). */\n  roomLeft(): boolean {\n    if (this.caps.calls !== undefined \u0026\u0026 this.calls \u003e= this.caps.calls) return false;\n    if (this.caps.usd !== undefined \u0026\u0026 this.usd \u003e= this.caps.usd) return false;\n    return true;\n  }",
+      "start_line": 22,
+      "end_line": 27,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/pools/budget.ts",
+      "content": "Caps object aliased: constructor stores `caps` by reference and `used()` returns `caps: this.caps` directly. Any holder of the original object or the returned object can mutate limits and silently disable the hard stop. Defensive-copy on both ends.",
+      "suggestion_code": "  constructor(caps: { calls?: number; usd?: number } = {}) {\n    this.caps = { ...caps };\n  }",
+      "existing_code": "  constructor(private caps: { calls?: number; usd?: number } = {}) {}",
+      "start_line": 7,
+      "end_line": 7,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "src/pools/budget.ts",
+      "content": "Same aliasing on read path: `used()` leaks internal `caps` reference. Return a copy so callers cannot raise caps via `used().caps`.",
+      "suggestion_code": "  used(): { calls: number; usd: number; caps: { calls?: number; usd?: number } } {\n    return { calls: this.calls, usd: this.usd, caps: { ...this.caps } };\n  }",
+      "existing_code": "  used(): { calls: number; usd: number; caps: { calls?: number; usd?: number } } {\n    return { calls: this.calls, usd: this.usd, caps: this.caps };\n  }",
+      "start_line": 29,
+      "end_line": 31,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "src/pools/budget.ts",
+      "content": "No validation of `usd`: negative/NaN/Infinity corrupts accounting. `NaN` in particular makes `usd \u003e cap` / `usd \u003e= cap` always false, permanently bypassing the usd cap (cost comes from `resp.usage.input_tokens * rate`, fallback `?? 0`). Reject non-finite/negative values.",
+      "suggestion_code": "  spend(usd: number): void {\n    if (!Number.isFinite(usd) || usd \u003c 0) throw new Error(`${JM_BUDGET_EXCEEDED}: invalid spend usd=${usd}`);\n    this.calls += 1; this.usd += usd; this.assert();\n  }",
+      "existing_code": "  spend(usd: number): void { this.calls += 1; this.usd += usd; this.assert(); }",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/pools/pool.ts",
+      "content": "`ok.push(await worker(...))` records results in completion order, losing input position. `decisions` artifact is then built in nondeterministic order (no sort by `i`), breaking byte-identical replay. Pre-size results and assign by index, or return `{index,value}` pairs.",
+      "suggestion_code": "      try { ok[i] = await worker(items[i], i); }\n      // + filter holes / return ordered array, or return {index, value} pairs",
+      "existing_code": "      try { ok.push(await worker(items[i], i)); }",
+      "start_line": 17,
+      "end_line": 17,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/pools/pool.ts",
+      "content": "Error reduced to message string only — stack/cause/type lost. Callers can only `includes('JEV_NO_KEY')`, cannot distinguish retryable vs fatal nor debug. Store `Error` (or `{message, stack, cause}`) alongside index.",
+      "suggestion_code": "      catch (err) { errors.push({ index: i, error: err instanceof Error ? err : new Error(String(err)) }); }",
+      "existing_code": "      catch (err) { errors.push({ index: i, error: err instanceof Error ? err.message : String(err) }); }",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+      "content": "Worker never calls Queue.fail and ignores runPool errors: runPool swallows worker exceptions into {ok,errors}, so a throwing opts.work leaves the row in 'running' forever, stats.failed stays 0, and resume will loop. Wrap work in try/catch and call q.fail on error.",
+      "existing_code": "    await runPool(batch, async (item) =\u003e {\n      if (processed \u003e= budget) return null;        // simulated crash point: leave the row 'running'\n      const out = await opts.work(item.payload as I, item.fingerprint);\n      q.complete(item.id, out);\n      processed++;\n      return out;",
+      "start_line": 34,
+      "end_line": 39,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+      "content": "DB handle leaks on error path: db.close() is only reached on happy path. If DUP check throws, WAL handle/lock is leaked, hurting crash-recovery. Use try/finally for db.close().",
+      "existing_code": "  const d = db.query(\"SELECT COUNT(*) AS n, COUNT(DISTINCT fingerprint) AS uniq FROM queue WHERE state='done'\").get() as { n: number; uniq: number };\n  if (d.n !== d.uniq) throw new Error(`JM_DUP_VIOLATION: done=${d.n} distinct_done=${d.uniq}`);\n  db.close();",
+      "start_line": 48,
+      "end_line": 50,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+      "content": "Budget/stopAfter accounting races under concurrency: `processed` is checked then incremented across concurrent lanes, and `room` is computed from stats().done without counting in-flight claims. This can overshoot budgetCalls HARD CAP.",
+      "existing_code": "    const room = opts.budgetCalls !== undefined ? Math.max(0, opts.budgetCalls - doneNow) : Infinity;\n    const batch = q.claim(Math.min(opts.concurrency ?? 4, 16, room));",
+      "start_line": 31,
+      "end_line": 32,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/judge/key.ts",
+      "content": "Key-file fallback allows relative path and ignores permissions, swallows read errors, and Judge caches key at construction so rotation is missed. Resolve HOME strictly, check mode 600, surface EACCES, and re-resolve per ask() or add TTL.",
+      "suggestion_code": "  const home = process.env.HOME;\n  if (!home) return null;\n  const p = join(home, \".config\", \"typesafe\", \"key\");\n  if (existsSync(p)) {\n    const st = statSync(p);\n    if ((st.mode \u0026 0o077) !== 0) throw new Error(`JM_KEY_PERMS: ${p} must be 0600`);\n    const k = readFileSync(p, \"utf8\").trim();\n    if (k.length \u003e 0) return { key: k, source: \"file\", fingerprint: fingerprintOf(k) };}",
+      "existing_code": "  const p = join(process.env.HOME ?? \".\", \".config\", \"typesafe\", \"key\");\n  if (existsSync(p)) {\n    try {\n      const k = readFileSync(p, \"utf8\").trim();\n      if (k.length \u003e 0) return { key: k, source: \"file\", fingerprint: fingerprintOf(k) };\n    } catch { /* fall through */ }",
+      "start_line": 14,
+      "end_line": 19,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "src/judge/policy.ts",
+      "content": "Empty probabilities yields -Infinity and unvalidated noul/confidence can misroute: Math.max(...[]) is -Infinity, NaN/out-of-range values propagate to routeOf. Guard empty map and clamp/validate signals.",
+      "suggestion_code": "export function signalOf(answer: NoulAnswer | ChoiceAnswer | undefined): number {\n  if (!answer) return 0;\n  if (answer.type === \"noul\") return Number.isFinite(answer.noul) ? Math.min(1, Math.max(0, answer.noul)) : 0;\n  if (answer.probabilities) { const v = Object.values(answer.probabilities).filter(Number.isFinite); if (v.length === 0) return 0; return Math.max(...v); }\n  return Number.isFinite(answer.confidence) ? (answer.confidence as number) : 0;",
+      "existing_code": "export function signalOf(answer: NoulAnswer | ChoiceAnswer | undefined): number {\n  if (!answer) return 0;\n  if (answer.type === \"noul\") return answer.noul;\n  if (answer.probabilities) return Math.max(...Object.values(answer.probabilities));\n  return answer.confidence ?? 0;",
+      "start_line": 11,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+      "content": "Check-then-act TOCTOU: `roomLeft()` is checked before `await judge.ask()`, then `spend()` after. With `runPool` concurrency 6 (decision-tree/find/filter), N lanes can all pass `roomLeft()` before any `spend()` runs, overshooting calls/usd caps. The spend already happened (cost incurred) and `spend()` throw is swallowed into noop/errors. Make budget reservation atomic (e.g. `tryReserve():boolean` that increments synchronously before the async call, rollback on failure) or serialize the budgeted section.",
+      "suggestion_code": "  /** Atomic reservation: returns false if no room, otherwise reserves one call synchronously. */\n  tryReserve(): boolean {\n    if (this.caps.calls !== undefined \u0026\u0026 this.calls \u003e= this.caps.calls) return false;\n    this.calls += 1;\n    this.assert();\n    return true;\n  }",
+      "existing_code": "  /** True while another call fits inside the caps (callers check this BEFORE spending). */\n  roomLeft(): boolean {\n    if (this.caps.calls !== undefined \u0026\u0026 this.calls \u003e= this.caps.calls) return false;\n    if (this.caps.usd !== undefined \u0026\u0026 this.usd \u003e= this.caps.usd) return false;\n    return true;\n  }",
+      "start_line": 22,
+      "end_line": 27,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+      "content": "Caps object aliased: constructor stores `caps` by reference and `used()` returns `caps: this.caps` directly. Any holder of the original object or the returned object can mutate limits and silently disable the hard stop. Defensive-copy on both ends.",
+      "suggestion_code": "  constructor(caps: { calls?: number; usd?: number } = {}) {\n    this.caps = { ...caps };\n  }",
+      "existing_code": "  constructor(private caps: { calls?: number; usd?: number } = {}) {}",
+      "start_line": 7,
+      "end_line": 7,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+      "content": "Same aliasing on read path: `used()` leaks internal `caps` reference. Return a copy so callers cannot raise caps via `used().caps`.",
+      "suggestion_code": "  used(): { calls: number; usd: number; caps: { calls?: number; usd?: number } } {\n    return { calls: this.calls, usd: this.usd, caps: { ...this.caps } };\n  }",
+      "existing_code": "  used(): { calls: number; usd: number; caps: { calls?: number; usd?: number } } {\n    return { calls: this.calls, usd: this.usd, caps: this.caps };\n  }",
+      "start_line": 29,
+      "end_line": 31,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+      "content": "No validation of `usd`: negative/NaN/Infinity corrupts accounting. `NaN` in particular makes `usd \u003e cap` / `usd \u003e= cap` always false, permanently bypassing the usd cap (cost comes from `resp.usage.input_tokens * rate`, fallback `?? 0`). Reject non-finite/negative values.",
+      "suggestion_code": "  spend(usd: number): void {\n    if (!Number.isFinite(usd) || usd \u003c 0) throw new Error(`${JM_BUDGET_EXCEEDED}: invalid spend usd=${usd}`);\n    this.calls += 1; this.usd += usd; this.assert();\n  }",
+      "existing_code": "  spend(usd: number): void { this.calls += 1; this.usd += usd; this.assert(); }",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+      "content": "`ok.push(await worker(...))` records results in completion order, losing input position. `decisions` artifact is then built in nondeterministic order (no sort by `i`), breaking byte-identical replay. Pre-size results and assign by index, or return `{index,value}` pairs.",
+      "suggestion_code": "      try { ok[i] = await worker(items[i], i); }\n      // + filter holes / return ordered array, or return {index, value} pairs",
+      "existing_code": "      try { ok.push(await worker(items[i], i)); }",
+      "start_line": 17,
+      "end_line": 17,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+      "content": "Error reduced to message string only — stack/cause/type lost. Callers can only `includes('JEV_NO_KEY')`, cannot distinguish retryable vs fatal nor debug. Store `Error` (or `{message, stack, cause}`) alongside index.",
+      "suggestion_code": "      catch (err) { errors.push({ index: i, error: err instanceof Error ? err : new Error(String(err)) }); }",
+      "existing_code": "      catch (err) { errors.push({ index: i, error: err instanceof Error ? err.message : String(err) }); }",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/job/indexJob.ts",
+      "content": "Queue ack is not atomic with index side-effects: indexFile writes to indexDb then q.complete writes to queue.sqlite in separate DBs. Crash between them re-executes indexFile on resume (indexFile does non-transactional multi-statement writes with statSync/readFileSync that can throw), and in-memory changed/textIndexed counters reset on resume, so counts inflate and DONE DISTINCT check cannot detect double execution.",
+      "existing_code": "    work: async ({ abs }) =\u003e {\n      const r = indexFile(opts.indexDb, opts.root, abs, opts.opts ?? {});\n      if (r.changed) changed++;\n      if (r.textIndexed) textIndexed++;",
+      "start_line": 25,
+      "end_line": 28,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/indexJob.ts",
+      "content": "Missing null check on count query: filesRow.get() can return null (e.g., missing files table) but is cast directly to {n:number}, causing TypeError on filesRow.n. Guard null and ensure schema initialized.",
+      "existing_code": "  const filesRow = (opts.indexDb.query(\"SELECT COUNT(*) AS n FROM files WHERE state != 'gone'\").get() as { n: number });",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+      "content": "Queue ack is not atomic with index side-effects: indexFile writes to indexDb then q.complete writes to queue.sqlite in separate DBs. Crash between them re-executes indexFile on resume, and in-memory changed/textIndexed counters reset on resume so counts inflate and DONE DISTINCT check cannot detect double execution.",
+      "existing_code": "    work: async ({ abs }) =\u003e {\n      const r = indexFile(opts.indexDb, opts.root, abs, opts.opts ?? {});\n      if (r.changed) changed++;\n      if (r.textIndexed) textIndexed++;",
+      "start_line": 25,
+      "end_line": 28,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+      "content": "Missing null check on count query: filesRow.get() can return null but is cast directly to {n:number}, causing TypeError on filesRow.n. Guard null and ensure schema initialized.",
+      "existing_code": "  const filesRow = (opts.indexDb.query(\"SELECT COUNT(*) AS n FROM files WHERE state != 'gone'\").get() as { n: number });",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+      "content": "INSERT OR IGNORE silently drops payload updates on jobId reuse: re-enqueue with same fingerprint ignores new payload, and done rows are never re-claimed. Incremental re-run with same jobId will miss changed files.",
+      "existing_code": "const ins = this.db.query(\n      \"INSERT OR IGNORE INTO queue(fingerprint, kind, payload, state, created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)\",\n    );",
+      "start_line": 13,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+      "content": "Unused constructor field: `private jobId` is stored but never read; per-job isolation comes from separate SQLite file, not this field. Remove it or use it for scoping/logging.",
+      "existing_code": "  constructor(private db: Database, private jobId: string) {}",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+      "content": "Fingerprint excludes `questions`: same state with different question sets collides under same schemaVersion. Include canonical(questions) in key.",
+      "suggestion_code": "  async ask(state: unknown, questions: Record\u003cstring, unknown\u003e, schemaVersion = \"v1\"): Promise\u003cAskResult\u003e {\n    const model = this.model();\n    const fp = fingerprint(model, schemaVersion, { state, questions });",
+      "existing_code": "  async ask(state: unknown, questions: Record\u003cstring, unknown\u003e, schemaVersion = \"v1\"): Promise\u003cAskResult\u003e {\n    const model = this.model();\n    const fp = fingerprint(model, schemaVersion, state);",
+      "start_line": 34,
+      "end_line": 36,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+      "content": "Raw `state` sent to network while redact() only covers fingerprint path — PII/secrets leak via transport. Redact payload before callSystemOne.",
+      "suggestion_code": "    const key = this.requireKey();\n    const resp = await callSystemOne(key, { state: redact(state), model, questions });",
+      "existing_code": "    const key = this.requireKey();\n    const resp = await callSystemOne(key, { state, model, questions });",
+      "start_line": 40,
+      "end_line": 41,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+      "content": "Overbroad phone/hex regexes and bare JSON.stringify canonical: false-positive redaction and unstable undefined handling.",
+      "suggestion_code": "      .replace(/\\+?\\d[\\d ()-]{7,}\\d/g, (m) =\u003e isPhoneLike(m) ? \"[phone]\" : m)\n      .replace(/\\b[a-f0-9]{32,}\\b/gi, \"[hex]\") // TODO: scope to secret fields",
+      "existing_code": "      .replace(/\\+?\\d[\\d ()-]{7,}\\d/g, \"[phone]\")\n      .replace(/\\b[a-f0-9]{32,}\\b/gi, \"[hex]\")",
+      "start_line": 10,
+      "end_line": 11,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+      "content": "JSON.parse without guard + non-atomic hits increment risks crash on corrupt row and lost counts under concurrency.",
+      "suggestion_code": "  const row = db.query(\"SELECT answer_json, model FROM cache WHERE fingerprint = ?\").get(fp) as { answer_json: string; model: string } | null;\n  if (!row) return null;\n  db.run(\"UPDATE cache SET hits = hits + 1 WHERE fingerprint = ?\", [fp]);\n  try { return { answers: JSON.parse(row.answer_json), model: row.model }; } catch { return null; }",
+      "existing_code": "  const row = db.query(\"SELECT answer_json, model FROM cache WHERE fingerprint = ?\").get(fp) as { answer_json: string; model: string } | null;\n  if (!row) return null;\n  db.run(\"UPDATE cache SET hits = hits + 1 WHERE fingerprint = ?\", [fp]);\n  return { answers: JSON.parse(row.answer_json), model: row.model };",
+      "start_line": 32,
+      "end_line": 35,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+      "content": "Unawaited Bun.write + unvalidated Number(counter) + Bun-only global: flaky parallel tests, call-NaN.json, non-portable off Bun.",
+      "suggestion_code": "    const raw = existsSync(ctrPath) ? readFileSync(ctrPath, \"utf8\") : \"0\";\n    const n = Number(raw);\n    if (!Number.isInteger(n) || n \u003c 0) throw new Error(`JM_MOCK_COUNTER_CORRUPT: ${ctrPath}`);\n    writeFileSync(ctrPath, String(n + 1));",
+      "existing_code": "    const n = existsSync(ctrPath) ? Number(readFileSync(ctrPath, \"utf8\")) : 0;\n    Bun.write(ctrPath, String(n + 1));",
+      "start_line": 20,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+      "content": "Relative HOME fallback, missing 0600 check, swallowed read error, and constructor-cached key misses rotation.",
+      "suggestion_code": "  const home = process.env.HOME;\n  if (!home) return null;\n  const p = join(home, \".config\", \"typesafe\", \"key\");\n  if (existsSync(p)) {\n    const k = readFileSync(p, \"utf8\").trim();\n    if (k.length \u003e 0) return { key: k, source: \"file\", fingerprint: fingerprintOf(k) };}",
+      "existing_code": "  const p = join(process.env.HOME ?? \".\", \".config\", \"typesafe\", \"key\");\n  if (existsSync(p)) {\n    try {\n      const k = readFileSync(p, \"utf8\").trim();\n      if (k.length \u003e 0) return { key: k, source: \"file\", fingerprint: fingerprintOf(k) };\n    } catch { /* fall through */ }",
+      "start_line": 14,
+      "end_line": 19,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+      "content": "Dead fail/reject policy: routeOf() never reads p.fail and never returns 'reject', so fail-open/closed is unenforced.",
+      "suggestion_code": "export function routeOf(answer: NoulAnswer | ChoiceAnswer | undefined, p: Policy): { route: Route; reason: string } {\n  if (!answer) return { route: p.fail === \"closed\" ? \"reject\" : \"noop\", reason: `missing answer fail=${p.fail}` };\n  const s = signalOf(answer);\n  if (s \u003e= p.act) return { route: \"act\", reason: `signal=${s.toFixed(2)} \u003e= act=${p.act}` };\n  if (s \u003e= p.flag) return { route: \"escalate\", reason: `signal=${s.toFixed(2)} in [${p.flag},${p.act})` };\n  return { route: \"noop\", reason: `signal=${s.toFixed(2)} \u003c flag=${p.flag}` };",
+      "existing_code": "export function routeOf(answer: NoulAnswer | ChoiceAnswer | undefined, p: Policy): { route: Route; reason: string } {\n  const s = signalOf(answer);\n  if (s \u003e= p.act) return { route: \"act\", reason: `signal=${s.toFixed(2)} \u003e= act=${p.act}` };\n  if (s \u003e= p.flag) return { route: \"escalate\", reason: `signal=${s.toFixed(2)} in [${p.flag},${p.act})` };\n  return { route: \"noop\", reason: `signal=${s.toFixed(2)} \u003c flag=${p.flag}` };",
+      "start_line": 18,
+      "end_line": 22,
+      "category": "maintainability",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/store.ts",
+      "content": "Path traversal via unsanitized jobId: jobDir(id) joins user-controlled id (CLI --job flag defaults to idx-\u003cname\u003e) into ~/.jm/jobs/\u003cid\u003e/queue.sqlite with mkdirSync recursive. Values like ../, /, absolute paths escape the jobs dir and create/overwrite arbitrary directories/SQLite files. Also JM_HOME fallback to relative '.' when HOME is missing. Validate jobId against allowlist (e.g., /^[A-Za-z0-9_-]+$/) and resolve+contain check.",
+      "existing_code": "export const jobDir = (id: string): string =\u003e join(jobsDir(), id);",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+      "content": "Path traversal via unsanitized jobId: jobDir(id) joins user-controlled id into ~/.jm/jobs/\u003cid\u003e/queue.sqlite with mkdirSync recursive. Values like ../, /, absolute paths escape the jobs dir and create/overwrite arbitrary directories/SQLite files. Validate jobId against allowlist and resolve+contain check.",
+      "existing_code": "export const jobDir = (id: string): string =\u003e join(jobsDir(), id);",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/calibrate.ts",
+      "content": "JSON.parse over every decisions.policy row without try/catch — one malformed policy value (TEXT column, no CHECK constraint) or missing decisions table throws and crashes calibrate verb (no try/catch in CLI calibrate path). Wrap per-row parse with fallback to defaults.",
+      "suggestion_code": "    let p: { act?: number; flag?: number }; try { p = JSON.parse(r.policy ?? \"{}\"); } catch { p = {}; }",
+      "existing_code": "    const p = JSON.parse(r.policy ?? \"{}\") as { act?: number; flag?: number };",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/calibrate.ts",
+      "content": "SELECT includes answer_json but it is never read — dead I/O on full decisions table. Select only conf,policy or use answer_json.",
+      "suggestion_code": "  const rows = db.query(\"SELECT conf, policy FROM decisions\").all() as { conf: number | null; policy: string | null }[];",
+      "existing_code": "  const rows = db.query(\"SELECT answer_json, conf, policy FROM decisions\").all() as { answer_json: string; conf: number | null; policy: string | null }[];",
+      "start_line": 11,
+      "end_line": 11,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "VALUE_FLAGS omits most value-flags consumed via flag() (rows,recipe,context,criteria,out,escalation,concurrency,budget-calls,job,question,min-p,common,structure,in,index,phrase,port,truth,truth-value). Their values leak into positionals(), so e.g. `find --in IDX \u003cphrase\u003e` misidentifies phrase/index and queries wrong index.",
+      "suggestion_code": "const VALUE_FLAGS = new Set([\"name\",\"include\",\"exclude\",\"limit\",\"where\",\"fts\",\"tag\",\"rows\",\"recipe\",\"context\",\"criteria\",\"out\",\"escalation\",\"concurrency\",\"budget-calls\",\"job\",\"question\",\"min-p\",\"common\",\"structure\",\"in\",\"index\",\"phrase\",\"port\",\"truth\",\"truth-value\",\"apply-note\"]);",
+      "existing_code": "const VALUE_FLAGS = new Set([\"name\", \"include\", \"exclude\", \"limit\", \"where\", \"fts\", \"tag\"]);",
+      "start_line": 23,
+      "end_line": 23,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "Unchecked Number(flag(...)) conversions (limit/concurrency/budget-calls/min-p/common/port/truth) propagate NaN into queryIndex (LIMIT NaN), find/decisionTree, startServer, recordTruth. Add isNaN/range validation with JM_ARGS error.",
+      "suggestion_code": "      limit: flag(\"limit\") ? parseValidatedInt(flag(\"limit\"), \"--limit\", 1, 10000) : undefined,",
+      "existing_code": "      limit: flag(\"limit\") ? Number(flag(\"limit\")) : undefined,",
+      "start_line": 81,
+      "end_line": 81,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "openDb without try/finally — if resolveTarget/indexTarget/queryIndex/withLedger throws, db.close() is skipped and handle leaks. Wrap verb body in try/finally.",
+      "suggestion_code": "    const db = openDb(dbPath);\n    try { /* verb body */ } finally { db.close(); }",
+      "existing_code": "    const db = openDb(dbPath);",
+      "start_line": 77,
+      "end_line": 77,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "Hardcoded /tmp default outPath is non-portable (Windows) and serve omits outPath entirely; also calibrate-truth/target/report bypass withLedger, breaking ONE-row-per-run ledger contract and usage() omits most verbs.",
+      "suggestion_code": "          outPath: flag(\"out\") ?? join(tmpdir(), `jm-find-${Date.now()}.md`),",
+      "existing_code": "          outPath: flag(\"out\") ?? `/tmp/jm-find-${Date.now()}.md`,",
+      "start_line": 184,
+      "end_line": 184,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/ledger.ts",
+      "content": "Stdout-purity check via process.argv.includes(\"--json\") misfires when --json appears as a value (e.g. --fts --json) and couples ledger to CLI argv, breaking library use. Pass explicit json flag or detect via parsed options.",
+      "suggestion_code": "export async function withLedger\u003cT\u003e(verb: string, args: Record\u003cstring, unknown\u003e, fn: ..., opts: { json?: boolean } = {})",
+      "existing_code": "    if (process.argv.includes(\"--json\")) console.error(costLine); else console.log(costLine);",
+      "start_line": 50,
+      "end_line": 50,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/ledger.ts",
+      "content": "appendLedger throws synchronously (full/readonly disk masks real result) and readLedger loads entire ledger.jsonl via readFileSync — OOMs report on large ledgers. Handle append errors and stream/paginate reads.",
+      "suggestion_code": "  try { appendFileSync(p, JSON.stringify(row) + \"\\n\"); } catch (e) { console.error(`JM_LEDGER_WRITE_FAIL: ${String(e)}`); }",
+      "existing_code": "  appendFileSync(p, JSON.stringify(row) + \"\\n\");",
+      "start_line": 25,
+      "end_line": 25,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "src/serve.ts",
+      "content": "Bun.serve with only port (no hostname/auth) binds 0.0.0.0 by default while CLI logs 127.0.0.1 — unauthenticated POST /decide (Judge.ask LLM cost) and POST /find exposed to network, enabling remote cost exhaustion/data access. Bind 127.0.0.1 and add auth.",
+      "suggestion_code": "  return Bun.serve({ hostname: \"127.0.0.1\",",
+      "existing_code": "  return Bun.serve({",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/serve.ts",
+      "content": "await req.json() without try/catch plus no validation of state/questions/schema/common/structure — malformed JSON throws unhandled, arbitrary schema poisons cache fingerprint, invalid find opts reach find() with undefined outPath.",
+      "suggestion_code": "          let body: { schema?: string; state?: unknown; questions?: Record\u003cstring, unknown\u003e };\n          try { body = await req.json(); } catch { return Response.json({ error: \"JM_ARGS: invalid JSON\" }, { status: 400 }); }",
+      "existing_code": "          const body = await req.json() as { schema?: string; state?: unknown; questions?: Record\u003cstring, unknown\u003e };",
+      "start_line": 31,
+      "end_line": 31,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/serve.ts",
+      "content": "/health discloses key_source/key_fingerprint/model to any caller — key-material metadata enumeration. Remove or gate behind auth.",
+      "suggestion_code": "          return Response.json({ ok: true, index: indexName });",
+      "existing_code": "          return Response.json({ ok: true, index: indexName, key_source: judge.keySource, key_fingerprint: judge.keyFingerprint, model: judge.model() });",
+      "start_line": 23,
+      "end_line": 23,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/queue.ts",
+      "content": "INSERT OR IGNORE silently drops payload updates on jobId reuse: re-enqueue with same fingerprint (absolute path) ignores new payload, and done rows are never re-claimed. Incremental re-run with same jobId will miss changed files. Update payload on conflict or require fresh jobId for new inputs.",
+      "existing_code": "const ins = this.db.query(\n      \"INSERT OR IGNORE INTO queue(fingerprint, kind, payload, state, created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)\",\n    );",
+      "start_line": 13,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/queue.ts",
+      "content": "Unused constructor field: `private jobId` is stored but never read; per-job isolation comes from separate SQLite file, not this field. Remove it or use it for scoping/logging to avoid confusion.",
+      "existing_code": "  constructor(private db: Database, private jobId: string) {}",
+      "start_line": 9,
+      "end_line": 9,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+      "content": "Same as src/calibrate.ts: unguarded JSON.parse over decisions.policy crashes calibrate on one malformed row. Add per-row try/catch fallback.",
+      "suggestion_code": "    let p: { act?: number; flag?: number }; try { p = JSON.parse(r.policy ?? \"{}\"); } catch { p = {}; }",
+      "existing_code": "    const p = JSON.parse(r.policy ?? \"{}\") as { act?: number; flag?: number };",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+      "content": "Same as src/cli.ts: VALUE_FLAGS misses rows/recipe/context/criteria/out/escalation/concurrency/budget-calls/job/question/min-p/common/structure/in/index/phrase/port/truth — values pollute positionals() and misroute phrase/index.",
+      "suggestion_code": "const VALUE_FLAGS = new Set([\"name\",\"include\",\"exclude\",\"limit\",\"where\",\"fts\",\"tag\",\"rows\",\"recipe\",\"context\",\"criteria\",\"out\",\"escalation\",\"concurrency\",\"budget-calls\",\"job\",\"question\",\"min-p\",\"common\",\"structure\",\"in\",\"index\",\"phrase\",\"port\",\"truth\",\"truth-value\",\"apply-note\"]);",
+      "existing_code": "const VALUE_FLAGS = new Set([\"name\", \"include\", \"exclude\", \"limit\", \"where\", \"fts\", \"tag\"]);",
+      "start_line": 23,
+      "end_line": 23,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+      "content": "Same as src/ledger.ts: process.argv.includes(\"--json\") for stdout routing is fragile and couples ledger to CLI argv.",
+      "suggestion_code": "export async function withLedger\u003cT\u003e(verb: string, args: Record\u003cstring, unknown\u003e, fn: ..., opts: { json?: boolean } = {})",
+      "existing_code": "    if (process.argv.includes(\"--json\")) console.error(costLine); else console.log(costLine);",
+      "start_line": 50,
+      "end_line": 50,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+      "content": "Same as src/serve.ts: Bun.serve with only port exposes unauthenticated /decide//find to network. Bind 127.0.0.1 + auth.",
+      "suggestion_code": "  return Bun.serve({ hostname: \"127.0.0.1\",",
+      "existing_code": "  return Bun.serve({",
+      "start_line": 15,
+      "end_line": 15,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/filter.ts",
+      "content": "Fail-closed violated: runPool swallows worker throws into `errors` (pool.ts), but errors are never inspected here. A JEV_NO_KEY from judge.ask becomes an entry in errors and `judged/kept` returns as success, unlike decision-tree.ts which rethrows. Check errors and rethrow JEV_NO_KEY.",
+      "existing_code": "  const kept = rows.filter((r) =\u003e r.keep).sort((a, b) =\u003e b.p - a.p);",
+      "start_line": 42,
+      "end_line": 42,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/find.ts",
+      "content": "Same fail-closed gap as filter: judge.ask JEV_NO_KEY inside runPool is collected in `errors` and ignored, so find can return empty patterns as success. Mirror decision-tree.ts: inspect results.errors and rethrow JEV_NO_KEY.",
+      "existing_code": "  }, { concurrency: opts.concurrency ?? 6 });",
+      "start_line": 61,
+      "end_line": 61,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/index.ts",
+      "content": "Tombstone leak: gone files only update files.state, docs/docs_fts rows are left behind. Since queryIndex has no state filter, deleted files stay searchable and feed filter/find. Delete from docs/docs_fts on tombstone (as indexFile does on update).",
+      "existing_code": "    for (const r of all) if (!seen.has(r.path)) gone.run(now, r.path);",
+      "start_line": 133,
+      "end_line": 133,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/query.ts",
+      "content": "No state filter: both FTS and full-scan branches return rows with state='gone'. Tombstoned docs remain searchable. Add `AND f.state != 'gone'` (and consider excluding from FTS join).",
+      "existing_code": "  sql += ` ORDER BY f.size DESC LIMIT ${limit}`;",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/index.ts",
+      "content": "Single failure aborts whole batch: statSync/readFileSync in indexFile have no per-file guard and indexTarget wraps all files in one db.transaction. One concurrent delete/permission error throws, rolls back the transaction and may crash CLI. Try/catch per file (skip+count) or move transaction per-file.",
+      "existing_code": "  const st = statSync(abs);",
+      "start_line": 75,
+      "end_line": 75,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/decision-tree.ts",
+      "content": "check-then-act race + nondeterministic order: shared budgetStopped/roomLeft/spend across concurrent workers can overshoot budgetCalls, and results.ok is in completion order so decisions/artifact order varies, breaking byte-identical replay claim. Claim fixed-size batches via queue (see runQueued) or sort decisions by i before emit.",
+      "existing_code": "    if (!budget.roomLeft()) { budgetStopped = true; return null; }   // HARD CAP: no room, no call",
+      "start_line": 54,
+      "end_line": 54,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/decision-tree.ts",
+      "content": "Fragile routing/conf: answersToPolicyValue assumes non-null objects (TypeError on null), routeOf is called on answers[firstKey] which is undefined for empty/multi-question recipes then discarded for agg, and conf is re-parsed from reason string via agg= regex. Keep value from answersToPolicyValue directly instead of regex-parsing reason.",
+      "existing_code": "    const val = Number((d.reason.match(/agg=([0-9.]+)/)?.[1]) ?? 0);",
+      "start_line": 86,
+      "end_line": 86,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/query.ts",
+      "content": "Unvalidated limit/tag/fts: limit clamped only on upper bound and interpolated into SQL (negative/float/NaN =\u003e LIMIT -1 means unlimited or syntax error), tag split on '=' drops extra '=' and defaults value to empty, raw FTS string can throw on operators. Clamp lower bound, validate integer, split on first '=' with validation, catch FTS syntax errors.",
+      "existing_code": "    const [k, v] = opts.tag.split(\"=\");",
+      "start_line": 45,
+      "end_line": 45,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/index.ts",
+      "content": "Over-match + stale skip: non-glob matchesAny uses rel.includes causing 'test' to match 'latest', and incremental skip checks only size+floored mtime without sha, missing same-size content changes / timestamp granularity. Use basename/segment match and add sha comparison on size+mtime hit.",
+      "existing_code": "    if (!p.includes(\"*\") \u0026\u0026 !p.includes(\"?\")) return rel.includes(p) || base === p;",
+      "start_line": 37,
+      "end_line": 37,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+      "content": "Fail-closed violated: runPool swallows worker throws into `errors` (pool.ts), but errors are never inspected here. A JEV_NO_KEY from judge.ask becomes an entry in errors and `judged/kept` returns as success, unlike decision-tree.ts which rethrows. Check errors and rethrow JEV_NO_KEY.",
+      "existing_code": "  const kept = rows.filter((r) =\u003e r.keep).sort((a, b) =\u003e b.p - a.p);",
+      "start_line": 42,
+      "end_line": 42,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+      "content": "Same fail-closed gap as filter: judge.ask JEV_NO_KEY inside runPool is collected in `errors` and ignored, so find can return empty patterns as success. Mirror decision-tree.ts: inspect results.errors and rethrow JEV_NO_KEY.",
+      "existing_code": "  }, { concurrency: opts.concurrency ?? 6 });",
+      "start_line": 61,
+      "end_line": 61,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+      "content": "Tombstone leak: gone files only update files.state, docs/docs_fts rows are left behind. Since queryIndex has no state filter, deleted files stay searchable and feed filter/find. Delete from docs/docs_fts on tombstone (as indexFile does on update).",
+      "existing_code": "    for (const r of all) if (!seen.has(r.path)) gone.run(now, r.path);",
+      "start_line": 133,
+      "end_line": 133,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+      "content": "No state filter: both FTS and full-scan branches return rows with state='gone'. Tombstoned docs remain searchable. Add `AND f.state != 'gone'` (and consider excluding from FTS join).",
+      "existing_code": "  sql += ` ORDER BY f.size DESC LIMIT ${limit}`;",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+      "content": "Single failure aborts whole batch: statSync/readFileSync in indexFile have no per-file guard and indexTarget wraps all files in one db.transaction. One concurrent delete/permission error throws, rolls back the transaction and may crash CLI. Try/catch per file (skip+count) or move transaction per-file.",
+      "existing_code": "  const st = statSync(abs);",
+      "start_line": 75,
+      "end_line": 75,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+      "content": "check-then-act race + nondeterministic order: shared budgetStopped/roomLeft/spend across concurrent workers can overshoot budgetCalls, and results.ok is in completion order so decisions/artifact order varies, breaking byte-identical replay claim. Claim fixed-size batches via queue (see runQueued) or sort decisions by i before emit.",
+      "existing_code": "    if (!budget.roomLeft()) { budgetStopped = true; return null; }   // HARD CAP: no room, no call",
+      "start_line": 54,
+      "end_line": 54,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+      "content": "Fragile routing/conf: answersToPolicyValue assumes non-null objects (TypeError on null), routeOf is called on answers[firstKey] which is undefined for empty/multi-question recipes then discarded for agg, and conf is re-parsed from reason string via agg= regex. Keep value from answersToPolicyValue directly instead of regex-parsing reason.",
+      "existing_code": "    const val = Number((d.reason.match(/agg=([0-9.]+)/)?.[1]) ?? 0);",
+      "start_line": 86,
+      "end_line": 86,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+      "content": "Unvalidated limit/tag/fts: limit clamped only on upper bound and interpolated into SQL (negative/float/NaN =\u003e LIMIT -1 means unlimited or syntax error), tag split on '=' drops extra '=' and defaults value to empty, raw FTS string can throw on operators. Clamp lower bound, validate integer, split on first '=' with validation, catch FTS syntax errors.",
+      "existing_code": "    const [k, v] = opts.tag.split(\"=\");",
+      "start_line": 45,
+      "end_line": 45,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+      "content": "Over-match + stale skip: non-glob matchesAny uses rel.includes causing 'test' to match 'latest', and incremental skip checks only size+floored mtime without sha, missing same-size content changes / timestamp granularity. Use basename/segment match and add sha comparison on size+mtime hit.",
+      "existing_code": "    if (!p.includes(\"*\") \u0026\u0026 !p.includes(\"?\")) return rel.includes(p) || base === p;",
+      "start_line": 37,
+      "end_line": 37,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+      "content": "Duplicate STOP entry ('its' twice) and repeated judge/budget/excerpt boilerplate with magic concurrency/excerpt defaults across verbs. Deduplicate set and extract shared judge-with-budget helper.",
+      "existing_code": "const STOP = new Set([\"the\", \"and\", \"for\", \"with\", \"that\", \"this\", \"from\", \"into\", \"what\", \"when\", \"where\", \"which\", \"have\", \"has\", \"was\", \"were\", \"are\", \"its\", \"its\", \"bug\", \"issue\"]);",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "src/verbs/find.ts",
+      "content": "Duplicate STOP entry ('its' twice) and repeated judge/budget/excerpt boilerplate with magic concurrency/excerpt defaults across verbs. Deduplicate set and extract shared judge-with-budget helper.",
+      "existing_code": "const STOP = new Set([\"the\", \"and\", \"for\", \"with\", \"that\", \"this\", \"from\", \"into\", \"what\", \"when\", \"where\", \"which\", \"have\", \"has\", \"was\", \"were\", \"are\", \"its\", \"its\", \"bug\", \"issue\"]);",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "style",
+      "severity": "low"
+    },
+    {
+      "path": "src/pools/budget.ts",
+      "content": "Caps are not value-validated: NaN/Infinity/negative/fractional caps silently disable the hard stop. E.g. `--budget-calls foo` -\u003e `Number(...)` = NaN -\u003e `calls \u003e NaN` and `calls \u003e= NaN` are always false, so neither `assert()` nor `roomLeft()` ever trips. Validate caps (finite, non-negative, integer for calls) and throw on invalid.",
+      "suggestion_code": "constructor(caps: { calls?: number; usd?: number } = {}) {\n  if (caps.calls !== undefined \u0026\u0026 (!Number.isFinite(caps.calls) || caps.calls \u003c 0 || !Number.isInteger(caps.calls))) throw new Error(`JM_ARGS: invalid calls cap=${caps.calls}`);\n  if (caps.usd !== undefined \u0026\u0026 (!Number.isFinite(caps.usd) || caps.usd \u003c 0)) throw new Error(`JM_ARGS: invalid usd cap=${caps.usd}`);\n  this.caps = { ...caps };\n}",
+      "existing_code": "constructor(private caps: { calls?: number; usd?: number } = {}) {}",
+      "start_line": 7,
+      "end_line": 7,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "src/pools/budget.ts",
+      "content": "`usd.toFixed(6)` in the refusal path throws `RangeError` when `usd` is non-finite/huge (e.g. `Infinity.toFixed()` throws), masking `JM_BUDGET_EXCEEDED` with an unrelated error. Use safe formatting that never throws on the error path.",
+      "suggestion_code": "throw new Error(`${JM_BUDGET_EXCEEDED}: usd=${Number.isFinite(this.usd) ? this.usd.toFixed(6) : String(this.usd)} cap=${this.caps.usd}`);",
+      "existing_code": "throw new Error(`${JM_BUDGET_EXCEEDED}: usd=${this.usd.toFixed(6)} cap=${this.caps.usd}`);",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/pools/pool.ts",
+      "content": "`Math.max(1, NaN)` is `NaN`, then `Math.min(NaN, len)` is `NaN` and `Array.from({length: NaN})` creates 0 lanes — `runPool` silently returns `{ok:[], errors:[]}` without running any worker. CLI passes `Number(flag(...))` which is `NaN` on bad input; fractional/Infinity values are also not normalized. Sanitize to a finite integer.",
+      "suggestion_code": "const raw = opts.concurrency ?? 4;\nconst concurrency = Number.isFinite(raw) ? Math.max(1, Math.floor(raw)) : 4;",
+      "existing_code": "const concurrency = Math.max(1, opts.concurrency ?? 4);",
+      "start_line": 10,
+      "end_line": 10,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/pools/pool.ts",
+      "content": "`onProgress` is invoked outside the per-item try/catch. If the callback throws, the lane rejects and `Promise.all` rejects, so one progress-handler bug kills the whole pool — contradicting `a failing item never kills the pool`. Isolate the callback.",
+      "suggestion_code": "try { opts.onProgress?.(done, items.length); } catch { /* progress must never fail the pool */ }",
+      "existing_code": "opts.onProgress?.(done, items.length);",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+      "content": "Caps are not value-validated: NaN/Infinity/negative/fractional caps silently disable the hard stop. E.g. `--budget-calls foo` -\u003e `Number(...)` = NaN -\u003e `calls \u003e NaN` and `calls \u003e= NaN` are always false, so neither `assert()` nor `roomLeft()` ever trips. Validate caps (finite, non-negative, integer for calls) and throw on invalid.",
+      "suggestion_code": "constructor(caps: { calls?: number; usd?: number } = {}) {\n  if (caps.calls !== undefined \u0026\u0026 (!Number.isFinite(caps.calls) || caps.calls \u003c 0 || !Number.isInteger(caps.calls))) throw new Error(`JM_ARGS: invalid calls cap=${caps.calls}`);\n  if (caps.usd !== undefined \u0026\u0026 (!Number.isFinite(caps.usd) || caps.usd \u003c 0)) throw new Error(`JM_ARGS: invalid usd cap=${caps.usd}`);\n  this.caps = { ...caps };\n}",
+      "existing_code": "constructor(private caps: { calls?: number; usd?: number } = {}) {}",
+      "start_line": 7,
+      "end_line": 7,
+      "category": "security",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+      "content": "`usd.toFixed(6)` in the refusal path throws `RangeError` when `usd` is non-finite/huge (e.g. `Infinity.toFixed()` throws), masking `JM_BUDGET_EXCEEDED` with an unrelated error. Use safe formatting that never throws on the error path.",
+      "suggestion_code": "throw new Error(`${JM_BUDGET_EXCEEDED}: usd=${Number.isFinite(this.usd) ? this.usd.toFixed(6) : String(this.usd)} cap=${this.caps.usd}`);",
+      "existing_code": "throw new Error(`${JM_BUDGET_EXCEEDED}: usd=${this.usd.toFixed(6)} cap=${this.caps.usd}`);",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+      "content": "`Math.max(1, NaN)` is `NaN`, then `Math.min(NaN, len)` is `NaN` and `Array.from({length: NaN})` creates 0 lanes — `runPool` silently returns `{ok:[], errors:[]}` without running any worker. CLI passes `Number(flag(...))` which is `NaN` on bad input; fractional/Infinity values are also not normalized. Sanitize to a finite integer.",
+      "suggestion_code": "const raw = opts.concurrency ?? 4;\nconst concurrency = Number.isFinite(raw) ? Math.max(1, Math.floor(raw)) : 4;",
+      "existing_code": "const concurrency = Math.max(1, opts.concurrency ?? 4);",
+      "start_line": 10,
+      "end_line": 10,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+      "content": "`onProgress` is invoked outside the per-item try/catch. If the callback throws, the lane rejects and `Promise.all` rejects, so one progress-handler bug kills the whole pool — contradicting `a failing item never kills the pool`. Isolate the callback.",
+      "suggestion_code": "try { opts.onProgress?.(done, items.length); } catch { /* progress must never fail the pool */ }",
+      "existing_code": "opts.onProgress?.(done, items.length);",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "Multi-statement SCHEMA_SQL executed via db.run() may only apply the first statement (meta). bun:sqlite prepares a single statement for query/run; DDL bundles need exec. If only meta is created, later access to files/docs/tags fails with 'no such table'. Use db.exec(SCHEMA_SQL). Same pattern in src/job/store.ts suggests a systematic fix.",
+      "suggestion_code": "  db.exec(SCHEMA_SQL);",
+      "existing_code": "  db.run(SCHEMA_SQL);",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "Multi-statement SCHEMA_SQL executed via db.run() may only apply the first statement (meta). bun:sqlite prepares a single statement for query/run; DDL bundles need exec. If only meta is created, later access to files/docs/tags fails with 'no such table'. Use db.exec(SCHEMA_SQL).",
+      "suggestion_code": "  db.exec(SCHEMA_SQL);",
+      "existing_code": "  db.run(SCHEMA_SQL);",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "basename-derived index name collides: distinct roots like /a/proj and /b/proj both map to proj.sqlite, and CLI defaults to flag(\"name\") ?? name so the second index silently reuses/overwrites the first. Disambiguate (e.g. hash of root) or require explicit --name on collision.",
+      "suggestion_code": "  const safe = basename(root) || \"root\";\n  const suffix = createHash(\"sha1\").update(root).digest(\"hex\").slice(0, 8);\n  return { name: `${safe}-${suffix}`, root }; формулы",
+      "existing_code": "  return { name: basename(root) || \"root\", root };",
+      "start_line": 47,
+      "end_line": 47,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "basename-derived index name collides: distinct roots like /a/proj and /b/proj both map to proj.sqlite, and CLI defaults to flag(\"name\") ?? name so the second index silently reuses/overwrites the first. Disambiguate (e.g. hash of root) or require explicit --name on collision.",
+      "suggestion_code": "  const safe = basename(root) || \"root\";\n  const suffix = createHash(\"sha1\").update(root).digest(\"hex\").slice(0, 8);\n  return { name: `${safe}-${suffix}`, root };",
+      "existing_code": "  return { name: basename(root) || \"root\", root };",
+      "start_line": 47,
+      "end_line": 47,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "@target branch skips the existsSync check the path branch performs, so a stale registry entry (moved/deleted root) flows into walk(), where readdirSync failure is swallowed to 0 files and reported as success. Validate t.root existence and throw JM_TARGET_MISSING for parity.",
+      "suggestion_code": "    if (!existsSync(t.root)) throw new Error(`JM_TARGET_MISSING: ${t.root} does not exist`);\n    return { name: t.name, root: t.root };",
+      "existing_code": "    return { name: t.name, root: t.root };",
+      "start_line": 43,
+      "end_line": 43,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+      "content": "@target branch skips the existsSync check the path branch performs, so a stale registry entry (moved/deleted root) flows into walk(), where readdirSync failure is swallowed to 0 files and reported as success. Validate t.root existence and throw JM_TARGET_MISSING for parity.",
+      "suggestion_code": "    if (!existsSync(t.root)) throw new Error(`JM_TARGET_MISSING: ${t.root} does not exist`);\n    return { name: t.name, root: t.root };",
+      "existing_code": "    return { name: t.name, root: t.root };",
+      "start_line": 43,
+      "end_line": 43,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/store/schema.ts",
+      "content": "Only files(state/size) are indexed, but hot paths filter on docs.file_id/path (indexFile DELETE/INSERT, filter SELECT text FROM docs WHERE path=?) and tags(name/value/path) (queryIndex subselect). These degrade to full scans as the index grows. Add indexes on docs(file_id, path) and tags(path, name, value).",
+      "suggestion_code": "CREATE INDEX IF NOT EXISTS idx_files_state ON files(state);\nCREATE INDEX IF NOT EXISTS idx_files_size  ON files(size);\nCREATE INDEX IF NOT EXISTS idx_docs_file_id ON docs(file_id);\nCREATE INDEX IF NOT EXISTS idx_docs_path ON docs(path);\nCREATE INDEX IF NOT EXISTS idx_tags_path ON tags(path);\nCREATE INDEX IF NOT EXISTS idx_tags_name_value ON tags(name, value);",
+      "existing_code": "CREATE INDEX IF NOT EXISTS idx_files_state ON files(state);\nCREATE INDEX IF NOT EXISTS idx_files_size  ON files(size);",
+      "start_line": 22,
+      "end_line": 23,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+      "content": "Only files(state/size) are indexed, but hot paths filter on docs.file_id/path (indexFile DELETE/INSERT, filter SELECT text FROM docs WHERE path=?) and tags(name/value/path) (queryIndex subselect). These degrade to full scans as the index grows. Add indexes on docs(file_id, path) and tags(path, name, value).",
+      "suggestion_code": "CREATE INDEX IF NOT EXISTS idx_files_state ON files(state);\nCREATE INDEX IF NOT EXISTS idx_files_size  ON files(size);\nCREATE INDEX IF NOT EXISTS idx_docs_file_id ON docs(file_id);\nCREATE INDEX IF NOT EXISTS idx_docs_path ON docs(path);\nCREATE INDEX IF NOT EXISTS idx_tags_path ON tags(path);\nCREATE INDEX IF NOT EXISTS idx_tags_name_value ON tags(name, value);",
+      "existing_code": "CREATE INDEX IF NOT EXISTS idx_files_state ON files(state);\nCREATE INDEX IF NOT EXISTS idx_files_size  ON files(size);",
+      "start_line": 22,
+      "end_line": 23,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "src/store/schema.ts",
+      "content": "Timestamp columns use bare TEXT NOT NULL with no DEFAULT and inconsistent nullability (files.indexed_at/runs.started NOT NULL vs tags.judged_at/cache.created_at/decisions.at nullable). Every writer must hand-format ISO strings; a missed field fails the INSERT and formats can drift. Add DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ','now')) and make nullability consistent.",
+      "suggestion_code": "  indexed_at   TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ','now'))",
+      "existing_code": "  indexed_at   TEXT NOT NULL",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+      "content": "Timestamp columns use bare TEXT NOT NULL with no DEFAULT and inconsistent nullability (files.indexed_at/runs.started NOT NULL vs tags.judged_at/cache.created_at/decisions.at nullable). Every writer must hand-format ISO strings; a missed field fails the INSERT and formats can drift. Add DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ','now')) and make nullability consistent.",
+      "suggestion_code": "  indexed_at   TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ','now'))",
+      "existing_code": "  indexed_at   TEXT NOT NULL",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+      "content": "Generic object branch collapses Date/Map/Set/class instances to `{}` via `Object.keys()`. Different Dates (or Maps with different entries) fingerprint identically, causing cache collisions and wrong cache hits. Handle Date (toISOString), Map/Set, ArrayBuffer/views explicitly or reject non-plain objects.",
+      "suggestion_code": "if (value instanceof Date) return isNaN(value.getTime()) ? \"[date-invalid]\" : value.toISOString();\n  if (value instanceof Map) return { \"__map\": [...value.entries()].map(([k, v]) =\u003e [redact(k), redact(v)]).sort() };\n  if (value instanceof Set) return { \"__set\": [...value].map(redact).sort() };\n  if (value \u0026\u0026 typeof value === \"object\") {\n    if (Object.getPrototypeOf(value) !== Object.prototype) return String(value);\n    const out: Record\u003cstring, unknown\u003e = {};\n    for (const k of Object.keys(value as Record\u003cstring, unknown\u003e).sort()) out[k] = redact((value as Record\u003cstring, unknown\u003e)[k]);\n    return out;\n  }",
+      "existing_code": "  if (value \u0026\u0026 typeof value === \"object\") {\n    const out: Record\u003cstring, unknown\u003e = {};\n    for (const k of Object.keys(value as Record\u003cstring, unknown\u003e).sort()) out[k] = redact((value as Record\u003cstring, unknown\u003e)[k]);\n    return out;\n  }",
+      "start_line": 15,
+      "end_line": 19,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/judge/cache.ts",
+      "content": "Generic object branch collapses Date/Map/Set/class instances to `{}` via `Object.keys()`. Different Dates (or Maps with different entries) fingerprint identically, causing cache collisions and wrong cache hits. Handle Date (toISOString), Map/Set, ArrayBuffer/views explicitly or reject non-plain objects.",
+      "suggestion_code": "if (value instanceof Date) return isNaN(value.getTime()) ? \"[date-invalid]\" : value.toISOString();\n  if (value instanceof Map) return { \"__map\": [...value.entries()].map(([k, v]) =\u003e [redact(k), redact(v)]).sort() };\n  if (value instanceof Set) return { \"__set\": [...value].map(redact).sort() };\n  if (value \u0026\u0026 typeof value === \"object\") {\n    if (Object.getPrototypeOf(value) !== Object.prototype) return String(value);\n    const out: Record\u003cstring, unknown\u003e = {};\n    for (const k of Object.keys(value as Record\u003cstring, unknown\u003e).sort()) out[k] = redact((value as Record\u003cstring, unknown\u003e)[k]);\n    return out;\n  }",
+      "existing_code": "  if (value \u0026\u0026 typeof value === \"object\") {\n    const out: Record\u003cstring, unknown\u003e = {};\n    for (const k of Object.keys(value as Record\u003cstring, unknown\u003e).sort()) out[k] = redact((value as Record\u003cstring, unknown\u003e)[k]);\n    return out;\n  }",
+      "start_line": 15,
+      "end_line": 19,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+      "content": "`mock:true` without `JM_MOCK_DIR` still hits the real network with `Bearer mock`. The flag only fakes the key, it doesn't fake the transport, so unit tests expecting no I/O will make a real HTTP call (and leak state). Gate the mock path on both or short-circuit `ask()` before `callSystemOne`.",
+      "suggestion_code": "private requireKey(): string {\n    if (process.env.JM_MOCK_DIR) return this.key ?? \"mock\";\n    if (this.opts.mock) throw new Error(\"JM_MOCK_NO_DIR: opts.mock requires JM_MOCK_DIR\");\n    if (!this.key) throw new JevNoKeyError();\n    return this.key;\n  }",
+      "existing_code": "    if (this.opts.mock || process.env.JM_MOCK_DIR) return this.key ?? \"mock\";",
+      "start_line": 29,
+      "end_line": 29,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/judge/client.ts",
+      "content": "`mock:true` without `JM_MOCK_DIR` still hits the real network with `Bearer mock`. The flag only fakes the key, it doesn't fake the transport, so unit tests expecting no I/O will make a real HTTP call (and leak state). Gate the mock path on both or short-circuit `ask()` before `callSystemOne`.",
+      "suggestion_code": "private requireKey(): string {\n    if (process.env.JM_MOCK_DIR) return this.key ?? \"mock\";\n    if (this.opts.mock) throw new Error(\"JM_MOCK_NO_DIR: opts.mock requires JM_MOCK_DIR\");\n    if (!this.key) throw new JevNoKeyError();\n    return this.key;\n  }",
+      "existing_code": "    if (this.opts.mock || process.env.JM_MOCK_DIR) return this.key ?? \"mock\";",
+      "start_line": 29,
+      "end_line": 29,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+      "content": "Key material is only `trim()`ed, not validated. A key file/env containing embedded `\\r`/`\\n`/control chars passes through and is interpolated into `Authorization: Bearer ${key}`, enabling HTTP header injection and obscure auth failures. Reject keys with internal whitespace/control chars and enforce expected shape/length.",
+      "suggestion_code": "const env = process.env.TYPESAFE_API_KEY?.trim();\n  if (env) {\n    if (/[\\r\\n\\s]/.test(env)) throw new Error(\"JEV_BAD_KEY: key contains whitespace/control chars\");\n    return { key: env, source: \"env\", fingerprint: fingerprintOf(env) };\n  }",
+      "existing_code": "  const env = process.env.TYPESAFE_API_KEY;\n  if (env \u0026\u0026 env.trim().length \u003e 0) {\n    return { key: env.trim(), source: \"env\", fingerprint: fingerprintOf(env.trim()) };",
+      "start_line": 10,
+      "end_line": 12,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "src/judge/key.ts",
+      "content": "Key material is only `trim()`ed, not validated. A key file/env containing embedded `\\r`/`\\n`/control chars passes through and is interpolated into `Authorization: Bearer ${key}`, enabling HTTP header injection and obscure auth failures. Reject keys with internal whitespace/control chars and enforce expected shape/length.",
+      "suggestion_code": "const env = process.env.TYPESAFE_API_KEY?.trim();\n  if (env) {\n    if (/[\\r\\n\\s]/.test(env)) throw new Error(\"JEV_BAD_KEY: key contains whitespace/control chars\");\n    return { key: env, source: \"env\", fingerprint: fingerprintOf(env) };\n  }",
+      "existing_code": "  const env = process.env.TYPESAFE_API_KEY;\n  if (env \u0026\u0026 env.trim().length \u003e 0) {\n    return { key: env.trim(), source: \"env\", fingerprint: fingerprintOf(env.trim()) };",
+      "start_line": 10,
+      "end_line": 12,
+      "category": "security",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+      "content": "Contract mismatch with `transport.ts` (`type: string`): any unknown `type` (e.g. `score`, typo) silently falls through to `confidence ?? 0` and routes to `noop`/`escalate` instead of failing. Add exhaustiveness check — unknown types should throw or route to `reject` per fail-closed policy.",
+      "suggestion_code": "export function signalOf(answer: NoulAnswer | ChoiceAnswer | undefined): number {\n  if (!answer) return 0;\n  if (answer.type === \"noul\") return answer.noul;\n  if (answer.type === \"choice\") {\n    if (answer.probabilities) return Math.max(...Object.values(answer.probabilities));\n    return answer.confidence ?? 0;\n  }\n  throw new Error(`JM_BAD_ANSWER_TYPE: ${(answer as { type: string }).type}`);",
+      "existing_code": "export function signalOf(answer: NoulAnswer | ChoiceAnswer | undefined): number {\n  if (!answer) return 0;\n  if (answer.type === \"noul\") return answer.noul;\n  if (answer.probabilities) return Math.max(...Object.values(answer.probabilities));\n  return answer.confidence ?? 0;",
+      "start_line": 11,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/judge/policy.ts",
+      "content": "Contract mismatch with `transport.ts` (`type: string`): any unknown `type` (e.g. `score`, typo) silently falls through to `confidence ?? 0` and routes to `noop`/`escalate` instead of failing. Add exhaustiveness check — unknown types should throw or route to `reject` per fail-closed policy.",
+      "suggestion_code": "export function signalOf(answer: NoulAnswer | ChoiceAnswer | undefined): number {\n  if (!answer) return 0;\n  if (answer.type === \"noul\") return answer.noul;\n  if (answer.type === \"choice\") {\n    if (answer.probabilities) return Math.max(...Object.values(answer.probabilities));\n    return answer.confidence ?? 0;\n  }\n  throw new Error(`JM_BAD_ANSWER_TYPE: ${(answer as { type: string }).type}`);",
+      "existing_code": "export function signalOf(answer: NoulAnswer | ChoiceAnswer | undefined): number {\n  if (!answer) return 0;\n  if (answer.type === \"noul\") return answer.noul;\n  if (answer.probabilities) return Math.max(...Object.values(answer.probabilities));\n  return answer.confidence ?? 0;",
+      "start_line": 11,
+      "end_line": 15,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+      "content": "API endpoint and model are hardcoded with no env override, forcing code changes for staging/mocking/rotation and violating the no-hardcoded-URL rule. Read from env (e.g. `TYPESAFE_URL`, `TYPESAFE_MODEL`) with these as defaults.",
+      "suggestion_code": "export const TYPESAFE_URL = process.env.TYPESAFE_URL ?? \"https://api.typesafe.ai/v1/systemone\";\nexport const TYPESAFE_MODEL = process.env.TYPESAFE_MODEL ?? \"jev-latest\";",
+      "existing_code": "export const TYPESAFE_URL = \"https://api.typesafe.ai/v1/systemone\";\nexport const TYPESAFE_MODEL = \"jev-latest\";",
+      "start_line": 12,
+      "end_line": 13,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/judge/transport.ts",
+      "content": "API endpoint and model are hardcoded with no env override, forcing code changes for staging/mocking/rotation and violating the no-hardcoded-URL rule. Read from env (e.g. `TYPESAFE_URL`, `TYPESAFE_MODEL`) with these as defaults.",
+      "suggestion_code": "export const TYPESAFE_URL = process.env.TYPESAFE_URL ?? \"https://api.typesafe.ai/v1/systemone\";\nexport const TYPESAFE_MODEL = process.env.TYPESAFE_MODEL ?? \"jev-latest\";",
+      "existing_code": "export const TYPESAFE_URL = \"https://api.typesafe.ai/v1/systemone\";\nexport const TYPESAFE_MODEL = \"jev-latest\";",
+      "start_line": 12,
+      "end_line": 13,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/job/queue.ts",
+      "content": "kind is write-only: enqueue stores it but claim/sweep/stats never filter by it. Reusing one jobId for two kinds mixes payload types in claim() and work(I) will mis-handle rows.",
+      "suggestion_code": "claim(n: number, kind?: string): QueueItem[] { /* add AND kind=? filter when kind provided */ } // and scope sweep()/stats() the same way, or drop the kind column/param",
+      "existing_code": "  enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): number {",
+      "start_line": 11,
+      "end_line": 11,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/queue.ts",
+      "content": "JSON.parse inside the claim transaction poisons the whole batch: one corrupt payload row throws, the transaction rolls back, and the same row will fail every future claim with no fail/dead-letter path.",
+      "suggestion_code": "const rows = tx(); // claim ids only inside tx\nreturn rows.map((r) =\u003e { try { return { ...r, payload: JSON.parse(r.payload) }; } catch { this.fail(r.id, 'corrupt payload'); return null; } }).filter(Boolean) as QueueItem[];",
+      "existing_code": "      return rows.map((r) =\u003e ({ ...r, payload: JSON.parse(r.payload) as unknown }));",
+      "start_line": 31,
+      "end_line": 31,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/queue.ts",
+      "content": "Negative/NaN concurrency becomes LIMIT -1 (no limit in SQLite): claim(Math.min(concurrency,16,room)) with concurrency=-1 claims the entire pending queue, defeating bounded concurrency and budget cap. Validate claim count.",
+      "suggestion_code": "claim(n: number): QueueItem[] {\n  n = Math.floor(n);\n  if (!Number.isFinite(n) || n \u003c= 0) return [];\n  // ... existing tx",
+      "existing_code": "        \"SELECT id, fingerprint, kind, payload, attempts FROM queue WHERE state='pending' ORDER BY id LIMIT ?\",",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/run.ts",
+      "content": "Unfenced sweep steals live work: any second process with the same jobId resets the first process's in-flight 'running' rows to pending, causing duplicate work. Needs owner lease / stale timeout, not blind UPDATE.",
+      "suggestion_code": "// add claimed_by + heartbeat, sweep only where updated_at \u003c staleThreshold\nconst resumed = q.sweepStale(Date.now() - 60_000);",
+      "existing_code": "  const resumed = q.sweep();                       // RESUME SWEEP: dead 'running' rows → pending",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/run.ts",
+      "content": "Test hook leaks into production and name shadows budgetCalls: `budget` actually holds stopAfter. A caller passing stopAfter in prod silently leaves rows 'running'.",
+      "suggestion_code": "// remove stopAfter from prod signature or gate behind NODE_ENV==='test'\nconst crashAfter = opts.stopAfter ?? Infinity;",
+      "existing_code": "  const budget = opts.stopAfter ?? Infinity;",
+      "start_line": 25,
+      "end_line": 25,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/run.ts",
+      "content": "stats() is 4x COUNT(*) per loop iteration plus claim/select each batch. For N files this is O(N/batch) full-table scans. Cache done count from batch results or use single GROUP BY query.",
+      "suggestion_code": "// track doneNow locally: doneNow += batch.length (minus failures) instead of q.stats() each iteration",
+      "existing_code": "    const doneNow = q.stats().done;",
+      "start_line": 28,
+      "end_line": 28,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/store.ts",
+      "content": "No busy_timeout: queue.sqlite and indexDb are written from concurrent runPool lanes/WAL mode. Contended writes fail fast with SQLITE_BUSY instead of waiting.",
+      "suggestion_code": "db.run(\"PRAGMA journal_mode = WAL\");\ndb.run(\"PRAGMA busy_timeout = 5000\");\ndb.run(\"PRAGMA synchronous = FULL\");",
+      "existing_code": "  db.run(\"PRAGMA journal_mode = WAL\");",
+      "start_line": 19,
+      "end_line": 19,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/store.ts",
+      "content": "Dead schema: job_meta table is created but never written or read. Remove it or wire it up.",
+      "suggestion_code": "// remove job_meta DDL until needed",
+      "existing_code": "    CREATE TABLE IF NOT EXISTS job_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "src/job/indexJob.ts",
+      "content": "Unbounded materialization: listFiles + items array holds every path/payload in memory and enqueues all at once. Large repos OOM. Stream in batches.",
+      "suggestion_code": "// paginate: for (const chunk of chunks(listFiles(...), 1000)) { await runQueued({..., items: chunk, ...}) }",
+      "existing_code": "  const paths = listFiles(opts.root, opts.opts ?? {});",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "src/job/indexJob.ts",
+      "content": "Absolute-path fingerprint is unstable: same checkout at a different root/cwd or via symlink produces different fingerprints, breaking resume idempotency and colliding with rel-keyed files table. Fingerprint on root-relative path.",
+      "suggestion_code": "import { relative } from \"node:path\";\nconst items = paths.map((abs) =\u003e ({ fingerprint: relative(opts.root, abs), payload: { abs } }));",
+      "existing_code": "  const items = paths.map((abs) =\u003e ({ fingerprint: abs, payload: { abs } }));",
+      "start_line": 19,
+      "end_line": 19,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/job/indexJob.ts",
+      "content": "Error is stringified and swallowed, then code still queries indexDb: if the failure was indexDb corruption, the final COUNT throws and masks the original error with an unhandled rejection.",
+      "suggestion_code": "}).catch((e) =\u003e { error = e instanceof Error ? e.message : String(e); return null; });\n// then wrap filesRow query in try/catch before building result",
+      "existing_code": "  }).catch((e) =\u003e { error = String(e); return null; });",
+      "start_line": 31,
+      "end_line": 31,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+      "content": "kind is write-only: enqueue stores it but claim/sweep/stats never filter by it. Reusing one jobId for two kinds mixes payload types in claim() and work(I) will mis-handle rows.",
+      "suggestion_code": "claim(n: number, kind?: string): QueueItem[] { /* add AND kind=? filter when kind provided */ }",
+      "existing_code": "  enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): number {",
+      "start_line": 11,
+      "end_line": 11,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+      "content": "JSON.parse inside the claim transaction poisons the whole batch: one corrupt payload row throws, the transaction rolls back, and the same row will fail every future claim with no fail/dead-letter path.",
+      "suggestion_code": "// claim ids in tx, parse outside tx; on parse error call this.fail(id, 'corrupt payload')",
+      "existing_code": "      return rows.map((r) =\u003e ({ ...r, payload: JSON.parse(r.payload) as unknown }));",
+      "start_line": 31,
+      "end_line": 31,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+      "content": "Negative/NaN concurrency becomes LIMIT -1 (no limit in SQLite): claim(Math.min(concurrency,16,room)) with concurrency=-1 claims the entire pending queue, defeating bounded concurrency and budget cap. Validate claim count.",
+      "suggestion_code": "claim(n: number): QueueItem[] {\n  n = Math.floor(n);\n  if (!Number.isFinite(n) || n \u003c= 0) return [];",
+      "existing_code": "        \"SELECT id, fingerprint, kind, payload, attempts FROM queue WHERE state='pending' ORDER BY id LIMIT ?\",",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/calibrate.ts",
+      "content": "Calibration key `calibration:${at}` uses millisecond ISO timestamp with ON CONFLICT DO UPDATE: two events in the same millisecond silently overwrite each other, losing history despite append-only intent. Use a guaranteed-unique key (e.g. random UUID suffix) or INSERT without upsert.",
+      "suggestion_code": "  db.run(\"INSERT INTO meta(key, value) VALUES (?, ?)\", [`calibration:${at}:${Math.random().toString(36).slice(2)}`, payload]);",
+      "existing_code": "  db.run(\"INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value\", [`calibration:${at}`, payload]);",
+      "start_line": 39,
+      "end_line": 39,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/calibrate.ts",
+      "content": "Truth count uses IS NOT NULL only, so empty-string context_ref counts as filled and inflates truthRate. Filter out empty values.",
+      "suggestion_code": "  const truth = db.query(\"SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL AND context_ref != ''\").get() as { n: number };",
+      "existing_code": "  const truth = db.query(\"SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL\").get() as { n: number };",
+      "start_line": 21,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+      "content": "Unfenced sweep steals live work: any second process with the same jobId resets the first process's in-flight 'running' rows to pending, causing duplicate work. Needs owner lease / stale timeout, not blind UPDATE.",
+      "suggestion_code": "// add claimed_by + heartbeat, sweep only where updated_at \u003c staleThreshold",
+      "existing_code": "  const resumed = q.sweep();                       // RESUME SWEEP: dead 'running' rows → pending",
+      "start_line": 20,
+      "end_line": 20,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+      "content": "Test hook leaks into production and name shadows budgetCalls: `budget` actually holds stopAfter. A caller passing stopAfter in prod silently leaves rows 'running'.",
+      "suggestion_code": "// remove stopAfter from prod signature or gate behind NODE_ENV==='test'",
+      "existing_code": "  const budget = opts.stopAfter ?? Infinity;",
+      "start_line": 25,
+      "end_line": 25,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+      "content": "stats() is 4x COUNT(*) per loop iteration plus claim/select each batch. For N files this is O(N/batch) full-table scans. Cache done count from batch results or use single GROUP BY query.",
+      "suggestion_code": "// track doneNow locally instead of q.stats() each iteration",
+      "existing_code": "    const doneNow = q.stats().done;",
+      "start_line": 28,
+      "end_line": 28,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+      "content": "No busy_timeout: queue.sqlite and indexDb are written from concurrent runPool lanes/WAL mode. Contended writes fail fast with SQLITE_BUSY instead of waiting.",
+      "suggestion_code": "db.run(\"PRAGMA journal_mode = WAL\");\ndb.run(\"PRAGMA busy_timeout = 5000\");",
+      "existing_code": "  db.run(\"PRAGMA journal_mode = WAL\");",
+      "start_line": 19,
+      "end_line": 19,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+      "content": "Dead schema: job_meta table is created but never written or read. Remove it or wire it up.",
+      "suggestion_code": "// remove job_meta DDL until needed",
+      "existing_code": "    CREATE TABLE IF NOT EXISTS job_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+      "content": "Unbounded materialization: listFiles + items array holds every path/payload in memory and enqueues all at once. Large repos OOM. Stream in batches.",
+      "suggestion_code": "// paginate enqueue in chunks of e.g. 1000",
+      "existing_code": "  const paths = listFiles(opts.root, opts.opts ?? {});",
+      "start_line": 18,
+      "end_line": 18,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+      "content": "Absolute-path fingerprint is unstable: same checkout at a different root/cwd or via symlink produces different fingerprints, breaking resume idempotency and colliding with rel-keyed files table. Fingerprint on root-relative path.",
+      "suggestion_code": "const items = paths.map((abs) =\u003e ({ fingerprint: relative(opts.root, abs), payload: { abs } }));",
+      "existing_code": "  const items = paths.map((abs) =\u003e ({ fingerprint: abs, payload: { abs } }));",
+      "start_line": 19,
+      "end_line": 19,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+      "content": "Error is stringified and swallowed, then code still queries indexDb: if the failure was indexDb corruption, the final COUNT throws and masks the original error with an unhandled rejection.",
+      "suggestion_code": "// wrap filesRow query in try/catch before building result",
+      "existing_code": "  }).catch((e) =\u003e { error = String(e); return null; });",
+      "start_line": 31,
+      "end_line": 31,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+      "content": "Calibration key `calibration:${at}` uses millisecond ISO timestamp with ON CONFLICT DO UPDATE: two events in the same millisecond silently overwrite each other, losing history despite append-only intent. Use a guaranteed-unique key (e.g. random UUID suffix) or INSERT without upsert.",
+      "suggestion_code": "  db.run(\"INSERT INTO meta(key, value) VALUES (?, ?)\", [`calibration:${at}:${Math.random().toString(36).slice(2)}`, payload]);",
+      "existing_code": "  db.run(\"INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value\", [`calibration:${at}`, payload]);",
+      "start_line": 39,
+      "end_line": 39,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+      "content": "Truth count uses IS NOT NULL only, so empty-string context_ref counts as filled and inflates truthRate. Filter out empty values.",
+      "suggestion_code": "  const truth = db.query(\"SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL AND context_ref != ''\").get() as { n: number };",
+      "existing_code": "  const truth = db.query(\"SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL\").get() as { n: number };",
+      "start_line": 21,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/ledger.ts",
+      "content": "HOME fallback joins relative \".\": when JM_HOME/HOME are unset, ledgerPath becomes cwd-relative `.jm/ledger.jsonl`, fragmenting the ledger per working directory. Resolve via os.homedir() instead.",
+      "suggestion_code": "import { homedir } from \"node:os\";\nexport const ledgerPath = (): string =\u003e\n  process.env.JM_LEDGER ?? join(process.env.JM_HOME ?? join(process.env.HOME ?? homedir(), \".jm\"), \"ledger.jsonl\");",
+      "existing_code": "export const ledgerPath = (): string =\u003e\n  process.env.JM_LEDGER ?? join(process.env.JM_HOME ?? join(process.env.HOME ?? \".\", \".jm\"), \"ledger.jsonl\");",
+      "start_line": 5,
+      "end_line": 6,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/ledger.ts",
+      "content": "Corrupt ledger lines are silently dropped (catch returns null then filtered), so `report` undercounts without warning and corruption goes unnoticed. Keep a skipped-corrupt count and surface it to the caller/log.",
+      "suggestion_code": "    .map((l, i) =\u003e { try { return JSON.parse(l) as LedgerRow; } catch { console.error(`ledger: skipping corrupt line ${i}`); return null; } })",
+      "existing_code": "    .map((l) =\u003e { try { return JSON.parse(l) as LedgerRow; } catch { return null; } })",
+      "start_line": 33,
+      "end_line": 33,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+      "content": "HOME fallback joins relative \".\": when JM_HOME/HOME are unset, ledgerPath becomes cwd-relative `.jm/ledger.jsonl`, fragmenting the ledger per working directory. Resolve via os.homedir() instead.",
+      "suggestion_code": "import { homedir } from \"node:os\";\nexport const ledgerPath = (): string =\u003e\n  process.env.JM_LEDGER ?? join(process.env.JM_HOME ?? join(process.env.HOME ?? homedir(), \".jm\"), \"ledger.jsonl\");",
+      "existing_code": "export const ledgerPath = (): string =\u003e\n  process.env.JM_LEDGER ?? join(process.env.JM_HOME ?? join(process.env.HOME ?? \".\", \".jm\"), \"ledger.jsonl\");",
+      "start_line": 5,
+      "end_line": 6,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+      "content": "Corrupt ledger lines are silently dropped (catch returns null then filtered), so `report` undercounts without warning and corruption goes unnoticed. Keep a skipped-corrupt count and surface it to the caller/log.",
+      "suggestion_code": "    .map((l, i) =\u003e { try { return JSON.parse(l) as LedgerRow; } catch { console.error(`ledger: skipping corrupt line ${i}`); return null; } })",
+      "existing_code": "    .map((l) =\u003e { try { return JSON.parse(l) as LedgerRow; } catch { return null; } })",
+      "start_line": 33,
+      "end_line": 33,
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+      "content": "Escalation file breaks determinism contract: `DecisionRow` includes `cached`, and this writes the full row while the main artifact explicitly strips it. A replay with warm cache produces a different escalation file (cached false-\u003etrue). Strip run metadata here too.",
+      "suggestion_code": "  if (opts.escalationPath) writeFileSync(opts.escalationPath, escalations.map(({ i, route, reason, answers, model }) =\u003e JSON.stringify({ i, route, reason, answers, model })).join(\"\\n\") + (escalations.length ? \"\\n\" : \"\"));",
+      "existing_code": "  if (opts.escalationPath) writeFileSync(opts.escalationPath, escalations.map((e) =\u003e JSON.stringify(e)).join(\"\\n\") + (escalations.length ? \"\\n\" : \"\"));",
+      "start_line": 91,
+      "end_line": 91,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/decision-tree.ts",
+      "content": "Escalation file breaks determinism contract: `DecisionRow` includes `cached`, and this writes the full row while the main artifact explicitly strips it. A replay with warm cache produces a different escalation file (cached false-\u003etrue). Strip run metadata here too.",
+      "suggestion_code": "  if (opts.escalationPath) writeFileSync(opts.escalationPath, escalations.map(({ i, route, reason, answers, model }) =\u003e JSON.stringify({ i, route, reason, answers, model })).join(\"\\n\") + (escalations.length ? \"\\n\" : \"\"));",
+      "existing_code": "  if (opts.escalationPath) writeFileSync(opts.escalationPath, escalations.map((e) =\u003e JSON.stringify(e)).join(\"\\n\") + (escalations.length ? \"\\n\" : \"\"));",
+      "start_line": 91,
+      "end_line": 91,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+      "content": "Unsafe dereference of judge answer: if `res.answers` is null/undefined (malformed cache/transport payload), `res.answers.match` throws TypeError and lands in pool `errors` silently. Guard with optional chaining.",
+      "suggestion_code": "    const p = ((res.answers as { match?: { noul?: number } } | null | undefined)?.match as { noul?: number } | undefined)?.noul ?? 0;",
+      "existing_code": "    const p = (res.answers.match as { noul?: number })?.noul ?? 0;",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/filter.ts",
+      "content": "Unsafe dereference of judge answer: if `res.answers` is null/undefined (malformed cache/transport payload), `res.answers.match` throws TypeError and lands in pool `errors` silently. Guard with optional chaining.",
+      "suggestion_code": "    const p = ((res.answers as { match?: { noul?: number } } | null | undefined)?.match as { noul?: number } | undefined)?.noul ?? 0;",
+      "existing_code": "    const p = (res.answers.match as { noul?: number })?.noul ?? 0;",
+      "start_line": 34,
+      "end_line": 34,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+      "content": "Unknown `structure` silently falls back to markdown: any non-\"json\" value takes the `else` branch, so a typo like `structure: \"jsn\"` produces md output instead of the L10 error. Validate explicitly.",
+      "suggestion_code": "  const structure = opts.structure ?? \"md\";\n  if (structure !== \"md\" \u0026\u0026 structure !== \"json\") throw new Error(`JM_FIND_STRUCTURE: \"${structure}\" must be \"md\" or \"json\"`);",
+      "existing_code": "  const structure = opts.structure ?? \"md\";",
+      "start_line": 91,
+      "end_line": 91,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/find.ts",
+      "content": "Unknown `structure` silently falls back to markdown: any non-\"json\" value takes the `else` branch, so a typo like `structure: \"jsn\"` produces md output instead of the L10 error. Validate explicitly.",
+      "suggestion_code": "  const structure = opts.structure ?? \"md\";\n  if (structure !== \"md\" \u0026\u0026 structure !== \"json\") throw new Error(`JM_FIND_STRUCTURE: \"${structure}\" must be \"md\" or \"json\"`);",
+      "existing_code": "  const structure = opts.structure ?? \"md\";",
+      "start_line": 91,
+      "end_line": 91,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+      "content": "Allowlist misses common text types (.c/.h/.cpp/.java/.go/.html/.css/.xml/.mdx etc.): they are classified as `binary`, never inserted into docs/docs_fts, so query/filter/find silently miss them. Extend the set or fall back to content sniffing.",
+      "suggestion_code": "const TEXT_EXT = new Set([\".md\", \".mdx\", \".txt\", \".json\", \".jsonl\", \".ts\", \".tsx\", \".js\", \".jsx\", \".py\", \".rs\", \".toml\", \".yml\", \".yaml\", \".sh\", \".sql\", \".csv\", \".c\", \".h\", \".cpp\", \".hpp\", \".java\", \".go\", \".html\", \".css\", \".xml\"]);",
+      "existing_code": "const TEXT_EXT = new Set([\".md\", \".txt\", \".json\", \".jsonl\", \".ts\", \".tsx\", \".js\", \".jsx\", \".py\", \".rs\", \".toml\", \".yml\", \".yaml\", \".sh\", \".sql\", \".csv\"]);",
+      "start_line": 22,
+      "end_line": 22,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/index.ts",
+      "content": "Allowlist misses common text types (.c/.h/.cpp/.java/.go/.html/.css/.xml/.mdx etc.): they are classified as `binary`, never inserted into docs/docs_fts, so query/filter/find silently miss them. Extend the set or fall back to content sniffing.",
+      "suggestion_code": "const TEXT_EXT = new Set([\".md\", \".mdx\", \".txt\", \".json\", \".jsonl\", \".ts\", \".tsx\", \".js\", \".jsx\", \".py\", \".rs\", \".toml\", \".yml\", \".yaml\", \".sh\", \".sql\", \".csv\", \".c\", \".h\", \".cpp\", \".hpp\", \".java\", \".go\", \".html\", \".css\", \".xml\"]);",
+      "existing_code": "const TEXT_EXT = new Set([\".md\", \".txt\", \".json\", \".jsonl\", \".ts\", \".tsx\", \".js\", \".jsx\", \".py\", \".rs\", \".toml\", \".yml\", \".yaml\", \".sh\", \".sql\", \".csv\"]);",
+      "start_line": 22,
+      "end_line": 22,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+      "content": "FTS branch ignores relevance: both FTS and full-scan order by `f.size DESC`. FTS results should order by BM25 `rank` (e.g. `ORDER BY rank`), otherwise large files always top `find` seeds regardless of match quality.",
+      "suggestion_code": "  sql += opts.fts ? ` ORDER BY rank LIMIT ${limit}` : ` ORDER BY f.size DESC LIMIT ${limit}`;",
+      "existing_code": "  sql += ` ORDER BY f.size DESC LIMIT ${limit}`;",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/query.ts",
+      "content": "FTS branch ignores relevance: both FTS and full-scan order by `f.size DESC`. FTS results should order by BM25 `rank` (e.g. `ORDER BY rank`), otherwise large files always top `find` seeds regardless of match quality.",
+      "suggestion_code": "  sql += opts.fts ? ` ORDER BY rank LIMIT ${limit}` : ` ORDER BY f.size DESC LIMIT ${limit}`;",
+      "existing_code": "  sql += ` ORDER BY f.size DESC LIMIT ${limit}`;",
+      "start_line": 49,
+      "end_line": 49,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "flag() returns argv[i+1] even when it is another flag or missing, so `--name --json` yields name=\"--json\" and trailing flags yield `undefined`-\u003eNaN downstream. Guard against next-arg starting with `--` and support `--k=v`.",
+      "suggestion_code": "function flag(name: string): string | undefined {\n  const i = argv.indexOf(`--${name}`);\n  if (i \u003c 0) return undefined;\n  const v = argv[i + 1];\n  if (v === undefined || v.startsWith(\"--\")) return undefined;\n  return v;\n}",
+      "existing_code": "function flag(name: string): string | undefined {\n  const i = argv.indexOf(`--${name}`);\n  return i \u003e= 0 ? argv[i + 1] : undefined;\n}",
+      "start_line": 18,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/cli.ts",
+      "content": "`kind` is cast without validation, so `jm target add foo bogus /root` persists an invalid TargetKind that later breaks resolve/index. Validate against fs|sqlite|jsonl with a JM_ARGS error.",
+      "suggestion_code": "      if (kind !== \"fs\" \u0026\u0026 kind !== \"sqlite\" \u0026\u0026 kind !== \"jsonl\") { console.error(\"usage: jm target add \u003cname\u003e fs|sqlite|jsonl \u003croot\u003e\"); return 2; }\n      list.push({ name, kind, root });",
+      "existing_code": "      list.push({ name, kind: kind as Target[\"kind\"], root });",
+      "start_line": 63,
+      "end_line": 63,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+      "content": "flag() returns argv[i+1] even when it is another flag or missing, so `--name --json` yields name=\"--json\" and trailing flags yield `undefined`-\u003eNaN downstream. Guard against next-arg starting with `--` and support `--k=v`.",
+      "suggestion_code": "function flag(name: string): string | undefined {\n  const i = argv.indexOf(`--${name}`);\n  if (i \u003c 0) return undefined;\n  const v = argv[i + 1];\n  if (v === undefined || v.startsWith(\"--\")) return undefined;\n  return v;\n}",
+      "existing_code": "function flag(name: string): string | undefined {\n  const i = argv.indexOf(`--${name}`);\n  return i \u003e= 0 ? argv[i + 1] : undefined;\n}",
+      "start_line": 18,
+      "end_line": 21,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+      "content": "`kind` is cast without validation, so `jm target add foo bogus /root` persists an invalid TargetKind that later breaks resolve/index. Validate against fs|sqlite|jsonl with a JM_ARGS error.",
+      "suggestion_code": "      if (kind !== \"fs\" \u0026\u0026 kind !== \"sqlite\" \u0026\u0026 kind !== \"jsonl\") { console.error(\"usage: jm target add \u003cname\u003e fs|sqlite|jsonl \u003croot\u003e\"); return 2; }\n      list.push({ name, kind, root });",
+      "existing_code": "      list.push({ name, kind: kind as Target[\"kind\"], root });",
+      "start_line": 63,
+      "end_line": 63,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/serve.ts",
+      "content": "Opening a fresh SQLite DB (mkdir + WAL + SCHEMA_SQL) on every fetch — including 404s — is expensive and risks SQLITE_BUSY under concurrent /decide//find load. Open once at startup and reuse across requests.",
+      "suggestion_code": "  const db = openDb(indexPathFor(indexName));\n  return Bun.serve({\n    port,\n    async fetch(req) {\n      const url = new URL(req.url);\n      try {",
+      "existing_code": "      const db = openDb(indexPathFor(indexName));",
+      "start_line": 19,
+      "end_line": 19,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "src/serve.ts",
+      "content": "Blocking readdirSync in async fetch stalls the event loop for all connections, and empty catch hides misconfigured jobsDir by returning []. Use async readdir with proper error propagation.",
+      "suggestion_code": "          try { jobs = await readdir(jobsDir()); } catch (e) { return Response.json({ error: String(e) }, { status: 500 }); }",
+      "existing_code": "          try { jobs = readdirSync(jobsDir()); } catch { jobs = []; }",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+      "content": "Opening a fresh SQLite DB (mkdir + WAL + SCHEMA_SQL) on every fetch — including 404s — is expensive and risks SQLITE_BUSY under concurrent /decide//find load. Open once at startup and reuse across requests.",
+      "suggestion_code": "  const db = openDb(indexPathFor(indexName));\n  return Bun.serve({\n    port,\n    async fetch(req) {\n      const url = new URL(req.url);\n      try {",
+      "existing_code": "      const db = openDb(indexPathFor(indexName));",
+      "start_line": 19,
+      "end_line": 19,
+      "category": "performance",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+      "content": "Blocking readdirSync in async fetch stalls the event loop for all connections, and empty catch hides misconfigured jobsDir by returning []. Use async readdir with proper error propagation.",
+      "suggestion_code": "          try { jobs = await readdir(jobsDir()); } catch (e) { return Response.json({ error: String(e) }, { status: 500 }); }",
+      "existing_code": "          try { jobs = readdirSync(jobsDir()); } catch { jobs = []; }",
+      "start_line": 27,
+      "end_line": 27,
+      "category": "performance",
+      "severity": "medium"
+    }
+  ],
+  "groups": [
+    {
+      "label": "project config and test helpers (checkpoint + live)",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+        "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json",
+        "package.json",
+        "tests/helpers.ts",
+        "tsconfig.json"
+      ]
+    },
+    {
+      "label": "top-level CLI and services calibrate/cli/ledger/serve",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+        "src/calibrate.ts",
+        "src/cli.ts",
+        "src/ledger.ts",
+        "src/serve.ts"
+      ]
+    },
+    {
+      "label": "job module queue/run/store/indexJob",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+        "src/job/indexJob.ts",
+        "src/job/queue.ts",
+        "src/job/run.ts",
+        "src/job/store.ts"
+      ]
+    },
+    {
+      "label": "judge module client/transport/cache/policy/key",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+        "src/judge/cache.ts",
+        "src/judge/client.ts",
+        "src/judge/key.ts",
+        "src/judge/policy.ts",
+        "src/judge/transport.ts"
+      ]
+    },
+    {
+      "label": "pools module budget/pool",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+        "src/pools/budget.ts",
+        "src/pools/pool.ts"
+      ]
+    },
+    {
+      "label": "store module db/schema",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+        "src/store/db.ts",
+        "src/store/schema.ts"
+      ]
+    },
+    {
+      "label": "verbs module query/find/filter/decision-tree",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+        "src/verbs/decision-tree.ts",
+        "src/verbs/filter.ts",
+        "src/verbs/find.ts",
+        "src/verbs/index.ts",
+        "src/verbs/query.ts"
+      ]
+    }
+  ],
+  "session_id": "e577741d-2cec-48b8-ba1c-df06f151d4a2",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "e577741d-2cec-48b8-ba1c-df06f151d4a2",
+    "operation": "review",
+    "terminal_state": "complete",
+    "repository": {},
+    "input": {
+      "mode": "range",
+      "requested_from": "7b7f7eb",
+      "requested_head": "HEAD",
+      "resolved_base": "7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30",
+      "resolved_head": "75cf6e47724261358db76171f1762b0aa77b0e28",
+      "exact_range": "7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30..75cf6e47724261358db76171f1762b0aa77b0e28",
+      "source_artifact_sha256": "4b46350fd5836aa84a3ad8be30e379e19e92191bc5566b767ded48fc2e826ea4"
+    },
+    "execution": {
+      "ocr_version": "v1.12.7",
+      "provider": "muse-free",
+      "model": "muse-spark-1.3-contributor-free",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "ddb40005eb732cb8b37d8d3dc1acb82f3aa51fded408c899a092c10349c369c4",
+      "runtime_config_sha256": "50bf766d13a1f81427205dc3ae4fffd216c71d5065b85c0e855ecbdeb5137fa3"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "024a332d31c1fae5defe2cf9abec4c82c47414b036b79ba863d6d8da0999fa9e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+          "fingerprint": "be471aa1a8b86e645b5e8dfdee3729483929d66984181a9b0b5aa0c159409554"
+        },
+        {
+          "item_id": "050e86de75a1b9a29e6e6aed15543248ca123586b260ff590d00521b36384a09",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+          "fingerprint": "7fb8435818006fbdde17a73cd9226a20db629cc908e2cab014372937be69634c"
+        },
+        {
+          "item_id": "065594c1950a8bdf32e6147a515d8abd91c29419826131f0431d986a8e6e9c49",
+          "path": "src/calibrate.ts",
+          "fingerprint": "060095395c67369cd682d6e7fa5e31788fc52518d846980c2ae1a51bc58f7ca7"
+        },
+        {
+          "item_id": "0ae9cd62b58ee0e0221c35fd8787042335b665bb6a45a882bc04cc397b0a6223",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+          "fingerprint": "e4c0ec307d427b0a7312b23e3bdd728d567099ec89d350f259335fc31d75a4ac"
+        },
+        {
+          "item_id": "0d9b950998672ebfa581b7b087ef7dcc267b693c5fcb513e9ec03817c4d9eaf9",
+          "path": "src/store/schema.ts",
+          "fingerprint": "ad8874feabefdf30fcbc0333e5eeb67572f2dac7e3eb688ecb26cfe7f47c8785"
+        },
+        {
+          "item_id": "0dcaf7cd11e9b958fd502192979a0116734d94cdc5899e93db46e8dc9c8ec1e6",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+          "fingerprint": "f0b947f6c276ed490cc38fc83ca778f446b6319518dfd19ec3a7b9f19f2ae3de"
+        },
+        {
+          "item_id": "11d0b21345178fb348558fc97da43b7044f43e91fd189edf33640c1b913eb13e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+          "fingerprint": "33eaed741a72fbed36edcaa0c9a470b37b511cc2d2f7d2dd8b262bdd299fb0fd"
+        },
+        {
+          "item_id": "1ee185ab04e75dbde35b7cf0c96f51a58aa8231777b2ddca346f9de670920912",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+          "fingerprint": "0871ff5c56e928bf68c4cb16e65a4d3d33626e720533a2ecc20bb77447fe3969"
+        },
+        {
+          "item_id": "3c362f6fff072f62281a068ec5f680a1c5ee071d630e71e99c2b6954a13a06ce",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+          "fingerprint": "fbc30a7953f3a3cac1c4b397b4ac2719ecc37aaaedd47057bb59b46e832b2524"
+        },
+        {
+          "item_id": "4b9826fb05a6de11882f81f75dae37693925a4c759b235482020d972b63e317d",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+          "fingerprint": "8f5dc07bce332204438d2dbbc111d4ea9717e97e11649c1c92eb465cf61b07ae"
+        },
+        {
+          "item_id": "5234ca7e446e17cb8112e2c11af2615280c3d0120abbd2ec46caf7df9e46ea5d",
+          "path": "src/pools/pool.ts",
+          "fingerprint": "f0510d349722b70e32e68a6b9e54f41d5bbcfdeee389a5fa4f64ce353a0db02a"
+        },
+        {
+          "item_id": "5e486b0a007da76e72b012c526632435d7de259258e14a082aabd913a63e6d38",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+          "fingerprint": "ab4dbb63cd3b1022a114c97006174c6aa54ea27abc76084bb9b5916375d599e1"
+        },
+        {
+          "item_id": "6520967e32b60453eadaeaa8fcf50615dace9e084dd871aa318eefd53d2f5e40",
+          "path": "tsconfig.json",
+          "fingerprint": "807dd6ca6eedd8d37b13cbba8f1fc9386d2793668f8f15dc9ddc2ccc581c3a6c"
+        },
+        {
+          "item_id": "681560116a929d9a7c964e770d239c36337f983a2483c7be6ad876cc3b395a89",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+          "fingerprint": "ea2f661c5a0519ea965ccebf8f2fef78e11b92f81d7e47f69992c8a385f8b4cd"
+        },
+        {
+          "item_id": "6892a493d2b92dcacf2efa6077a05a0e61271481b84289927c9bb519617ab6ff",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+          "fingerprint": "f2ce8b917b65a751e1128e4c1b89532f28fa87bf6a7d768d85cefcb9671332f9"
+        },
+        {
+          "item_id": "6b791da7b7478a46901d54abef1f5b4cbb48090b327e3e4ef2751d627e17f953",
+          "path": "src/serve.ts",
+          "fingerprint": "ddd1e6572ca171fbcea45a3ee3e8fd95d0724b4a16e397f214e71ca27bcb7207"
+        },
+        {
+          "item_id": "6e8c157364555b804b8ea0f4619a38243d3691aae858d5f24c1fdd104a77d4c2",
+          "path": "src/job/queue.ts",
+          "fingerprint": "86e3968633e9da72cc492ce3f7108c5f7f6117616ef3b208791d3cca55659270"
+        },
+        {
+          "item_id": "7425ccdca5f15ecd673a85900569714d14614e54120f8dfaa1642fd26d8fb851",
+          "path": "src/judge/policy.ts",
+          "fingerprint": "6ec539657fab0e55d4ba9664960a48a7553bca4102fa80b2b5dc8c26abcf7a6e"
+        },
+        {
+          "item_id": "77ff7a7492d74b6a581353c2c8bdf7d59a977fcdca52d8b02f05550f7e8620db",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+          "fingerprint": "34ec648aaa98579e2c861ec26de617e0de577b9c96c55368005944726ecb0f7b"
+        },
+        {
+          "item_id": "7e845fd1c43125d18b1bb3576f69445ce1a437fa8b59c1150a37a8ff596d57fc",
+          "path": "src/verbs/index.ts",
+          "fingerprint": "5f9d5c0fa31a6653222867a191752720b609ccc19428f610e62b3dfd001616bf"
+        },
+        {
+          "item_id": "80e472a2558e25b599a468c6767aa0ded5d498bcf66cc6ab27e0411c2e6b0c5c",
+          "path": "src/verbs/decision-tree.ts",
+          "fingerprint": "4d976d927247fc2ff3795fc8246435d0b7551006ef4af8079af6bd410ae4daf6"
+        },
+        {
+          "item_id": "8b04ea08e94a68479700ef6eff076fb18487eea2066e9a53ca2884afe5069db2",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+          "fingerprint": "80cb5f69b78a97f40adf2d96cd008f2b2b3031548e92990d3024a9e96717bd7b"
+        },
+        {
+          "item_id": "8fa2b8790dd48444cd5c653fbcd71cff6d14c633a9800b8a212ea4c94842e040",
+          "path": "src/judge/transport.ts",
+          "fingerprint": "983f2319c105f2e17de8373f68e33111e6ff635ddc4c5c61887e746cccaf2b85"
+        },
+        {
+          "item_id": "918e040119e9529b67832c799b28542a07788eefc5d3879937ff38f7201f77fb",
+          "path": "src/cli.ts",
+          "fingerprint": "7bb4ea69d001cfcd30609e70940ca39690d3f4e9a80eb35094a638282faf889c"
+        },
+        {
+          "item_id": "995297467243b829067e71819c0a1184826a8bcef9a8431ed4eacdb1b64ced9b",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+          "fingerprint": "9e993ca2357cc7f89b8bff8f2b5446e11998106a653fef4534558027000d5186"
+        },
+        {
+          "item_id": "a70ead38b1b622582f317f90dc5b8f735d182568e3a730eaad0abbdf6854b6f1",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+          "fingerprint": "f6957b4b3c8156f52526ad9323c8c1e057e36537cf17621ddd5bfe62ea86ab57"
+        },
+        {
+          "item_id": "a7ebf8583a59c7079ee6de4b36570a452d46bb9fc24ad55bb6188bc434c15340",
+          "path": "src/verbs/find.ts",
+          "fingerprint": "5b8f8b76eea2163e9d9502925dd911a778cd2a46f51272c9a5f7945e698ca4e8"
+        },
+        {
+          "item_id": "b182cb172bf223bcd9004bb2248ad3a401fc818d9026d0de8971e20b28e8f499",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+          "fingerprint": "2d7f33a4253943d44cd6062816c15d99800658236b5c949166df697bda293361"
+        },
+        {
+          "item_id": "b26782a9fbdc5fabb88ecd7b308b0346518b06bfaf23fe34481e7b3f4c461bc7",
+          "path": "src/verbs/query.ts",
+          "fingerprint": "69ff1aae3ace934dbf870bfbfd33efbbadb10570f5b2ff44c356350ce2ae2c77"
+        },
+        {
+          "item_id": "b41cb619274b758b43048f726adad534c094537c6cbd449a26f7293186df8b66",
+          "path": "src/job/store.ts",
+          "fingerprint": "b56187775445ec8cf5c103272abcf2949675b4e89badcd22bad5c117eb38adc4"
+        },
+        {
+          "item_id": "b564fa968089c6ed56d757f8af4b799ff14ae734c2f062d7395ea973f457ba1b",
+          "path": "src/job/run.ts",
+          "fingerprint": "dacfbf44550a7c4f44f0dc70f4a2f09b0bb43b4cdc7a41b074c9affed00d3b89"
+        },
+        {
+          "item_id": "b5a39787567647ca271bdef926479fdbcbe9617ac9abbce1f4549b1dcba59904",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+          "fingerprint": "3fe851f52fedc857fb28c7fe1bbff6bd511a540008f7e0519eb2fafb539e1e4a"
+        },
+        {
+          "item_id": "b7ddd2a768e771d252d9f772d17847c32b6fa7961bdcb49f3415bff84affa68b",
+          "path": "tests/helpers.ts",
+          "fingerprint": "178d5c602117c97004766754c9023ef4d50d405db9522e2ec316a0b2886a336b"
+        },
+        {
+          "item_id": "ba60fef7d0e8615b07e774284f4c4dac75f4f32099f4c966d0d8c3d53b37cc5a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+          "fingerprint": "03cec3c45ae10757be654a85ba3cfd40607d7d31d6baf31fa5a76ca0c15e50b1"
+        },
+        {
+          "item_id": "ba974e72e2acbe6eec406e8ee68ba046f3078d24783613e614447f985e11bfba",
+          "path": "src/judge/key.ts",
+          "fingerprint": "858f4c0857adab5e7c8495ca7848f4be1ea3929517874c6abbd1c8e59e154cb8"
+        },
+        {
+          "item_id": "ba9c76b0ec8e06972a5dd0a688621ee773ec3af604dee96d945b9dbaf1a2c97c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json",
+          "fingerprint": "589ccac8948a43740609504e66863ad033ec92fda38afc2d245774fc80b81d88"
+        },
+        {
+          "item_id": "c968da88e037cee2f80b20a94d74b5e90d5f4f891e928724567d0d429efdbbd0",
+          "path": "src/ledger.ts",
+          "fingerprint": "342fb231be65aae7b3dd74c33cd2c199bf5a821e60a1bbd2d29a7c449b21ac31"
+        },
+        {
+          "item_id": "cd8b5119aa0f585c339c4969f3701107fbb1d5de7818d29b2988bcf328bf5e19",
+          "path": "src/verbs/filter.ts",
+          "fingerprint": "657f1731dd61ea3c6a845f0afc67d480b7643a53a5c185cfee0736eb774f97df"
+        },
+        {
+          "item_id": "cefcf7b362ef9668818a797d289d2cfcebe6a19768dfc8965188f834ce8e80ca",
+          "path": "src/store/db.ts",
+          "fingerprint": "f329df31a9c5f89704c2163532a9d60fd85e65b3c14570335a16d7d5a63715b2"
+        },
+        {
+          "item_id": "d5051a2abc448bd6d546e85110a480f61b3db90095139cbf086258b05f965141",
+          "path": "src/pools/budget.ts",
+          "fingerprint": "208b5f977d2fd98dc06c30331c0454e8625990d0d2cb3f501022fd4a0f6aeb55"
+        },
+        {
+          "item_id": "e3c7cbe310881d0348390239b00c219aa81fd9d09b83da3f90f33ba209ea7b6a",
+          "path": "package.json",
+          "fingerprint": "2b9bdcc40a1e96e1531c6e876917557fbdc9999fffa97bb466ecd045b8538ac7"
+        },
+        {
+          "item_id": "e4f1b94b3db39e616b452aa14d093bbdb8ae089f092bf99700ccbf2c39b14118",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+          "fingerprint": "50aa254a911bf8c12929a2969c8ddc02df929a07a30141b3a13d47700e9c621b"
+        },
+        {
+          "item_id": "e6461545e52e4aa4e44ed4a662ac07440f6746d721a74770915dc1390b82976f",
+          "path": "src/job/indexJob.ts",
+          "fingerprint": "cbf08fd6bbb43bbee172bbb64788787a088dc7a81823d42f7ca18781c1eb547c"
+        },
+        {
+          "item_id": "e943154e3292eea47673886a5701cae63ad3222ce38d5a26f432335832f9c529",
+          "path": "src/judge/cache.ts",
+          "fingerprint": "587bf184a15932dc93fad02463c4846b87e750ec0d38ae2799f1288e4e72b070"
+        },
+        {
+          "item_id": "eb685bb66dc94e700fec5dbb85ef9a1ad0bc97f8b68159182ebbd5ba46227b5d",
+          "path": "src/judge/client.ts",
+          "fingerprint": "d5baa93c1875dd286168df3a1d1cd9847a54066e3a30593a4febcf863f81f601"
+        },
+        {
+          "item_id": "ec13db4dc537b309ae96030df10086d1c2d524aba3d0b7144cdbf6952fa732e4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+          "fingerprint": "17e7b895606f65fe98996687f903e3f85729ee4001e1fce077a748ccafa91465"
+        },
+        {
+          "item_id": "f6119b64c64e9e604558c355e53026d9900c006b8f9fb648204f245119237f55",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+          "fingerprint": "74e050634857dd8e5071baa09435013624d0fd2c9d04474e98ea71c40faa18b6"
+        },
+        {
+          "item_id": "f8ba4a7c027cf9b406ac9a2aa2ac0ab67fc3a0dda8c793e9122c5c6daf835b0c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+          "fingerprint": "af16cc82bd57db0bb048e154f8b053f1338150dda7be5cd8c1f61b1e6d500025"
+        },
+        {
+          "item_id": "f8f7dd659b7c48da3dac8a4e06e66774e9a83405ea22a4742a54580795f4b6f3",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+          "fingerprint": "5c2ce6234a5f2a728647a56308235d750b8cf6b3390f0e64454fcc7e01b6e135"
+        },
+        {
+          "item_id": "fe60b82e2c5ea48d8fbc9216ab8b62d1550eb3e69c80ee393e1f503530e2b97a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+          "fingerprint": "6a8216731582ae89ff02b0055f686ef3fdc8f8ef2a4342e30fa36d9cf3c54df5"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "024a332d31c1fae5defe2cf9abec4c82c47414b036b79ba863d6d8da0999fa9e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+          "fingerprint": "be471aa1a8b86e645b5e8dfdee3729483929d66984181a9b0b5aa0c159409554"
+        },
+        {
+          "item_id": "050e86de75a1b9a29e6e6aed15543248ca123586b260ff590d00521b36384a09",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+          "fingerprint": "7fb8435818006fbdde17a73cd9226a20db629cc908e2cab014372937be69634c"
+        },
+        {
+          "item_id": "065594c1950a8bdf32e6147a515d8abd91c29419826131f0431d986a8e6e9c49",
+          "path": "src/calibrate.ts",
+          "fingerprint": "060095395c67369cd682d6e7fa5e31788fc52518d846980c2ae1a51bc58f7ca7"
+        },
+        {
+          "item_id": "0ae9cd62b58ee0e0221c35fd8787042335b665bb6a45a882bc04cc397b0a6223",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+          "fingerprint": "e4c0ec307d427b0a7312b23e3bdd728d567099ec89d350f259335fc31d75a4ac"
+        },
+        {
+          "item_id": "0d9b950998672ebfa581b7b087ef7dcc267b693c5fcb513e9ec03817c4d9eaf9",
+          "path": "src/store/schema.ts",
+          "fingerprint": "ad8874feabefdf30fcbc0333e5eeb67572f2dac7e3eb688ecb26cfe7f47c8785"
+        },
+        {
+          "item_id": "0dcaf7cd11e9b958fd502192979a0116734d94cdc5899e93db46e8dc9c8ec1e6",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+          "fingerprint": "f0b947f6c276ed490cc38fc83ca778f446b6319518dfd19ec3a7b9f19f2ae3de"
+        },
+        {
+          "item_id": "11d0b21345178fb348558fc97da43b7044f43e91fd189edf33640c1b913eb13e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+          "fingerprint": "33eaed741a72fbed36edcaa0c9a470b37b511cc2d2f7d2dd8b262bdd299fb0fd"
+        },
+        {
+          "item_id": "1ee185ab04e75dbde35b7cf0c96f51a58aa8231777b2ddca346f9de670920912",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+          "fingerprint": "0871ff5c56e928bf68c4cb16e65a4d3d33626e720533a2ecc20bb77447fe3969"
+        },
+        {
+          "item_id": "3c362f6fff072f62281a068ec5f680a1c5ee071d630e71e99c2b6954a13a06ce",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+          "fingerprint": "fbc30a7953f3a3cac1c4b397b4ac2719ecc37aaaedd47057bb59b46e832b2524"
+        },
+        {
+          "item_id": "4b9826fb05a6de11882f81f75dae37693925a4c759b235482020d972b63e317d",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+          "fingerprint": "8f5dc07bce332204438d2dbbc111d4ea9717e97e11649c1c92eb465cf61b07ae"
+        },
+        {
+          "item_id": "5234ca7e446e17cb8112e2c11af2615280c3d0120abbd2ec46caf7df9e46ea5d",
+          "path": "src/pools/pool.ts",
+          "fingerprint": "f0510d349722b70e32e68a6b9e54f41d5bbcfdeee389a5fa4f64ce353a0db02a"
+        },
+        {
+          "item_id": "5e486b0a007da76e72b012c526632435d7de259258e14a082aabd913a63e6d38",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+          "fingerprint": "ab4dbb63cd3b1022a114c97006174c6aa54ea27abc76084bb9b5916375d599e1"
+        },
+        {
+          "item_id": "6520967e32b60453eadaeaa8fcf50615dace9e084dd871aa318eefd53d2f5e40",
+          "path": "tsconfig.json",
+          "fingerprint": "807dd6ca6eedd8d37b13cbba8f1fc9386d2793668f8f15dc9ddc2ccc581c3a6c"
+        },
+        {
+          "item_id": "681560116a929d9a7c964e770d239c36337f983a2483c7be6ad876cc3b395a89",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+          "fingerprint": "ea2f661c5a0519ea965ccebf8f2fef78e11b92f81d7e47f69992c8a385f8b4cd"
+        },
+        {
+          "item_id": "6892a493d2b92dcacf2efa6077a05a0e61271481b84289927c9bb519617ab6ff",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+          "fingerprint": "f2ce8b917b65a751e1128e4c1b89532f28fa87bf6a7d768d85cefcb9671332f9"
+        },
+        {
+          "item_id": "6b791da7b7478a46901d54abef1f5b4cbb48090b327e3e4ef2751d627e17f953",
+          "path": "src/serve.ts",
+          "fingerprint": "ddd1e6572ca171fbcea45a3ee3e8fd95d0724b4a16e397f214e71ca27bcb7207"
+        },
+        {
+          "item_id": "6e8c157364555b804b8ea0f4619a38243d3691aae858d5f24c1fdd104a77d4c2",
+          "path": "src/job/queue.ts",
+          "fingerprint": "86e3968633e9da72cc492ce3f7108c5f7f6117616ef3b208791d3cca55659270"
+        },
+        {
+          "item_id": "7425ccdca5f15ecd673a85900569714d14614e54120f8dfaa1642fd26d8fb851",
+          "path": "src/judge/policy.ts",
+          "fingerprint": "6ec539657fab0e55d4ba9664960a48a7553bca4102fa80b2b5dc8c26abcf7a6e"
+        },
+        {
+          "item_id": "77ff7a7492d74b6a581353c2c8bdf7d59a977fcdca52d8b02f05550f7e8620db",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+          "fingerprint": "34ec648aaa98579e2c861ec26de617e0de577b9c96c55368005944726ecb0f7b"
+        },
+        {
+          "item_id": "7e845fd1c43125d18b1bb3576f69445ce1a437fa8b59c1150a37a8ff596d57fc",
+          "path": "src/verbs/index.ts",
+          "fingerprint": "5f9d5c0fa31a6653222867a191752720b609ccc19428f610e62b3dfd001616bf"
+        },
+        {
+          "item_id": "80e472a2558e25b599a468c6767aa0ded5d498bcf66cc6ab27e0411c2e6b0c5c",
+          "path": "src/verbs/decision-tree.ts",
+          "fingerprint": "4d976d927247fc2ff3795fc8246435d0b7551006ef4af8079af6bd410ae4daf6"
+        },
+        {
+          "item_id": "8b04ea08e94a68479700ef6eff076fb18487eea2066e9a53ca2884afe5069db2",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+          "fingerprint": "80cb5f69b78a97f40adf2d96cd008f2b2b3031548e92990d3024a9e96717bd7b"
+        },
+        {
+          "item_id": "8fa2b8790dd48444cd5c653fbcd71cff6d14c633a9800b8a212ea4c94842e040",
+          "path": "src/judge/transport.ts",
+          "fingerprint": "983f2319c105f2e17de8373f68e33111e6ff635ddc4c5c61887e746cccaf2b85"
+        },
+        {
+          "item_id": "918e040119e9529b67832c799b28542a07788eefc5d3879937ff38f7201f77fb",
+          "path": "src/cli.ts",
+          "fingerprint": "7bb4ea69d001cfcd30609e70940ca39690d3f4e9a80eb35094a638282faf889c"
+        },
+        {
+          "item_id": "995297467243b829067e71819c0a1184826a8bcef9a8431ed4eacdb1b64ced9b",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+          "fingerprint": "9e993ca2357cc7f89b8bff8f2b5446e11998106a653fef4534558027000d5186"
+        },
+        {
+          "item_id": "a70ead38b1b622582f317f90dc5b8f735d182568e3a730eaad0abbdf6854b6f1",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+          "fingerprint": "f6957b4b3c8156f52526ad9323c8c1e057e36537cf17621ddd5bfe62ea86ab57"
+        },
+        {
+          "item_id": "a7ebf8583a59c7079ee6de4b36570a452d46bb9fc24ad55bb6188bc434c15340",
+          "path": "src/verbs/find.ts",
+          "fingerprint": "5b8f8b76eea2163e9d9502925dd911a778cd2a46f51272c9a5f7945e698ca4e8"
+        },
+        {
+          "item_id": "b182cb172bf223bcd9004bb2248ad3a401fc818d9026d0de8971e20b28e8f499",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+          "fingerprint": "2d7f33a4253943d44cd6062816c15d99800658236b5c949166df697bda293361"
+        },
+        {
+          "item_id": "b26782a9fbdc5fabb88ecd7b308b0346518b06bfaf23fe34481e7b3f4c461bc7",
+          "path": "src/verbs/query.ts",
+          "fingerprint": "69ff1aae3ace934dbf870bfbfd33efbbadb10570f5b2ff44c356350ce2ae2c77"
+        },
+        {
+          "item_id": "b41cb619274b758b43048f726adad534c094537c6cbd449a26f7293186df8b66",
+          "path": "src/job/store.ts",
+          "fingerprint": "b56187775445ec8cf5c103272abcf2949675b4e89badcd22bad5c117eb38adc4"
+        },
+        {
+          "item_id": "b564fa968089c6ed56d757f8af4b799ff14ae734c2f062d7395ea973f457ba1b",
+          "path": "src/job/run.ts",
+          "fingerprint": "dacfbf44550a7c4f44f0dc70f4a2f09b0bb43b4cdc7a41b074c9affed00d3b89"
+        },
+        {
+          "item_id": "b5a39787567647ca271bdef926479fdbcbe9617ac9abbce1f4549b1dcba59904",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+          "fingerprint": "3fe851f52fedc857fb28c7fe1bbff6bd511a540008f7e0519eb2fafb539e1e4a"
+        },
+        {
+          "item_id": "b7ddd2a768e771d252d9f772d17847c32b6fa7961bdcb49f3415bff84affa68b",
+          "path": "tests/helpers.ts",
+          "fingerprint": "178d5c602117c97004766754c9023ef4d50d405db9522e2ec316a0b2886a336b"
+        },
+        {
+          "item_id": "ba60fef7d0e8615b07e774284f4c4dac75f4f32099f4c966d0d8c3d53b37cc5a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+          "fingerprint": "03cec3c45ae10757be654a85ba3cfd40607d7d31d6baf31fa5a76ca0c15e50b1"
+        },
+        {
+          "item_id": "ba974e72e2acbe6eec406e8ee68ba046f3078d24783613e614447f985e11bfba",
+          "path": "src/judge/key.ts",
+          "fingerprint": "858f4c0857adab5e7c8495ca7848f4be1ea3929517874c6abbd1c8e59e154cb8"
+        },
+        {
+          "item_id": "ba9c76b0ec8e06972a5dd0a688621ee773ec3af604dee96d945b9dbaf1a2c97c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json",
+          "fingerprint": "589ccac8948a43740609504e66863ad033ec92fda38afc2d245774fc80b81d88"
+        },
+        {
+          "item_id": "c968da88e037cee2f80b20a94d74b5e90d5f4f891e928724567d0d429efdbbd0",
+          "path": "src/ledger.ts",
+          "fingerprint": "342fb231be65aae7b3dd74c33cd2c199bf5a821e60a1bbd2d29a7c449b21ac31"
+        },
+        {
+          "item_id": "cd8b5119aa0f585c339c4969f3701107fbb1d5de7818d29b2988bcf328bf5e19",
+          "path": "src/verbs/filter.ts",
+          "fingerprint": "657f1731dd61ea3c6a845f0afc67d480b7643a53a5c185cfee0736eb774f97df"
+        },
+        {
+          "item_id": "cefcf7b362ef9668818a797d289d2cfcebe6a19768dfc8965188f834ce8e80ca",
+          "path": "src/store/db.ts",
+          "fingerprint": "f329df31a9c5f89704c2163532a9d60fd85e65b3c14570335a16d7d5a63715b2"
+        },
+        {
+          "item_id": "d5051a2abc448bd6d546e85110a480f61b3db90095139cbf086258b05f965141",
+          "path": "src/pools/budget.ts",
+          "fingerprint": "208b5f977d2fd98dc06c30331c0454e8625990d0d2cb3f501022fd4a0f6aeb55"
+        },
+        {
+          "item_id": "e3c7cbe310881d0348390239b00c219aa81fd9d09b83da3f90f33ba209ea7b6a",
+          "path": "package.json",
+          "fingerprint": "2b9bdcc40a1e96e1531c6e876917557fbdc9999fffa97bb466ecd045b8538ac7"
+        },
+        {
+          "item_id": "e4f1b94b3db39e616b452aa14d093bbdb8ae089f092bf99700ccbf2c39b14118",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+          "fingerprint": "50aa254a911bf8c12929a2969c8ddc02df929a07a30141b3a13d47700e9c621b"
+        },
+        {
+          "item_id": "e6461545e52e4aa4e44ed4a662ac07440f6746d721a74770915dc1390b82976f",
+          "path": "src/job/indexJob.ts",
+          "fingerprint": "cbf08fd6bbb43bbee172bbb64788787a088dc7a81823d42f7ca18781c1eb547c"
+        },
+        {
+          "item_id": "e943154e3292eea47673886a5701cae63ad3222ce38d5a26f432335832f9c529",
+          "path": "src/judge/cache.ts",
+          "fingerprint": "587bf184a15932dc93fad02463c4846b87e750ec0d38ae2799f1288e4e72b070"
+        },
+        {
+          "item_id": "eb685bb66dc94e700fec5dbb85ef9a1ad0bc97f8b68159182ebbd5ba46227b5d",
+          "path": "src/judge/client.ts",
+          "fingerprint": "d5baa93c1875dd286168df3a1d1cd9847a54066e3a30593a4febcf863f81f601"
+        },
+        {
+          "item_id": "ec13db4dc537b309ae96030df10086d1c2d524aba3d0b7144cdbf6952fa732e4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+          "fingerprint": "17e7b895606f65fe98996687f903e3f85729ee4001e1fce077a748ccafa91465"
+        },
+        {
+          "item_id": "f6119b64c64e9e604558c355e53026d9900c006b8f9fb648204f245119237f55",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+          "fingerprint": "74e050634857dd8e5071baa09435013624d0fd2c9d04474e98ea71c40faa18b6"
+        },
+        {
+          "item_id": "f8ba4a7c027cf9b406ac9a2aa2ac0ab67fc3a0dda8c793e9122c5c6daf835b0c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+          "fingerprint": "af16cc82bd57db0bb048e154f8b053f1338150dda7be5cd8c1f61b1e6d500025"
+        },
+        {
+          "item_id": "f8f7dd659b7c48da3dac8a4e06e66774e9a83405ea22a4742a54580795f4b6f3",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+          "fingerprint": "5c2ce6234a5f2a728647a56308235d750b8cf6b3390f0e64454fcc7e01b6e135"
+        },
+        {
+          "item_id": "fe60b82e2c5ea48d8fbc9216ab8b62d1550eb3e69c80ee393e1f503530e2b97a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+          "fingerprint": "6a8216731582ae89ff02b0055f686ef3fdc8f8ef2a4342e30fa36d9cf3c54df5"
+        }
+      ],
+      "reused": [],
+      "failed": [],
+      "waived": []
+    },
+    "elapsed_ms": 362165
+  },
+  "retry_report": {
+    "schema_version": "ocr.llm-retry-report/v1",
+    "total_requests": 111,
+    "retried_requests": 1,
+    "total_retries": 1,
+    "recovered_requests": 1,
+    "failed_requests": 0,
+    "cancelled_requests": 0,
+    "requests": [
+      {
+        "logical_request_id": "c7a33f776af992c5edd2cac4cbbc001c61ea1bcf7d6a79e2fc6f43df43be8a9b",
+        "provider": "muse-free",
+        "model": "muse-spark-1.3-contributor-free",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts,src/job/indexJob.ts,src/job/queue.ts,src/job/run.ts,src/job/store.ts",
+        "task_type": "main_task",
+        "request_no": 16,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 445
+          },
+          {
+            "attempt": 2,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 415,
+            "duration_to_headers_ms": 80026
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -7,7 +7,8 @@ export async function runPool<I, O>(
   worker: (item: I, index: number) => Promise<O>,
   opts: PoolOpts = {},
 ): Promise<{ ok: O[]; errors: { index: number; error: string }[] }> {
-  const concurrency = Math.max(1, opts.concurrency ?? 4);
+  const raw = opts.concurrency ?? 4;
+  const concurrency = Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 4;   // NaN/0/negative -> default, never 0 lanes
   const ok: O[] = [];
   const errors: { index: number; error: string }[] = [];
   let cursor = 0, done = 0;

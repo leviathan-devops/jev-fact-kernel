@@ -26,3 +26,23 @@
 - **Root cause:** the validator scans only the three slots for the package reference.
 - **Impact:** one emit iteration.
 - **Disposition:** FIXED (pin re-emitted; PASS 122 lines).
+
+### F-05 — The audit gate FAILED on first run (30 high findings) (2026-09-21)
+- **What happened:** `ocr review` over the build diff returned 174 comments; 91 canonical
+  (30 high) — real defects: `filter`/`find` swallowed `JEV_NO_KEY` into an empty success (an L4
+  violation), tombstones stayed searchable, `/decide` bound 0.0.0.0 unauthenticated, `claim(NaN)`
+  became `LIMIT -1`, `runPool(NaN)` created zero lanes, budget caps accepted NaN, the cache
+  fingerprint ignored the question set, and a per-file index error aborted the whole batch.
+- **Found:** the P6 audit gate (the first time it ran).
+- **Root cause (one mechanism):** the happy path was built and tested; the BOUNDARY arguments
+  (NaN, negative, missing key, deleted files, hostile concurrency) were not.
+- **Impact:** the gate blocks every ship-ready claim — correctly.
+- **Disposition:** FIXED (the post-audit fix pass; battery 18/0, tsc 0) — **RE-AUDIT OWED**;
+  the gate remains FAIL until it passes.
+
+### F-06 — The audit scanned the checkpoint copies too (2026-09-21)
+- **What happened:** 83 of the 174 comments were duplicates from `Checkpoints/**/src`.
+- **Root cause:** the checkpoint snapshot is committed, so it appears in the diff.
+- **Impact:** inflated the finding count ~2x (canonical 91, not 174).
+- **Disposition:** FIXED (canonical-only analysis; the checkpoint is excluded from test discovery
+  via `bunfig.toml [test] root = "tests"`). Future audits should diff the checkpoint out.

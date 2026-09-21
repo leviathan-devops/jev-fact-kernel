@@ -21,14 +21,20 @@ export class Queue {
 
   /** Claim up to n pending rows. Returns them with state='running' already persisted. */
   claim(n: number): QueueItem[] {
+    const want = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;   // NaN/negative must never become LIMIT -1
+    if (want === 0) return [];
     const now = new Date().toISOString();
     const tx = this.db.transaction(() => {
       const rows = this.db.query(
         "SELECT id, fingerprint, kind, payload, attempts FROM queue WHERE state='pending' ORDER BY id LIMIT ?",
-      ).all(n) as { id: number; fingerprint: string; kind: string; payload: string; attempts: number }[];
+      ).all(want) as { id: number; fingerprint: string; kind: string; payload: string; attempts: number }[];
       const upd = this.db.query("UPDATE queue SET state='running', attempts=attempts+1, updated_at=? WHERE id=?");
       for (const r of rows) upd.run(now, r.id);
-      return rows.map((r) => ({ ...r, payload: JSON.parse(r.payload) as unknown }));
+      return rows.map((r) => {
+        let payload: unknown = null;
+        try { payload = JSON.parse(r.payload); } catch { payload = { __corrupt: true, raw: String(r.payload).slice(0, 120) }; }
+        return { ...r, payload };
+      });
     });
     return tx() as QueueItem[];
   }

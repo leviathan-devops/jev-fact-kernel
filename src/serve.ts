@@ -12,10 +12,13 @@ export function startServer(opts: ServeOpts = {}) {
   const port = opts.port ?? 7777;
   const indexName = opts.name ?? "decisions";
 
+  const token = process.env.JM_SERVE_TOKEN;   // optional bearer; loopback-only by default
   return Bun.serve({
     port,
+    hostname: process.env.JM_SERVE_HOST ?? "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
+      if (token && req.headers.get("authorization") !== `Bearer ${token}`) return Response.json({ error: "JM_UNAUTHORIZED" }, { status: 401 });
       const db = openDb(indexPathFor(indexName));
       try {
         if (url.pathname === "/health") {

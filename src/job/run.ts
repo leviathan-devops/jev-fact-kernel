@@ -14,6 +14,7 @@ export async function runQueued<I, O>(opts: {
   concurrency?: number;
   stopAfter?: number;   // test hook: stop after N processed (simulates a crash mid-run)
   budgetCalls?: number; // HARD CAP (L3/T4): stop claiming once this many rows are DONE
+  stopOnError?: boolean; // when true, a worker failure stops the run (fail-closed callers)
 }): Promise<RunResult> {
   const { db } = openJob(opts.jobId);
   const q = new Queue(db, opts.jobId);
@@ -31,13 +32,16 @@ export async function runQueued<I, O>(opts: {
     const room = opts.budgetCalls !== undefined ? Math.max(0, opts.budgetCalls - doneNow) : Infinity;
     const batch = q.claim(Math.min(opts.concurrency ?? 4, 16, room));
     if (batch.length === 0) break;
-    await runPool(batch, async (item) => {
+    const { errors } = await runPool(batch, async (item) => {
       if (processed >= budget) return null;        // simulated crash point: leave the row 'running'
-      const out = await opts.work(item.payload as I, item.fingerprint);
-      q.complete(item.id, out);
-      processed++;
-      return out;
+      try {
+        const out = await opts.work(item.payload as I, item.fingerprint);
+        q.complete(item.id, out);
+        processed++;
+        return out;
+      } catch (err) { q.fail(item.id, String(err).slice(0, 200)); throw err; }   // record, never orphan
     }, { concurrency: opts.concurrency });
+    if (errors.length > 0 && opts.stopOnError) throw new Error(errors[0].error);
     if (processed >= budget) break;                // rows stay 'running' on purpose
   }
 
