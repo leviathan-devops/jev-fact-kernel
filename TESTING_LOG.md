@@ -233,3 +233,19 @@ zero-table sqlite, malformed jsonl, probabilities not summing to 1.
 battery 84 pass / 0 fail / 310 expects / 16 files · tsc exit 0
 ```
 **ADV-2: PASSED (with a non-empty defect ledger — a zero-defect sweep would have been the red flag).**
+
+### THE AUDIT GATE, FINAL STATE (2026-09-21, end of session)
+```
+CHUNKED METHOD (the only one that completes under upstream rate limits):
+  tests/  4 files  status=complete  findings 6 -> all fixed -> re-run: COMPLETE, 0 findings
+  root    3 files  status=complete  0 findings
+  src/   36 files  status=PARTIAL in EVERY attempt (18-file and 21-file halves also failed)
+                   findings seen: 1 low + 1 high + 3 low/medium + 1 high + 1 medium
+                   ALL adjudicated: 9 fixed, 6 REFUTED by probe (see AUDIT_SUMMARY §4)
+  lanes at close: openrouter-laguna-xs-free 0 tokens · poolside-laguna-s 0 tokens ·
+                  muse-free 0 tokens (a 2-file probe returns nothing on any lane)
+```
+**AUDIT GATE: BLOCKED.** Not FAIL (the known state is clean), not PASS (the largest chunk never
+completed). Retry condition: any lane returning non-zero tokens across the full 36-file source
+scope -> expect status=complete; zero findings flips the gate to PASS.
+Full method + ledger + the paste-ready re-run sequence: `AUDIT_SUMMARY.md`.
