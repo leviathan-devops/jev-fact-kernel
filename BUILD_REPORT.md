@@ -521,3 +521,31 @@ Each command above is quoted in §9 with its real output; the checkpoint at
 | S19 watch daemon | NO | — |
 | S20 fire gate | NO (F1/F6 owed) | — |
 
+
+### APPENDIX — the named-test surface, complete
+
+`packages/jm/06-WAVES.md` assigns a selectable test id per wave. All twelve non-W8 ids are now
+declared and pass under their own selector; `test_firegate_twin` belongs to W8, which is parked on
+the operator-owned F1/F6 rulings, so it is absent by design rather than by omission.
+
+| wave | id | file | selector result |
+|------|----|------|-----------------|
+| W0 | test_index_incremental | tests/index.test.ts | 1 pass / 0 fail |
+| W0 | test_store_roundtrip | tests/store.test.ts | 1 pass / 0 fail |
+| W0 | test_query_known_rows | tests/query.test.ts | 1 pass / 0 fail |
+| W1 | test_resume_no_dup | tests/resume.test.ts | 1 pass / 0 fail |
+| W1 | test_budget_cap | tests/budget.test.ts | 1 pass / 0 fail |
+| W2 | test_adapter_delta | tests/adapters.test.ts | 1 pass / 0 fail |
+| W3 | test_filter_bands | tests/wave-gates.test.ts | 2 pass / 0 fail |
+| W4 | test_find_patterns | tests/find.test.ts | 1 pass / 0 fail |
+| W5 | test_cache_zero_calls | tests/decision.test.ts | 1 pass / 0 fail |
+| W5 | test_decision_fail_closed | tests/decision.test.ts | 1 pass / 0 fail |
+| W6 | test_serve_decide | tests/wave-gates.test.ts | 2 pass / 0 fail |
+| W7 | test_calibrate_row | tests/wave-gates.test.ts | 1 pass / 0 fail |
+| W8 | test_firegate_twin | — | ABSENT: W8 parked |
+
+Three of the twelve did not exist before this session (`test_find_patterns`, `test_filter_bands`,
+`test_serve_decide` and `test_calibrate_row` — four, counting the W6/W7 pair written together), and
+writing them found defects the rest of the battery could not see: a raw SQLite error leaking from
+malformed FTS input, a budget cap that overshot 3x under concurrency, a documented flag that was
+never read, and an MCP surface that returned empty-at-success for a missing index.

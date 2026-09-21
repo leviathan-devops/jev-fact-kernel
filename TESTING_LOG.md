@@ -349,3 +349,23 @@ battery 111 pass / 0 fail / 539 expects / 20 files · tsc exit 0
 ```
 **ROUND 2: PASSED** — the documented contract carried a zero-context operator through all ten
 steps, and the three defects it exposed are fixed and pinned.
+
+### THE NAMED-TEST AUDIT — every id the wave table and the pin require
+The wave table (packages/jm/06-WAVES.md) names a test id per wave; the pin's proof contract names
+six selectable ones. A systematic sweep found THREE more absent — `test_filter_bands` (W3),
+`test_serve_decide` (W6), `test_calibrate_row` (W7) — the same hole that hid three defects when
+`test_find_patterns` was written earlier in this session.
+
+```
+DECLARED + PASSING BY SELECTOR (bun test -t <id>):
+  test_index_incremental 1/0 · test_store_roundtrip 1/0 · test_query_known_rows 1/0
+  test_resume_no_dup 1/0 · test_budget_cap 1/0 · test_adapter_delta 1/0
+  test_filter_bands 2/0 · test_find_patterns 1/0 · test_cache_zero_calls 1/0
+  test_decision_fail_closed 1/0 · test_serve_decide 2/0 · test_calibrate_row 1/0
+ABSENT (correctly): test_firegate_twin — W8 is parked; the fire gate has no code to test.
+
+What writing them found: filter's question key is `match` (not `flag`), the /decide body asks
+`flag`, and find asks `is_instance` — three different keys across three verbs, and answering the
+wrong one leaves every p at 0, which READS as "the code is broken" when the mock is what is wrong.
+battery 116 pass / 0 fail / 580 expects / 21 files · tsc exit 0
+```
