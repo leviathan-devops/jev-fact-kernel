@@ -26,17 +26,17 @@ describe("D-044 cache endpoint scoping", () => {
 
       process.env.JM_JUDGE_URL = `http://127.0.0.1:${a.port}/`;
       const r1 = await j.ask(state, questions, "scope@v1");
-      expect((r1.answers as { flag: { noul: number } }).flag.noul).toBe(0.9);
+      expect((r1.answers as unknown as { flag: { noul: number } }).flag.noul).toBe(0.9);
 
       process.env.JM_JUDGE_URL = `http://127.0.0.1:${b.port}/`;
       const r2 = await j.ask(state, questions, "scope@v1");
       expect(r2.cached).toBe(false);                                            // NOT A's entry
-      expect((r2.answers as { flag: { noul: number } }).flag.noul).toBe(0.1);   // B's OWN answer
+      expect((r2.answers as unknown as { flag: { noul: number } }).flag.noul).toBe(0.1);   // B's OWN answer
 
       process.env.JM_JUDGE_URL = `http://127.0.0.1:${a.port}/`;
       const r3 = await j.ask(state, questions, "scope@v1");
       expect(r3.cached).toBe(true);                                             // A's entry survived
-      expect((r3.answers as { flag: { noul: number } }).flag.noul).toBe(0.9);
+      expect((r3.answers as unknown as { flag: { noul: number } }).flag.noul).toBe(0.9);
       db.close();
     } finally {
       if (prev === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev;
