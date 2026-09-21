@@ -1,0 +1,2073 @@
+{
+  "status": "failed",
+  "llm": {
+    "provider": "openrouter-laguna-xs-free",
+    "model": "poolside/laguna-xs-2.1:free"
+  },
+  "message": "Review failed: 2 finding(s); 26 of 26 selected item(s) failed.",
+  "summary": {
+    "files_reviewed": 26,
+    "comments": 2,
+    "total_tokens": 112347,
+    "input_tokens": 105746,
+    "output_tokens": 6601,
+    "cache_read_tokens": 56944,
+    "elapsed": "2m9s"
+  },
+  "tool_calls": {
+    "total": 12,
+    "by_tool": {
+      "code_comment": 2,
+      "file_read": 10
+    },
+    "failure": 0,
+    "failure_by_tool": {},
+    "failure_details": []
+  },
+  "comments": [
+    {
+      "path": "src/calibrate.ts",
+      "content": "Potential issue: The `query` function is called with a template literal that includes single quotes inside another single-quoted string. This could lead to SQL injection if the `name` variable (from `type='table' AND name='decisions'`) needs to be dynamic in the future, and the escaping pattern is unconventional. Consider using parameterized queries for consistency with other SQL queries in this codebase (e.g., line 13's `query` call uses `?` placeholders).",
+      "existing_code": "const exists = db.query(\"SELECT name FROM sqlite_master WHERE type='table' AND name='decisions'\").get();",
+      "start_line": 11,
+      "end_line": 11,
+      "category": "security",
+      "severity": "low"
+    },
+    {
+      "path": "src/judge/cache.ts",
+      "content": "Bug: The COALESCE subquery `(SELECT hits FROM cache WHERE fingerprint=?)` is evaluated AFTER the row is deleted by INSERT OR REPLACE, so it always returns NULL, resetting hits to 0. The intended behavior is to preserve the existing hits count. Should use INSERT ... ON CONFLICT(fingerprint) DO UPDATE SET ... syntax or a UPSERT pattern that preserves hits.",
+      "suggestion_code": "// Option 1: Use separate SELECT before INSERT\n+  const existingHits = db.query(\"SELECT hits FROM cache WHERE fingerprint = ?\").get(fp);\n+  db.run(\"INSERT INTO cache(fingerprint, provider, model, schema_hash, state_hash, answer_json, created_at, hits) VALUES (?,?,?,?,?,?,?, ?)\",\n+    [fp, provider, model, schemaHash, stateHash, JSON.stringify(answers), new Date().toISOString(), existingHits?.hits ?? 0]);\n+}\n+\n+// Option 2: Use Bun's INSERT OR REPLACE with separate update (more portable)\n+export function cachePut(db: Database, fp: string, provider: string, model: string, schemaHash: string, stateHash: string, answers: unknown): void {\n+  const existing = db.query(\"SELECT hits FROM cache WHERE fingerprint = ?\").get(fp);\n+  db.run(\"DELETE FROM cache WHERE fingerprint = ?\", [fp]);\n+  db.run(\"INSERT INTO cache(fingerprint, provider, model, schema_hash, state_hash, answer_json, created_at, hits) VALUES (?,?,?,?,?,?,?, ?)\",\n+    [fp, provider, model, schemaHash, stateHash, JSON.stringify(answers), new Date().toISOString(), existing?.hits ?? 0]);",
+      "existing_code": "db.run(\"INSERT OR REPLACE INTO cache(fingerprint, provider, model, schema_hash, state_hash, answer_json, created_at, hits) VALUES (?,?,?,?,?,?,?, COALESCE((SELECT hits FROM cache WHERE fingerprint=?),0))\",\n+    [fp, provider, model, schemaHash, stateHash, JSON.stringify(answers), new Date().toISOString(), fp]);",
+      "start_line": 42,
+      "end_line": 43,
+      "category": "bug",
+      "severity": "high"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Project configuration files",
+      "files": [
+        "bunfig.toml",
+        "package.json",
+        "tsconfig.json"
+      ]
+    },
+    {
+      "label": "Application entry points",
+      "files": [
+        "src/cli.ts",
+        "src/serve.ts"
+      ]
+    },
+    {
+      "label": "Job processing system",
+      "files": [
+        "src/job/indexJob.ts",
+        "src/job/queue.ts",
+        "src/job/run.ts",
+        "src/job/store.ts"
+      ]
+    },
+    {
+      "label": "Judge subsystem",
+      "files": [
+        "src/judge/cache.ts",
+        "src/judge/client.ts",
+        "src/judge/key.ts",
+        "src/judge/policy.ts",
+        "src/judge/transport.ts"
+      ]
+    },
+    {
+      "label": "Ledger module",
+      "files": [
+        "src/ledger.ts"
+      ]
+    },
+    {
+      "label": "Pools management system",
+      "files": [
+        "src/pools/budget.ts",
+        "src/pools/pool.ts"
+      ]
+    },
+    {
+      "label": "Verbs/actions implementation",
+      "files": [
+        "src/verbs/decision-tree.ts",
+        "src/verbs/filter.ts",
+        "src/verbs/find.ts",
+        "src/verbs/index.ts",
+        "src/verbs/query.ts"
+      ]
+    },
+    {
+      "label": "Data storage layer",
+      "files": [
+        "src/store/db.ts",
+        "src/store/schema.ts"
+      ]
+    },
+    {
+      "label": "Calibration utility",
+      "files": [
+        "src/calibrate.ts"
+      ]
+    },
+    {
+      "label": "Test helpers",
+      "files": [
+        "tests/helpers.ts"
+      ]
+    }
+  ],
+  "session_id": "a64f7252-7864-4bcd-9220-f6a5ed349981",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "a64f7252-7864-4bcd-9220-f6a5ed349981",
+    "operation": "review",
+    "terminal_state": "failed",
+    "repository": {},
+    "input": {
+      "mode": "range",
+      "requested_from": "7b7f7eb",
+      "requested_head": "HEAD",
+      "resolved_base": "7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30",
+      "resolved_head": "c0d0e76c38b44fdefa2548408e87ca95ec87bb4e",
+      "exact_range": "7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30..c0d0e76c38b44fdefa2548408e87ca95ec87bb4e",
+      "source_artifact_sha256": "8659097db3746da539b638efc3321396beb1e6255bf6cb2c6e793d808310a172"
+    },
+    "execution": {
+      "ocr_version": "v1.12.8",
+      "provider": "openrouter-laguna-xs-free",
+      "model": "poolside/laguna-xs-2.1:free",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "63fece88d4be374410d20d9beb952a6a21e23b4f1e21e813b3864514343d6630",
+      "runtime_config_sha256": "9c8aa9c89bb2e06a058deb42e8ceab023682031ca2d1a86e1cc66dbf07d9c17c"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "065594c1950a8bdf32e6147a515d8abd91c29419826131f0431d986a8e6e9c49",
+          "path": "src/calibrate.ts",
+          "fingerprint": "11796bee5509c2b9a134ebb89fc4225f54f41a950c1e2e359b067c97f1a76cbd"
+        },
+        {
+          "item_id": "0d9b950998672ebfa581b7b087ef7dcc267b693c5fcb513e9ec03817c4d9eaf9",
+          "path": "src/store/schema.ts",
+          "fingerprint": "ad8874feabefdf30fcbc0333e5eeb67572f2dac7e3eb688ecb26cfe7f47c8785"
+        },
+        {
+          "item_id": "5234ca7e446e17cb8112e2c11af2615280c3d0120abbd2ec46caf7df9e46ea5d",
+          "path": "src/pools/pool.ts",
+          "fingerprint": "d8487d4e20879c96d8f30108a28ad1e799e9ca7b7e794f0c2a0c531c9c1bcd0d"
+        },
+        {
+          "item_id": "6520967e32b60453eadaeaa8fcf50615dace9e084dd871aa318eefd53d2f5e40",
+          "path": "tsconfig.json",
+          "fingerprint": "807dd6ca6eedd8d37b13cbba8f1fc9386d2793668f8f15dc9ddc2ccc581c3a6c"
+        },
+        {
+          "item_id": "6b791da7b7478a46901d54abef1f5b4cbb48090b327e3e4ef2751d627e17f953",
+          "path": "src/serve.ts",
+          "fingerprint": "c218bcad9823013f804d9caeb11df8e139813fd3763ac1c38c1d3b0103904c98"
+        },
+        {
+          "item_id": "6e8c157364555b804b8ea0f4619a38243d3691aae858d5f24c1fdd104a77d4c2",
+          "path": "src/job/queue.ts",
+          "fingerprint": "eff090cfaedeca3bca89630a1170216a331b0be4397e45b34473ee4384ec1f91"
+        },
+        {
+          "item_id": "7425ccdca5f15ecd673a85900569714d14614e54120f8dfaa1642fd26d8fb851",
+          "path": "src/judge/policy.ts",
+          "fingerprint": "46e71524133ebfdf47dda783774dfc55b53aa32208dcaa59aa06737089e512b1"
+        },
+        {
+          "item_id": "7e845fd1c43125d18b1bb3576f69445ce1a437fa8b59c1150a37a8ff596d57fc",
+          "path": "src/verbs/index.ts",
+          "fingerprint": "5b0006ea98135448707cf6a4444af9594ad39d49ed66e6bf38caed55a663141f"
+        },
+        {
+          "item_id": "80e472a2558e25b599a468c6767aa0ded5d498bcf66cc6ab27e0411c2e6b0c5c",
+          "path": "src/verbs/decision-tree.ts",
+          "fingerprint": "176df8f633bebebb832af98a166155df5841293a27d85ff61df23da610ae95bf"
+        },
+        {
+          "item_id": "8fa2b8790dd48444cd5c653fbcd71cff6d14c633a9800b8a212ea4c94842e040",
+          "path": "src/judge/transport.ts",
+          "fingerprint": "983f2319c105f2e17de8373f68e33111e6ff635ddc4c5c61887e746cccaf2b85"
+        },
+        {
+          "item_id": "918e040119e9529b67832c799b28542a07788eefc5d3879937ff38f7201f77fb",
+          "path": "src/cli.ts",
+          "fingerprint": "fd052cd327c6c9dafb247ff760777c8233387f18011fc42bbaa53eb548a03946"
+        },
+        {
+          "item_id": "a7ebf8583a59c7079ee6de4b36570a452d46bb9fc24ad55bb6188bc434c15340",
+          "path": "src/verbs/find.ts",
+          "fingerprint": "b001da810a010aa6e552a090d95a8edcaf027102513d3f7047bc3421b35730d4"
+        },
+        {
+          "item_id": "b26782a9fbdc5fabb88ecd7b308b0346518b06bfaf23fe34481e7b3f4c461bc7",
+          "path": "src/verbs/query.ts",
+          "fingerprint": "2441d907277ee85d99a6e0c83d3f9d5fe756db170f2e4f2efa63d8a40ef44b0c"
+        },
+        {
+          "item_id": "b41cb619274b758b43048f726adad534c094537c6cbd449a26f7293186df8b66",
+          "path": "src/job/store.ts",
+          "fingerprint": "4ea395a754906d78818b4e508ebb21fc076e81dbe2707663c72616a67b18c116"
+        },
+        {
+          "item_id": "b564fa968089c6ed56d757f8af4b799ff14ae734c2f062d7395ea973f457ba1b",
+          "path": "src/job/run.ts",
+          "fingerprint": "1f72380fc5d3f9d4cfcb0672b052f76ae414ace9875dd767353cfda7b00e53f4"
+        },
+        {
+          "item_id": "b7ddd2a768e771d252d9f772d17847c32b6fa7961bdcb49f3415bff84affa68b",
+          "path": "tests/helpers.ts",
+          "fingerprint": "178d5c602117c97004766754c9023ef4d50d405db9522e2ec316a0b2886a336b"
+        },
+        {
+          "item_id": "ba974e72e2acbe6eec406e8ee68ba046f3078d24783613e614447f985e11bfba",
+          "path": "src/judge/key.ts",
+          "fingerprint": "858f4c0857adab5e7c8495ca7848f4be1ea3929517874c6abbd1c8e59e154cb8"
+        },
+        {
+          "item_id": "c968da88e037cee2f80b20a94d74b5e90d5f4f891e928724567d0d429efdbbd0",
+          "path": "src/ledger.ts",
+          "fingerprint": "1aa92ffeed7fba2c9e2aeddee2c3cb1d74b23826e7176c8271f0da2b13ce4e35"
+        },
+        {
+          "item_id": "cd8b5119aa0f585c339c4969f3701107fbb1d5de7818d29b2988bcf328bf5e19",
+          "path": "src/verbs/filter.ts",
+          "fingerprint": "da1486070758ae3b40bdcdb4e4def20dd88abb8ecfa3392b72cb0d7f928b1323"
+        },
+        {
+          "item_id": "cefcf7b362ef9668818a797d289d2cfcebe6a19768dfc8965188f834ce8e80ca",
+          "path": "src/store/db.ts",
+          "fingerprint": "7016eb522cf8fb2cbc9aba47612a7ac3c02f50a9e9b13437fa4f4cf1ce4b2c61"
+        },
+        {
+          "item_id": "d5051a2abc448bd6d546e85110a480f61b3db90095139cbf086258b05f965141",
+          "path": "src/pools/budget.ts",
+          "fingerprint": "43f3b182d8bddbde52038eace92fa21b38df941ef00586aee18bce49742e9ffb"
+        },
+        {
+          "item_id": "e3c7cbe310881d0348390239b00c219aa81fd9d09b83da3f90f33ba209ea7b6a",
+          "path": "package.json",
+          "fingerprint": "47a1ce1ba4cd6d8af958ec3fec7369778ebe64b3c7e639ca390348816a58a7e1"
+        },
+        {
+          "item_id": "e6461545e52e4aa4e44ed4a662ac07440f6746d721a74770915dc1390b82976f",
+          "path": "src/job/indexJob.ts",
+          "fingerprint": "cbf08fd6bbb43bbee172bbb64788787a088dc7a81823d42f7ca18781c1eb547c"
+        },
+        {
+          "item_id": "e943154e3292eea47673886a5701cae63ad3222ce38d5a26f432335832f9c529",
+          "path": "src/judge/cache.ts",
+          "fingerprint": "2a2823c5f1f68aec3ec983dbc03efa20ba1897e7cd79bf182af472c81b534928"
+        },
+        {
+          "item_id": "eb685bb66dc94e700fec5dbb85ef9a1ad0bc97f8b68159182ebbd5ba46227b5d",
+          "path": "src/judge/client.ts",
+          "fingerprint": "35e2291b1d8080828759eee5a96c06e0ef49f68439c0763efd9ef8ff6fd11404"
+        },
+        {
+          "item_id": "f9063417aca0cd0b2c0e004a11ac7a050207978d6c6ac513eb10d16dd3ee1454",
+          "path": "bunfig.toml",
+          "fingerprint": "e8fc24f8844194a43e3c81db9b8ed1c0295dc7108c51de09dc2c2c42c962e448"
+        }
+      ],
+      "completed": [],
+      "reused": [],
+      "failed": [
+        {
+          "item_id": "065594c1950a8bdf32e6147a515d8abd91c29419826131f0431d986a8e6e9c49",
+          "path": "src/calibrate.ts",
+          "fingerprint": "11796bee5509c2b9a134ebb89fc4225f54f41a950c1e2e359b067c97f1a76cbd",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "0d9b950998672ebfa581b7b087ef7dcc267b693c5fcb513e9ec03817c4d9eaf9",
+          "path": "src/store/schema.ts",
+          "fingerprint": "ad8874feabefdf30fcbc0333e5eeb67572f2dac7e3eb688ecb26cfe7f47c8785",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "5234ca7e446e17cb8112e2c11af2615280c3d0120abbd2ec46caf7df9e46ea5d",
+          "path": "src/pools/pool.ts",
+          "fingerprint": "d8487d4e20879c96d8f30108a28ad1e799e9ca7b7e794f0c2a0c531c9c1bcd0d",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "6520967e32b60453eadaeaa8fcf50615dace9e084dd871aa318eefd53d2f5e40",
+          "path": "tsconfig.json",
+          "fingerprint": "807dd6ca6eedd8d37b13cbba8f1fc9386d2793668f8f15dc9ddc2ccc581c3a6c",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "6b791da7b7478a46901d54abef1f5b4cbb48090b327e3e4ef2751d627e17f953",
+          "path": "src/serve.ts",
+          "fingerprint": "c218bcad9823013f804d9caeb11df8e139813fd3763ac1c38c1d3b0103904c98",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "6e8c157364555b804b8ea0f4619a38243d3691aae858d5f24c1fdd104a77d4c2",
+          "path": "src/job/queue.ts",
+          "fingerprint": "eff090cfaedeca3bca89630a1170216a331b0be4397e45b34473ee4384ec1f91",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "7425ccdca5f15ecd673a85900569714d14614e54120f8dfaa1642fd26d8fb851",
+          "path": "src/judge/policy.ts",
+          "fingerprint": "46e71524133ebfdf47dda783774dfc55b53aa32208dcaa59aa06737089e512b1",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "7e845fd1c43125d18b1bb3576f69445ce1a437fa8b59c1150a37a8ff596d57fc",
+          "path": "src/verbs/index.ts",
+          "fingerprint": "5b0006ea98135448707cf6a4444af9594ad39d49ed66e6bf38caed55a663141f",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "80e472a2558e25b599a468c6767aa0ded5d498bcf66cc6ab27e0411c2e6b0c5c",
+          "path": "src/verbs/decision-tree.ts",
+          "fingerprint": "176df8f633bebebb832af98a166155df5841293a27d85ff61df23da610ae95bf",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "8fa2b8790dd48444cd5c653fbcd71cff6d14c633a9800b8a212ea4c94842e040",
+          "path": "src/judge/transport.ts",
+          "fingerprint": "983f2319c105f2e17de8373f68e33111e6ff635ddc4c5c61887e746cccaf2b85",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "918e040119e9529b67832c799b28542a07788eefc5d3879937ff38f7201f77fb",
+          "path": "src/cli.ts",
+          "fingerprint": "fd052cd327c6c9dafb247ff760777c8233387f18011fc42bbaa53eb548a03946",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "a7ebf8583a59c7079ee6de4b36570a452d46bb9fc24ad55bb6188bc434c15340",
+          "path": "src/verbs/find.ts",
+          "fingerprint": "b001da810a010aa6e552a090d95a8edcaf027102513d3f7047bc3421b35730d4",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "b26782a9fbdc5fabb88ecd7b308b0346518b06bfaf23fe34481e7b3f4c461bc7",
+          "path": "src/verbs/query.ts",
+          "fingerprint": "2441d907277ee85d99a6e0c83d3f9d5fe756db170f2e4f2efa63d8a40ef44b0c",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "b41cb619274b758b43048f726adad534c094537c6cbd449a26f7293186df8b66",
+          "path": "src/job/store.ts",
+          "fingerprint": "4ea395a754906d78818b4e508ebb21fc076e81dbe2707663c72616a67b18c116",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "b564fa968089c6ed56d757f8af4b799ff14ae734c2f062d7395ea973f457ba1b",
+          "path": "src/job/run.ts",
+          "fingerprint": "1f72380fc5d3f9d4cfcb0672b052f76ae414ace9875dd767353cfda7b00e53f4",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "b7ddd2a768e771d252d9f772d17847c32b6fa7961bdcb49f3415bff84affa68b",
+          "path": "tests/helpers.ts",
+          "fingerprint": "178d5c602117c97004766754c9023ef4d50d405db9522e2ec316a0b2886a336b",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "ba974e72e2acbe6eec406e8ee68ba046f3078d24783613e614447f985e11bfba",
+          "path": "src/judge/key.ts",
+          "fingerprint": "858f4c0857adab5e7c8495ca7848f4be1ea3929517874c6abbd1c8e59e154cb8",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "c968da88e037cee2f80b20a94d74b5e90d5f4f891e928724567d0d429efdbbd0",
+          "path": "src/ledger.ts",
+          "fingerprint": "1aa92ffeed7fba2c9e2aeddee2c3cb1d74b23826e7176c8271f0da2b13ce4e35",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "cd8b5119aa0f585c339c4969f3701107fbb1d5de7818d29b2988bcf328bf5e19",
+          "path": "src/verbs/filter.ts",
+          "fingerprint": "da1486070758ae3b40bdcdb4e4def20dd88abb8ecfa3392b72cb0d7f928b1323",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "cefcf7b362ef9668818a797d289d2cfcebe6a19768dfc8965188f834ce8e80ca",
+          "path": "src/store/db.ts",
+          "fingerprint": "7016eb522cf8fb2cbc9aba47612a7ac3c02f50a9e9b13437fa4f4cf1ce4b2c61",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "d5051a2abc448bd6d546e85110a480f61b3db90095139cbf086258b05f965141",
+          "path": "src/pools/budget.ts",
+          "fingerprint": "43f3b182d8bddbde52038eace92fa21b38df941ef00586aee18bce49742e9ffb",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "e3c7cbe310881d0348390239b00c219aa81fd9d09b83da3f90f33ba209ea7b6a",
+          "path": "package.json",
+          "fingerprint": "47a1ce1ba4cd6d8af958ec3fec7369778ebe64b3c7e639ca390348816a58a7e1",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "e6461545e52e4aa4e44ed4a662ac07440f6746d721a74770915dc1390b82976f",
+          "path": "src/job/indexJob.ts",
+          "fingerprint": "cbf08fd6bbb43bbee172bbb64788787a088dc7a81823d42f7ca18781c1eb547c",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "e943154e3292eea47673886a5701cae63ad3222ce38d5a26f432335832f9c529",
+          "path": "src/judge/cache.ts",
+          "fingerprint": "2a2823c5f1f68aec3ec983dbc03efa20ba1897e7cd79bf182af472c81b534928",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "eb685bb66dc94e700fec5dbb85ef9a1ad0bc97f8b68159182ebbd5ba46227b5d",
+          "path": "src/judge/client.ts",
+          "fingerprint": "35e2291b1d8080828759eee5a96c06e0ef49f68439c0763efd9ef8ff6fd11404",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        },
+        {
+          "item_id": "f9063417aca0cd0b2c0e004a11ac7a050207978d6c6ac513eb10d16dd3ee1454",
+          "path": "bunfig.toml",
+          "fingerprint": "e8fc24f8844194a43e3c81db9b8ed1c0295dc7108c51de09dc2c2c42c962e448",
+          "classification": "provider",
+          "reason": "provider or subtask request failed"
+        }
+      ],
+      "waived": []
+    },
+    "elapsed_ms": 129015
+  },
+  "retry_report": {
+    "schema_version": "ocr.llm-retry-report/v1",
+    "total_requests": 30,
+    "retried_requests": 27,
+    "total_retries": 122,
+    "recovered_requests": 11,
+    "failed_requests": 16,
+    "cancelled_requests": 0,
+    "requests": [
+      {
+        "logical_request_id": "03e4f21bbd1c054cfaf87f64151096f62c6245648ea398b99654b1664a6d62f7",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 241
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 400,
+            "duration_to_headers_ms": 299
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 788,
+            "duration_to_headers_ms": 230
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1854,
+            "duration_to_headers_ms": 549
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3641,
+            "duration_to_headers_ms": 248
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7968,
+            "duration_to_headers_ms": 273
+          }
+        ]
+      },
+      {
+        "logical_request_id": "07be08867a1adc4fd7fc267ba2021c38bc7276ffa20e74c8b5fed0c34ce0355e",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/pools/budget.ts,src/pools/pool.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 524
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 433,
+            "duration_to_headers_ms": 240
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 793,
+            "duration_to_headers_ms": 320
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1984,
+            "duration_to_headers_ms": 213
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3088,
+            "duration_to_headers_ms": 252
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 6139,
+            "duration_to_headers_ms": 211
+          }
+        ]
+      },
+      {
+        "logical_request_id": "09060ea297a72b699136b9ad7afcb3276cb304682393c88b0e773e0ac6678d58",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "main_task",
+        "request_no": 4,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 447
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 467,
+            "duration_to_headers_ms": 248
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 957,
+            "duration_to_headers_ms": 423
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1986,
+            "duration_to_headers_ms": 238
+          },
+          {
+            "attempt": 5,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 3167,
+            "duration_to_headers_ms": 701
+          }
+        ]
+      },
+      {
+        "logical_request_id": "0a339ea95a18275e40dcc0c5758d79aa98573c33b18d27d6ec2cb06ff804daa7",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/calibrate.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 216
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 438,
+            "duration_to_headers_ms": 234
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 755,
+            "duration_to_headers_ms": 296
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1996,
+            "duration_to_headers_ms": 256
+          },
+          {
+            "attempt": 5,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 3243,
+            "duration_to_headers_ms": 723
+          }
+        ]
+      },
+      {
+        "logical_request_id": "21035672bfadcc68663980f2b102d0977c47675e0807e4bc44f8fbca087c79b4",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/cli.ts,src/serve.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 238
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 449,
+            "duration_to_headers_ms": 274
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 764,
+            "duration_to_headers_ms": 277
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1522,
+            "duration_to_headers_ms": 220
+          },
+          {
+            "attempt": 5,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 3690,
+            "duration_to_headers_ms": 694
+          }
+        ]
+      },
+      {
+        "logical_request_id": "23b3db56429d4f630407e1399405e9c3d05506877d6c5c49b79950ce68f1d911",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/ledger.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 305
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 402,
+            "duration_to_headers_ms": 283
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 766,
+            "duration_to_headers_ms": 218
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1536,
+            "duration_to_headers_ms": 232
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3143,
+            "duration_to_headers_ms": 234
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7450,
+            "duration_to_headers_ms": 435
+          }
+        ]
+      },
+      {
+        "logical_request_id": "30798395bf9636a6b7a355f7828c887e59df3cc88832570edb8a920febc0589f",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 606
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 436,
+            "duration_to_headers_ms": 235
+          },
+          {
+            "attempt": 3,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 802,
+            "duration_to_headers_ms": 777
+          }
+        ]
+      },
+      {
+        "logical_request_id": "3272f744a93fb82040a414282b9f48f43e4271a1cd9c3926cc2fe7b1571e00b9",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/store/db.ts,src/store/schema.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 305
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 486,
+            "duration_to_headers_ms": 227
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 807,
+            "duration_to_headers_ms": 227
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1701,
+            "duration_to_headers_ms": 337
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3876,
+            "duration_to_headers_ms": 223
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7857,
+            "duration_to_headers_ms": 248
+          }
+        ]
+      },
+      {
+        "logical_request_id": "4026f907940b4b4f6749dc950f49cace6d73634cad438c0acb15b591c5d9664f",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/store/db.ts,src/store/schema.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 482
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 426,
+            "duration_to_headers_ms": 497
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 974,
+            "duration_to_headers_ms": 222
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1602,
+            "duration_to_headers_ms": 424
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3149,
+            "duration_to_headers_ms": 212
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 6283,
+            "duration_to_headers_ms": 237
+          }
+        ]
+      },
+      {
+        "logical_request_id": "42e9e015bfab867bdf3a21a4462d0c2d69cc953d8f1d501512cb8cf4e237d01e",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "main_task",
+        "request_no": 7,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 462
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 443,
+            "duration_to_headers_ms": 225
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 884,
+            "duration_to_headers_ms": 459
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1622,
+            "duration_to_headers_ms": 240
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3681,
+            "duration_to_headers_ms": 481
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7976,
+            "duration_to_headers_ms": 481
+          }
+        ]
+      },
+      {
+        "logical_request_id": "4c8d8f7dde0fa315178e53169a6f027f7545c571ff2b3adb4c7e82d2ba4054da",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "tests/helpers.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 215
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 487,
+            "duration_to_headers_ms": 219
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 853,
+            "duration_to_headers_ms": 269
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1543,
+            "duration_to_headers_ms": 260
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3848,
+            "duration_to_headers_ms": 389
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7594,
+            "duration_to_headers_ms": 334
+          }
+        ]
+      },
+      {
+        "logical_request_id": "4f3debfd5d9bd30c0df590fe280a0fee773a1ec2d37e21d35634fb02809ef15a",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/cli.ts,src/serve.ts",
+        "task_type": "main_task",
+        "request_no": 2,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 225
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 439,
+            "duration_to_headers_ms": 250
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 948,
+            "duration_to_headers_ms": 261
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1958,
+            "duration_to_headers_ms": 241
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3328,
+            "duration_to_headers_ms": 236
+          },
+          {
+            "attempt": 6,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 6949,
+            "duration_to_headers_ms": 589
+          }
+        ]
+      },
+      {
+        "logical_request_id": "5dbdb0ce829789c064b29fa1129c4174a89ba1f9dede88edae48720d3d23bb1e",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/cli.ts,src/serve.ts",
+        "task_type": "main_task",
+        "request_no": 4,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 229
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 450,
+            "duration_to_headers_ms": 246
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 830,
+            "duration_to_headers_ms": 437
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1715,
+            "duration_to_headers_ms": 220
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3271,
+            "duration_to_headers_ms": 229
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7427,
+            "duration_to_headers_ms": 280
+          }
+        ]
+      },
+      {
+        "logical_request_id": "608b4e328274dc14c37d33bd6c823d75bdc3591aa04df5966b0f2eed67b25f58",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/job/indexJob.ts,src/job/queue.ts,src/job/run.ts,src/job/store.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 507
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 480,
+            "duration_to_headers_ms": 417
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 889,
+            "duration_to_headers_ms": 277
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1589,
+            "duration_to_headers_ms": 276
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3897,
+            "duration_to_headers_ms": 224
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7514,
+            "duration_to_headers_ms": 237
+          }
+        ]
+      },
+      {
+        "logical_request_id": "6a111835403f545b8fd189f84061086b59d3c55b436739f0940080c46a88ee15",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/job/indexJob.ts,src/job/queue.ts,src/job/run.ts,src/job/store.ts",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 218
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 490,
+            "duration_to_headers_ms": 230
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 880,
+            "duration_to_headers_ms": 221
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1871,
+            "duration_to_headers_ms": 236
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3383,
+            "duration_to_headers_ms": 237
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7166,
+            "duration_to_headers_ms": 223
+          }
+        ]
+      },
+      {
+        "logical_request_id": "70d35e78a0d933527f9dc5543d0f8c2433c399b3700bb7b145097fe879193b13",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 532
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 377,
+            "duration_to_headers_ms": 496
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 873,
+            "duration_to_headers_ms": 253
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1918,
+            "duration_to_headers_ms": 226
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3112,
+            "duration_to_headers_ms": 220
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7840,
+            "duration_to_headers_ms": 231
+          }
+        ]
+      },
+      {
+        "logical_request_id": "760b37bc95b10f00a3be5d48a9a42782c866796869ddfe1ef21ba6f47c9ba919",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/cli.ts,src/serve.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 514
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 488,
+            "duration_to_headers_ms": 403
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 801,
+            "duration_to_headers_ms": 363
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1991,
+            "duration_to_headers_ms": 235
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3889,
+            "duration_to_headers_ms": 264
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 6204,
+            "duration_to_headers_ms": 340
+          }
+        ]
+      },
+      {
+        "logical_request_id": "90fa264c482e62a1f2f02bc9d5d2be5eb7e21fb2011fb82968d3f1b02a5a3259",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/calibrate.ts",
+        "task_type": "main_task",
+        "request_no": 2,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 454
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 400,
+            "duration_to_headers_ms": 229
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 778,
+            "duration_to_headers_ms": 238
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1912,
+            "duration_to_headers_ms": 295
+          },
+          {
+            "attempt": 5,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 3338,
+            "duration_to_headers_ms": 649
+          }
+        ]
+      },
+      {
+        "logical_request_id": "91c6fb30bf1885a349f8bffe7ce60592fd9524ae9c1a2e18239a8801332843c3",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "main_task",
+        "request_no": 5,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 474
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 437,
+            "duration_to_headers_ms": 340
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 909,
+            "duration_to_headers_ms": 250
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1912,
+            "duration_to_headers_ms": 455
+          },
+          {
+            "attempt": 5,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 3625,
+            "duration_to_headers_ms": 830
+          }
+        ]
+      },
+      {
+        "logical_request_id": "acdc290b8c6239719c8ad80465cf4fa2a4afad2b96b3e59ea6655b0a136771cc",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/calibrate.ts",
+        "task_type": "main_task",
+        "request_no": 3,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 502
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 391,
+            "duration_to_headers_ms": 213
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 811,
+            "duration_to_headers_ms": 251
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1818,
+            "duration_to_headers_ms": 624
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3488,
+            "duration_to_headers_ms": 223
+          },
+          {
+            "attempt": 6,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 6627,
+            "duration_to_headers_ms": 703
+          }
+        ]
+      },
+      {
+        "logical_request_id": "b3f87b38fce9e66f21f8bf260c8d0e516d95f772a31324bc0ebf4862184a7e36",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/calibrate.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 305
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 391,
+            "duration_to_headers_ms": 386
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 988,
+            "duration_to_headers_ms": 229
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1629,
+            "duration_to_headers_ms": 209
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3869,
+            "duration_to_headers_ms": 251
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7037,
+            "duration_to_headers_ms": 266
+          }
+        ]
+      },
+      {
+        "logical_request_id": "b6140ec11b87e7e9040dac495ed63bbde7641187044d52fae6a505e275c2496d",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/ledger.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 502
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 470,
+            "duration_to_headers_ms": 227
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 956,
+            "duration_to_headers_ms": 351
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1906,
+            "duration_to_headers_ms": 241
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3000,
+            "duration_to_headers_ms": 219
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 6367,
+            "duration_to_headers_ms": 268
+          }
+        ]
+      },
+      {
+        "logical_request_id": "bd6e4f1b1d6d69560594fbd268f488ab9e55819258c69df12cd4ec9202ed04a5",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "main_task",
+        "request_no": 3,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 229
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 396,
+            "duration_to_headers_ms": 243
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 920,
+            "duration_to_headers_ms": 241
+          },
+          {
+            "attempt": 4,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 1943,
+            "duration_to_headers_ms": 777
+          }
+        ]
+      },
+      {
+        "logical_request_id": "c7d848205152204267d5430e0731687b70d7cd6883a8dcceebf000be672bb53f",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "bunfig.toml,package.json,tsconfig.json",
+        "task_type": "main_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 474
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 441,
+            "duration_to_headers_ms": 488
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 964,
+            "duration_to_headers_ms": 218
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1778,
+            "duration_to_headers_ms": 227
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3121,
+            "duration_to_headers_ms": 214
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7430,
+            "duration_to_headers_ms": 379
+          }
+        ]
+      },
+      {
+        "logical_request_id": "dcc5ecfcca943ca58afd6c4782352e47cc3225ad90999b4754cc60c09ac467fb",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 446
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 483,
+            "duration_to_headers_ms": 476
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 831,
+            "duration_to_headers_ms": 319
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1842,
+            "duration_to_headers_ms": 211
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3007,
+            "duration_to_headers_ms": 250
+          },
+          {
+            "attempt": 6,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 6025,
+            "duration_to_headers_ms": 649
+          }
+        ]
+      },
+      {
+        "logical_request_id": "e5897e872a826683b6a6affc8f56db57a67479dd81755812a2bd4d8bed1c08b7",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/calibrate.ts",
+        "task_type": "main_task",
+        "request_no": 4,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 261
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 403,
+            "duration_to_headers_ms": 304
+          },
+          {
+            "attempt": 3,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 794,
+            "duration_to_headers_ms": 213
+          },
+          {
+            "attempt": 4,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 1503,
+            "duration_to_headers_ms": 251
+          },
+          {
+            "attempt": 5,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 3039,
+            "duration_to_headers_ms": 239
+          },
+          {
+            "attempt": 6,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 7902,
+            "duration_to_headers_ms": 215
+          }
+        ]
+      },
+      {
+        "logical_request_id": "e72a722d101c63c5f0c61f8c8b87a5284b6a68318dd6101d3d922c31dc0bf706",
+        "provider": "openrouter-laguna-xs-free",
+        "model": "poolside/laguna-xs-2.1:free",
+        "file_path": "src/cli.ts,src/serve.ts",
+        "task_type": "main_task",
+        "request_no": 3,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "duration_to_headers_ms": 232
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "rate_limited",
+            "failure_phase": "http",
+            "status_code": 429,
+            "observed_backoff_ms": 431,
+            "duration_to_headers_ms": 250
+          },
+          {
+            "attempt": 3,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 967,
+            "duration_to_headers_ms": 732
+          }
+        ]
+      }
+    ]
+  }
+}

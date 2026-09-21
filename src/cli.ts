@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
 import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
+import { targetsIn, ingestAll } from "./targets.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
 import { decisionTree, type Recipe } from "./verbs/decision-tree.ts";
@@ -41,7 +42,9 @@ function usage(): void {
 
   jm index <path|@target> [--name N] [--include G,G] [--exclude G,G] [--limit N] [--json]
   jm query <name|@target> [--where "size>2000"] [--fts "phrase"] [--tag k=v] [--limit N] [--json]
-  jm target add <name> <kind> <root> | jm target ls
+  jm index --in a,b|all [--name N]                 multi-target ingest (fs | jsonl | sqlite)
+  jm query --in a,b|all [--fts P] [--where W]      query the multi-target index
+  jm target add <name> <kind> <root> | jm target ls | jm target rm <name>
   jm report [--json]
 `);
 }
@@ -65,12 +68,38 @@ async function main(): Promise<number> {
       console.log(`target ${name} (${kind}) -> ${root}`);
       return 0;
     }
+    if (sub === "rm" || sub === "remove") {
+      const name = argv[2];
+      if (!name) { console.error("usage: jm target rm <name>"); return 2; }
+      const before = loadTargets();
+      const after = before.filter((t) => t.name !== name);
+      if (after.length === before.length) { console.error(`JM_TARGET_UNKNOWN: ${name}`); return 1; }   // LOUD
+      saveTargets(after);
+      console.log(`removed ${name}`);
+      return 0;
+    }
     usage(); return 2;
   }
 
   if (verb === "index") {
+    // `--in a,b|all` (W2/S8): ingest every resolved target through its adapter into ONE index.
+    if (flag("in") !== undefined) {
+      const spec = flag("in")!;
+      const indexName = flag("name") ?? (spec === "all" ? "all" : spec.split(",").map((x) => x.trim()).join("+"));
+      const db = openDb(indexPathFor(indexName));
+      try {
+        const stats = await withLedger("index", { in: spec, name: indexName }, async () => {
+          const r = await ingestAll(db, spec);
+          return { result: r, stats: { targets: r.length, rows: r.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
+        });
+        db.close();
+        if (has("json")) console.log(JSON.stringify(stats, null, 2));
+        else for (const r of stats) console.log(`${r.target}\t${r.kind}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
+        return 0;
+      } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+    }
     const arg = positional[0];
-    if (!arg) { console.error("JM_ARGS: jm index <path|@target>"); return 2; }
+    if (!arg) { console.error("JM_ARGS: jm index <path|@target> [--in a,b|all]"); return 2; }
     const { name, root } = resolveTarget(arg);
     const indexName = flag("name") ?? name;
     const dbPath = indexPathFor(indexName);
@@ -106,9 +135,12 @@ async function main(): Promise<number> {
 
   if (verb === "query") {
     const arg = positional[0];
-    if (!arg) { console.error("JM_ARGS: jm query <name|@target>"); return 2; }
-    let indexName = arg;
-    if (arg.startsWith("@")) indexName = resolveTarget(arg).name;
+    const inSpec = flag("in");
+    if (!arg && inSpec === undefined) { console.error("JM_ARGS: jm query <name|@target> | jm query --in a,b|all"); return 2; }
+    let indexName = arg ?? "";
+    if (inSpec !== undefined) {
+      indexName = flag("name") ?? (inSpec === "all" ? "all" : inSpec.split(",").map((x) => x.trim()).join("+"));
+    } else if (arg.startsWith("@")) indexName = resolveTarget(arg).name;
     const db = openDb(indexPathFor(indexName));
     try {
       const rows = await withLedger("query", { index: indexName, where: flag("where"), fts: flag("fts"), tag: flag("tag") }, async () => {

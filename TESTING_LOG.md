@@ -134,3 +134,24 @@ fourth run's `FAIL (0 critical, 1 high)` remains the last VALID verdict. The sco
 findings were adjudicated and dispositioned (2 high fixed + pinned, 1 medium fixed, 1 medium
 REFUTED by JS single-thread semantics). **The retry condition: any lane returning non-zero tokens
 across the full scope.**
+
+### W2 GATE — TARGETS + ADAPTERS (GREEN, 2026-09-22)
+```
+$ jm index --in all --name w2all
+fixTree  fs      rows=2  changed=2  4ms
+fixRows  jsonl   rows=2  changed=2  6ms
+fixDb    sqlite  rows=2  changed=2  1ms
+$ jm query --in all --name w2all --fts tombstone
+23  new  a.md
+38  new  /tmp/w2fix/rows.jsonl#L2
+60  new  /tmp/w2fix/src.sqlite#issues/2     <- ONE query, THREE kinds
+$ jm target rm nope   ->  JM_TARGET_UNKNOWN: nope   exit=1   (LOUD, never a silent subset)
+
+C11 keyless: index --in all exit=0 · query --in all exit=0
+incremental: run A changed=2 (writes shas) -> run B changed=0 -> run C changed=0
+mutate one row -> changed=1, new text queryable, old text GONE from FTS
+sqlite source read-only: size+mtime unchanged before/after ingest
+monkey: JM_ADAPTER_UNKNOWN · JM_SQLITE_MISSING · malformed jsonl line KEPT + findable
+battery 36 pass / 0 fail / 159 expects / 11 files · tsc exit 0
+```
+**W2: GREEN.** (`src/targets.ts` 154L, `src/adapters/{sqlite,jsonl}.ts` 62+38L, `tests/adapters.test.ts`.)

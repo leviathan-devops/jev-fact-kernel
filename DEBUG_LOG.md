@@ -592,3 +592,39 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 - **DISPOSITION:** no change; recorded so the next reader does not "fix" a non-defect.
 - **LESSON:** adjudicate every finding against the RUNTIME's semantics — a true statement about
   threaded languages is false about single-threaded JS.
+
+## EN-024 — the row path never populated FTS (found by the W2 gate test, fixed)
+- **SYMPTOM:** after `ingestTarget` on a sqlite source, `queryIndex(db, {fts:"tombstone"})`
+  returned only the fs file — the sqlite row that literally contains "tombstone" was invisible.
+- **ROOT CAUSE:** when `targets.ts` was consolidated (registry delegated to `store/db.ts`), the
+  per-row FTS mirror was dropped: rows were written to `docs` but never to `docs_fts`.
+- **FIX:** mirror `indexFile`'s write path exactly — `DELETE FROM docs_fts WHERE path=?` then
+  `INSERT INTO docs_fts(text,path)` per row. NOT a global rebuild (that is O(corpus) per ingest
+  and would make incremental ingest a lie).
+- **VERIFICATION:** `test_adapter_delta` — one FTS query spans fs + jsonl + sqlite; battery 36/0.
+- **LESSON:** a mirror table needs the same delete/insert pair as its source, at the same
+  granularity. Consolidation passes silently drop exactly these two lines.
+
+## EN-025 — the upsert wrote `sha256` only on the INSERT arm (found by RUNNING, fixed)
+- **SYMPTOM:** `jm index --in all` reported `changed=2` for the sqlite target on EVERY run, forever.
+- **ROOT CAUSE:** `ON CONFLICT(path) DO UPDATE SET size=..., mtime=..., kind=...` — `sha256` was
+  in the INSERT column list but NOT in the DO UPDATE SET, so the stored sha stayed stale/null and
+  the content-sha skip could never fire.
+- **FIX:** `sha256=excluded.sha256` added to the UPDATE arm.
+- **VERIFICATION:** three consecutive `index --in all` runs: `changed=2` (writes the shas) then
+  `changed=0`, `changed=0`; a one-row mutation then yields exactly `changed=1` and the old text
+  disappears from FTS. Pinned by `test_row_ingest_incremental`.
+- **LESSON:** an upsert's DO UPDATE arm is a second write path — every column the skip logic
+  depends on must appear in BOTH arms. `changed=N` on every run is the signature.
+
+## EN-026 — the fifth audit's 2 findings, adjudicated (1 refuted + pinned, 1 fixed)
+- **HIGH (REFUTED BY PROBE):** "`INSERT OR REPLACE` in cachePut deletes the row before the COALESCE
+  subquery reads it, so hits reset to 0." Measured on this runtime (bun:sqlite):
+  `INSERT OR REPLACE ... COALESCE((SELECT hits ...))` -> `hits = 7` (PRESERVED). Pinned at the REAL
+  call site (`test_cache_put_preserves_hits`) so a future "fix" cannot break it. The UPSERT form
+  was measured too — also preserved. The claim is false for this SQLite.
+- **LOW (fixed):** `calibrate.ts` used `type='table' AND name='decisions'` inline; the literal was
+  never injectable (no interpolation), but it is now parameterized for consistency with every
+  other query in the file.
+- **LESSON:** SQL-semantics claims are cheap to settle with a 6-line probe. Probe first, patch
+  second — a "fix" for a non-defect is a new defect.
