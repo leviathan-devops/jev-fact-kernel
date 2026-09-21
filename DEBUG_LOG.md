@@ -1250,3 +1250,42 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **LESSON:** an unbounded input is not a performance question, it is an availability question. The
   failure mode was not "slow" — it was "the health check stopped answering", which makes one bad
   request look like a dead service.
+
+## EN-052 — D-037: a QUADRATIC redaction regex made any large run hang with no output at all
+- **FOUND BY:** the "large input" boundary — a 4 MB decision row. Symptom: `decision-tree` exited
+  124 at a 90-second timeout with **empty stdout and empty stderr**. The seat law calls a hang
+  CRITICAL, and this one produced NOTHING to diagnose.
+- **THE ISOLATION (three steps, each eliminating one suspect):**
+  1. The judge API was healthy (938 ms, `noul 0.96`) — the far side was fine.
+  2. A cap added to the transport did NOT stop the hang: a direct probe printed the payload size,
+     then hung — so the hang was **BEFORE the network**.
+  3. The path before the network is `fingerprint()` -> `canonical()` -> `redact()`. Timing the four
+     redaction regexes separately gave the answer in three lines:
+     ```
+     n=  50,000  email=505ms   phone=0ms  hex=0ms  secret=0ms
+     n= 100,000  email=1986ms  phone=0ms  hex=0ms  secret=0ms     <- 4.0x for 2x input
+     n= 200,000  email=7912ms  phone=0ms  hex=0ms  secret=0ms     <- 4.0x again = QUADRATIC
+     ```
+- **ROOT CAUSE:** `/\w.+-]+@[\w-]+\.[\w.]+/` — `[\w.+-]+` is GREEDY, so on a long word it consumed
+  the entire run and then backtracked ONE CHARACTER AT A TIME looking for `@`. A 4 MB body
+  extrapolates to ~3,200 SECONDS *before the sha even runs*. The redaction exists to keep secrets
+  out of the cache; it was the thing that made the engine unusable on a large row.
+- **FIX (one bound):** `[\w.+-]{1,64}@…` — the RFC caps an email local part at 64 characters, so the
+  bound matches every real address AND makes the scan linear. Measured after: 50k -> 2 ms,
+  100k -> 4 ms, 200k -> 6 ms, **4 MB -> 133 ms**.
+- **THE SIBLING DEFECT THE PROBE EXPOSED:** with the loose PHONE pattern running before the HEX
+  pattern, a 32-character hash became `[phone]abcdef[phone]` — the marker was wrong AND six
+  characters of the value **survived**. A partial redaction of a secret is a leak. The patterns now
+  run MOST SPECIFIC FIRST: `hash <32 hex>` -> `[hex]`, no survivor.
+- **ALSO KEPT:** the outbound payload cap (262 KB, `JM_JUDGE_MAX_BODY`) — it is not the fix for this
+  hang, but it is the right guard for the class: the caller now gets
+  `JM_JUDGE_PAYLOAD_TOO_LARGE` BY NAME in milliseconds instead of silence.
+- **VERIFICATION:** the 4 MB row now runs in **0 s** (`noop=1 calls=0`, the cap refusing it before
+  the network) with the reason recorded in both polarities:
+  `error: ... JM_JUDGE_PAYLOAD_TOO_LARGE: 4000153 bytes exceeds the 262144-byte cap` (fail=closed)
+  and `gate_unavailable: ...` (fail=open). The cache tests still pass, so the fingerprint's
+  determinism survived the bound. Pinned by `tests/redact-perf.test.ts` (4 tests, including a
+  SCALING assertion rather than an absolute millisecond, so it cannot flake on a loaded host).
+- **LESSON:** an unbounded quantifier in a regex that runs on EVERY string is a denial-of-service
+  vector against your own process — and it presents as a HANG, which is the least diagnosable
+  failure shape there is. Measure the SCALING, not the single case.

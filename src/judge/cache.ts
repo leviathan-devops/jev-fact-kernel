@@ -6,10 +6,21 @@ import type { Database } from "bun:sqlite";
 export function redact(value: unknown): unknown {
   if (typeof value === "string") {
     return value
-      .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email]")
-      .replace(/\+?\d[\d ()-]{7,}\d/g, "[phone]")
-      .replace(/\b[a-f0-9]{32,}\b/gi, "[hex]")
-      .replace(/\b(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,}/g, "[secret]");
+      // BOUNDED QUANTIFIERS, BECAUSE AN UNBOUNDED ONE MADE THE FINGERPRINT QUADRATIC (D-037).
+      // `[\w.+-]+@` is greedy: on a long word it consumes the WHOLE run, then backtracks one
+      // character at a time looking for `@`. Measured on this engine:
+      //     n= 50,000 -> 505 ms      n=100,000 -> 1,986 ms      n=200,000 -> 7,912 ms
+      // 4x per doubling — a 4 MB document body would have taken ~3,200 SECONDS before the sha
+      // even ran, which is why the run "hung" with no output and the transport's timeout never
+      // fired (the hang was BEFORE the network). The RFC bounds the local part at 64 characters,
+      // so `{1,64}` matches every real address and makes the scan linear.
+      // ORDER: MOST SPECIFIC FIRST. With the loose phone pattern ahead of the hex pattern, a
+      // 32-character hex string was redacted as `[phone]abcdef[phone]` — the marker was wrong AND
+      // six characters of the value SURVIVED. A partial redaction of a secret is a leak.
+      .replace(/[\w.+-]{1,64}@[\w-]{1,255}\.[\w.]{1,255}/g, "[email]")
+      .replace(/\b[a-f0-9]{32,128}\b/gi, "[hex]")
+      .replace(/\b(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,128}/g, "[secret]")
+      .replace(/\+?\d[\d ()-]{7,20}\d/g, "[phone]");
   }
   if (Array.isArray(value)) return value.map(redact);
   if (value instanceof Date) return { __date: value.toISOString() };          // Date has no enumerable keys; collapse would erase it
