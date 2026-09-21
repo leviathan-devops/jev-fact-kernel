@@ -8,6 +8,9 @@ export interface QueueItem { id: number; fingerprint: string; kind: string; payl
 export class Queue {
   constructor(private db: Database, private jobId: string) {}
 
+  /** The job this queue belongs to (surfaced in error text and diagnostics). */
+  job(): string { return this.jobId; }
+
   /** Enqueue items. A re-enqueue of a PENDING/FAILED fingerprint ADOPTS the new payload
    *  (never silently keeping the stale one); a DONE row is left untouched. */
   enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): { added: number; updated: number; skipped: number } {

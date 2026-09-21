@@ -49,6 +49,22 @@ function test_resume_no_dup() {
     } finally { sb.cleanup(); }
   });
 
+  test("test_budget_stop_after_atomic", async () => {
+    // The `stopAfter` cap must be ATOMIC with the claim: with concurrency 8 and a cap of 5,
+    // the old check-then-act let all lanes pass before any increment (overshoot).
+    const sb3 = makeSandbox();
+    try {
+      const items = Array.from({ length: 40 }, (_, i) => ({ fingerprint: `a${i}`, payload: i }));
+      let worked = 0;
+      const res = await runQueued({
+        jobId: "j4", kind: "unit", items, stopAfter: 5, concurrency: 8,
+        work: async () => { worked++; return { ok: true }; },
+      });
+      expect(worked).toBe(5);                       // EXACT: no overshoot
+      expect(res.processed).toBe(5);
+    } finally { sb3.cleanup(); }
+  });
+
   test("test_queue_stale_ack_refused", async () => {
     // A stale process whose claimed row was swept and re-claimed must NOT overwrite the live result.
     const sb2 = makeSandbox();
