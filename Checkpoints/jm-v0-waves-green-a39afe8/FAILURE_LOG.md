@@ -46,3 +46,13 @@
 - **Impact:** inflated the finding count ~2x (canonical 91, not 174).
 - **Disposition:** FIXED (canonical-only analysis; the checkpoint is excluded from test discovery
   via `bunfig.toml [test] root = "tests"`). Future audits should diff the checkpoint out.
+
+### F-07 — The re-audit lane failed (BLOCKED, not passed) (2026-09-21)
+- **What happened:** the second `ocr review` run returned `status: failed` — 53/53 items failed,
+  76/76 requests failed after 380 retries, 0 tokens, 2m49s. The provider lane (muse-free) is down.
+- **Found:** by running it — the failure is loud in the artifact, not silent.
+- **Root cause:** the provider lane, not the code under review (0 tokens means no review happened).
+- **Impact:** the gate cannot be re-verified this session; the first run's FAIL remains authoritative.
+- **Disposition:** **BLOCKED** with the retry condition: re-run when a lane returns non-zero tokens,
+  or switch lanes (zen-free adapter :4098, or `--provider poolside --model laguna-s-2.1:high`).
+  The blocked artifact is preserved at `artifacts/audit-2026-09-21-reaudit-BLOCKED.json`.
