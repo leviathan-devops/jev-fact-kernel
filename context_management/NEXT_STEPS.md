@@ -90,6 +90,12 @@
 | doc drift from the build | the 2 logs update at the moment of work | every session |
 | the checkpoint grows unbounded | a sweep policy for old checkpoints | operator |
 
+
+## NOTE (2026-09-21) — the battery moved 18/0 -> 24/0 during the frontier wave
+The wave added `tests/guards.test.ts` (6 pins) and the traversal-law probe fix; the battery is now
+24 pass / 0 fail / 110 expects / 9 files with `tsc` exit 0. Docs synced: living instructions carry
+the new counts; historical records are annotated, not rewritten.
+
 ## THE DETAILED ACCEPTANCE CRITERIA (what "done" means per item)
 
 ### N-1 acceptance (the audit re-run)
