@@ -823,3 +823,23 @@ was written first and then executed. That is the point of the exercise: a doc cl
 - **LESSON:** a rig is a probe and probes lie too. The 320 ms guess was the same class of defect
   the rig exists to catch — a green result over unexercised work — and it was the rig's own
   self-check (`orphaned > 0`) that refused it.
+
+## EN-035 — the query verb's identity map, and a refuted "simplification"
+- **FIXED (low, but a latent trap): `const OPS = {">=": ">=", …}` was an IDENTITY MAP.** It mapped
+  each operator to itself and was read back as `OPS[op]`, which yields `undefined` for any op not
+  in the object — interpolating the literal word "undefined" into the SQL. The regex happened to
+  prevent that, so the guard was in the wrong place and the object was dead weight. It is now a
+  `Set` membership CHECK with a loud `JM_WHERE_OP`, and the validated `op` is used directly.
+  Verified: `size ~= 10` refuses; `size >= 10` works; the battery stays green.
+- **REFUTED (the auditor's suggested simplification was WRONG):** it proposed replacing the LIMIT
+  guard with `Math.min(Math.floor(raw), 10_000)`. Probed across six inputs:
+  ```
+  raw=NaN    shipped=50     suggestion=NaN    <- invalid SQL
+  raw=-5     shipped=50     suggestion=-5     <- LIMIT -1 IS UNLIMITED in SQLite
+  raw=2.7    shipped=2      suggestion=2
+  raw=999999 shipped=10000  suggestion=10000
+  ```
+  The shipped guard exists precisely for the NaN/negative cases the suggestion drops. Both halves
+  are pinned by `test_limit_guard_refuses_nan_and_negatives`, which asserts NaN/-5 return the whole
+  set (never an unbounded scan and never a crash).
+- **LESSON:** "simpler" is a claim like any other. Six inputs settled it.

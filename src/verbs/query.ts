@@ -4,7 +4,11 @@ import type { Database } from "bun:sqlite";
 export interface QueryOpts { where?: string; fts?: string; tag?: string; limit?: number; }
 
 const COLS = new Set(["size", "mtime", "kind", "state", "path", "sha256", "text_indexed"]);
-const OPS: Record<string, string> = { ">=": ">=", "<=": "<=", "!=": "!=", ">": ">", "<": "<", "=": "=" };
+// A WHITELIST, not an identity map. As an identity map this was dead weight AND a latent trap:
+// `OPS[op]` yields `undefined` for any op not in the object, which would interpolate the literal
+// word "undefined" into the SQL (the regex currently prevents it, but the guard was in the wrong
+// place). Checking membership and using `op` directly says what it means.
+const OPS = new Set([">=", "<=", "!=", ">", "<", "="]);
 
 /** Parse `col op value [AND col op value]` — whitelisted columns/ops only. */
 type Bind = string | number;
@@ -16,9 +20,10 @@ function parseWhere(expr: string): { sql: string; params: Bind[] } {
     if (!m) throw new Error(`JM_WHERE_INVALID: cannot parse "${part.trim()}"`);
     const [, col, op, rawVal] = m;
     if (!COLS.has(col)) throw new Error(`JM_WHERE_COLUMN: "${col}" is not queryable`);
+    if (!OPS.has(op)) throw new Error(`JM_WHERE_OP: "${op}" is not a supported operator`);   // loud, never `undefined` in the SQL
     let val: Bind = rawVal.trim().replace(/^['"]|['"]$/g, "");
     if (/^-?\d+(\.\d+)?$/.test(String(val))) val = Number(val);
-    clauses.push(`f.${col} ${OPS[op]} ?`); params.push(val);
+    clauses.push(`f.${col} ${op} ?`); params.push(val);
   }
   return { sql: clauses.join(" AND "), params };
 }
