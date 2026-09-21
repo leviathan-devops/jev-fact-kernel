@@ -87,6 +87,17 @@ summary: files_reviewed 55 · comments 45 · elapsed 46m24s · tokens 12,264,380
 canonical (src+tests): 37 — high 6 · medium 18 · low 13
 artifact: artifacts/audit-2026-09-22-reaudit.json
 ```
-**AUDIT GATE: FAIL (0 critical, 6 high)** — the fix pass below addressed all six; **a THIRD audit
-is owed to close the gate.** The first run's 30 highs are superseded by this run's 6; the medium
+**AUDIT GATE: FAIL (0 critical, 1 high)** — second re-audit: `52 canonical` (1 high / 24 medium / 27 low) on `poolside-laguna-s` in 1h37m20s. The 1 high (the stale-ack race) was fixed and pinned this session. **A FOURTH audit is owed to close the gate.** Artifact: `artifacts/audit-2026-09-22-reaudit2.json`. The first run's 30 highs are superseded by this run's 6; the medium
 frontier (18) joins the existing N-2..N-6 queue.
+
+### THE SECOND RE-AUDIT (2026-09-22, poolside-laguna-s lane)
+```
+status: partial
+llm: poolside-laguna-s / poolside/laguna-s-2.1
+message: "Review partially complete: 131 finding(s); 12 of 56 selected item(s) failed."
+summary: files_reviewed 56 · comments 131 · elapsed 1h37m20s
+canonical (src+tests): 52 — high 1 / medium 24 / low 27
+artifact: artifacts/audit-2026-09-22-reaudit2.json
+```
+**AUDIT GATE: FAIL (0 critical, 1 high)** — the stale-ack race (fixed + pinned) is the only
+high; the 24 mediums join the frontier queue. The gate closes only on a clean fourth run.

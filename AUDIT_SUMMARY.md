@@ -73,3 +73,10 @@
   - disposition: FIXED in the post-audit pass (see the commit).
 - **src/verbs/query.ts:49** — No state filter: both FTS and full-scan branches return rows with state='gone'. Tombstoned docs remain searchable. Add `AND f.state != 'gone'` (and consider excluding fro
   - disposition: FIXED in the post-audit pass (see the commit).
+
+## SECOND RE-AUDIT (2026-09-22, poolside-laguna-s, 1h37m20s)
+- artifact: `artifacts/audit-2026-09-22-reaudit2.json`
+- canonical: 52 (1 high / 24 medium / 27 low)
+- the 1 high: the stale-ack race — FIXED + PINNED (`test_queue_stale_ack_refused`)
+- the 24 mediums: join the frontier queue (N-2..N-6)
+- **AUDIT GATE: FAIL (0 critical, 1 high)** — a FOURTH audit is owed to close the gate.

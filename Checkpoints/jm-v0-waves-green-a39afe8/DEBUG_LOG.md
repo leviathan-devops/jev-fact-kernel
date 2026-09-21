@@ -216,7 +216,7 @@ audit: src/verbs/filter.ts:42 and src/verbs/find.ts:61 — 'runPool swallows wor
 - **ROOT CAUSE:** `runPool` collects worker exceptions into `errors`; the verbs read `ok` and ignored `errors`.
 - **MECHANISM:** the failure value pattern was used for bookkeeping but not for policy.
 - **FIX:** both verbs now inspect `errors` and rethrow JEV_NO_KEY (fail-closed).
-- **VERIFICATION:** `test_decision_fail_closed` covers the pattern; the battery stays 18/0 after the change.
+- **VERIFICATION:** `test_decision_fail_closed` covers the pattern; the battery stays green after the change (18/0 at the time, 24/0 after the frontier wave).
 - **LESSON:** a collected error that nobody reads is a swallowed exception wearing a data structure.
 
 ## EN-010 — tombstones stayed searchable
@@ -504,3 +504,34 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 > Every entry here was invisible from the editor and obvious from the driver's seat — which is
 > the entire argument for building, then RUNNING, then auditing, in that order.
 
+
+## EN-016 — the frontier wave: fourteen medium findings, seven files
+- **CLASS:** the audit's medium layer — unvalidated inputs, missing filters, stale payloads, and
+  metadata disclosure (the same families as the highs, one severity down).
+- **THE FIXES (each grounded in the audit's own words):** `safeName` + root-hash derived names
+  (collisions and traversal); the job-id guard; `busy_timeout=5000` (contended writes wait);
+  `loadTargets` throws `JM_TARGETS_CORRUPT` instead of returning `[]`; `@target` verifies the root;
+  the query limit clamp (NaN/negative/float can no longer become `LIMIT -1`); FTS ordered by
+  `bm25()` not size; `signalOf` refuses unknown types and clamps NaN/out-of-range; calibrate skips
+  empty truths, keys its rows uniquely, tolerates malformed policies; `/decide` answers 400 on a
+  malformed body and `/health` gates key metadata behind the token; the queue adopts a new payload
+  for a pending fingerprint instead of silently keeping the stale one.
+- **VERIFICATION:** tsc 0; battery 24/0/110/9; `tests/guards.test.ts` pins six of the behaviours;
+  commits `9ea25f5`, `ccbd40f`.
+- **LESSON:** the medium layer is the same disease at lower severity — fix the CLASS and the next
+  twelve instances never happen.
+
+## EN-017 — the stale-ack race (the second re-audit's only high)
+- **SYMPTOM:** the machine wrote: "a stale process that died after claiming a row but before
+  completing can overwrite the work of a live process that swept the row back to pending and
+  re-claimed it."
+- **ROOT CAUSE:** `complete()`/`fail()` updated on `id` alone; the sweep legitimately moves rows
+  between claim and ack, so the stale ack landed on a row it no longer owned.
+- **MECHANISM:** sweep (pending) -> live claim (running) -> live work -> live complete (done),
+  all while the stale worker's ack was still in flight; last-writer-wins destroyed the live result.
+- **FIX:** conditional acks (`WHERE id=? AND state='running'`, returning whether the ack landed)
+  plus a `JM_ACK_REFUSED` error path in the runner.
+- **VERIFICATION:** `test_queue_stale_ack_refused` (sweep -> stale complete returns false, row stays
+  pending, result untouched); battery 29/0, tsc 0.
+- **LESSON:** an ack without a state guard is a hope, not a protocol. The queue's contract is now:
+  claim (exclusive) -> work -> ack-if-still-mine, and anything else is refused loudly.

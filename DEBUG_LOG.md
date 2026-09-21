@@ -520,3 +520,18 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
   commits `9ea25f5`, `ccbd40f`.
 - **LESSON:** the medium layer is the same disease at lower severity — fix the CLASS and the next
   twelve instances never happen.
+
+## EN-017 — the stale-ack race (the second re-audit's only high)
+- **SYMPTOM:** the machine wrote: "a stale process that died after claiming a row but before
+  completing can overwrite the work of a live process that swept the row back to pending and
+  re-claimed it."
+- **ROOT CAUSE:** `complete()`/`fail()` updated on `id` alone; the sweep legitimately moves rows
+  between claim and ack, so the stale ack landed on a row it no longer owned.
+- **MECHANISM:** sweep (pending) -> live claim (running) -> live work -> live complete (done),
+  all while the stale worker's ack was still in flight; last-writer-wins destroyed the live result.
+- **FIX:** conditional acks (`WHERE id=? AND state='running'`, returning whether the ack landed)
+  plus a `JM_ACK_REFUSED` error path in the runner.
+- **VERIFICATION:** `test_queue_stale_ack_refused` (sweep -> stale complete returns false, row stays
+  pending, result untouched); battery 29/0, tsc 0.
+- **LESSON:** an ack without a state guard is a hope, not a protocol. The queue's contract is now:
+  claim (exclusive) -> work -> ack-if-still-mine, and anything else is refused loudly.

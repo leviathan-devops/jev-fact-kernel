@@ -68,3 +68,14 @@
 - **Impact:** the gate stays FAIL — correctly: the fixes are claims until a THIRD audit passes.
 - **Disposition:** FIXED in the second fix pass (all six + the medium frontier items); pinned in
   `tests/regression.test.ts`; battery 28/0.
+
+### F-09 — The second re-audit found 1 high (the stale-ack race) (2026-09-22)
+- **What happened:** the third audit run (second working-lane run) returned 131 comments, 52
+  canonical (1 high / 24 medium / 27 low) in 1h37m. The 1 high: `complete()`/`fail()` without
+  a state guard let a stale process overwrite a live process's re-claimed row.
+- **Found:** the machine review, not the battery (the race needs two processes).
+- **Root cause:** the ack wrote unconditionally on `id` alone; the sweep legitimately moves rows
+  between claim and ack, so the stale ack landed on a row it no longer owned.
+- **Impact:** double-processing with possible data loss under process overlap — a real race.
+- **Disposition:** FIXED (conditional ack `AND state='running'` + a refused-ack error path) and
+  PINNED (`test_queue_stale_ack_refused`); battery 29/0. The gate stays FAIL until a fourth audit.

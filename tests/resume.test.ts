@@ -49,6 +49,24 @@ function test_resume_no_dup() {
     } finally { sb.cleanup(); }
   });
 
+  test("test_queue_stale_ack_refused", async () => {
+    // A stale process whose claimed row was swept and re-claimed must NOT overwrite the live result.
+    const sb2 = makeSandbox();
+    try {
+      const { db } = openJob("j3");
+      const q = new Queue(db, "j3");
+      q.enqueue("k", [{ fingerprint: "r1", payload: 1 }]);
+      const [claimed] = q.claim(1);
+      expect(claimed.fingerprint).toBe("r1");
+      expect(q.sweep()).toBe(1);                       // someone else sweeps our row back to pending
+      expect(q.complete(claimed.id, { stale: true })).toBe(false);   // the stale ack is REFUSED
+      const row = db.query("SELECT state, result FROM queue WHERE id = ?").get(claimed.id) as { state: string; result: string | null };
+      expect(row.state).toBe("pending");               // and the row is NOT marked done
+      expect(row.result).toBeNull();
+      db.close();
+    } finally { sb2.cleanup(); }
+  });
+
   test("test_queue_fingerprint_idempotent", async () => {
     const sb = makeSandbox();
     try {

@@ -52,13 +52,18 @@ export class Queue {
     return tx() as QueueItem[];
   }
 
-  complete(id: number, result: unknown): void {
-    this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=?",
+  /** Ack is conditional on the row still being OURS: a stale process whose claimed row was
+   *  swept back to pending and re-claimed by a live process must NOT overwrite the live result.
+   *  Returns false when the ack was refused (the row moved on without us). */
+  complete(id: number, result: unknown): boolean {
+    const r = this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running'",
       [JSON.stringify(result ?? null), new Date().toISOString(), id]);
+    return r.changes === 1;
   }
-  fail(id: number, error: string): void {
-    this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=?",
+  fail(id: number, error: string): boolean {
+    const r = this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=? AND state='running'",
       [error, new Date().toISOString(), id]);
+    return r.changes === 1;
   }
 
   /** THE RESUME SWEEP: rows left 'running' by a dead process return to 'pending'. */

@@ -36,7 +36,9 @@ export async function runQueued<I, O>(opts: {
       if (processed >= budget) return null;        // simulated crash point: leave the row 'running'
       try {
         const out = await opts.work(item.payload as I, item.fingerprint);
-        q.complete(item.id, out);
+        if (!q.complete(item.id, out)) {   // the row was swept mid-work: someone else owns it now
+          throw new Error(`JM_ACK_REFUSED: row ${item.id} left 'running' while we worked it`);
+        }
         processed++;
         return out;
       } catch (err) { q.fail(item.id, String(err).slice(0, 200)); throw err; }   // record, never orphan

@@ -56,3 +56,26 @@
 - **Disposition:** **BLOCKED** with the retry condition: re-run when a lane returns non-zero tokens,
   or switch lanes (zen-free adapter :4098, or `--provider poolside --model laguna-s-2.1:high`).
   The blocked artifact is preserved at `artifacts/audit-2026-09-21-reaudit-BLOCKED.json`.
+
+### F-08 — The re-audit ran on a working lane and found 6 new highs (2026-09-22)
+- **What happened:** after the muse-free lane failed at 0 tokens, the run was re-executed on
+  `poolside-laguna-s` (10,617 tokens on the lane test first): status `partial`, 45 comments,
+  37 canonical (6 high / 18 medium / 13 low), 46m24s.
+- **Found:** the lane works; the high set is SMALLER (30 -> 6) but non-empty.
+- **Root cause classes:** a ledger that could mask a real error (H1); an unvalidated spend (H2);
+  an un-awaited registry write (H3); Date/Map collapse in redaction (H4); an interpolated LIMIT
+  (H5); a tombstone that never reactivates (H6).
+- **Impact:** the gate stays FAIL — correctly: the fixes are claims until a THIRD audit passes.
+- **Disposition:** FIXED in the second fix pass (all six + the medium frontier items); pinned in
+  `tests/regression.test.ts`; battery 28/0.
+
+### F-09 — The second re-audit found 1 high (the stale-ack race) (2026-09-22)
+- **What happened:** the third audit run (second working-lane run) returned 131 comments, 52
+  canonical (1 high / 24 medium / 27 low) in 1h37m. The 1 high: `complete()`/`fail()` without
+  a state guard let a stale process overwrite a live process's re-claimed row.
+- **Found:** the machine review, not the battery (the race needs two processes).
+- **Root cause:** the ack wrote unconditionally on `id` alone; the sweep legitimately moves rows
+  between claim and ack, so the stale ack landed on a row it no longer owned.
+- **Impact:** double-processing with possible data loss under process overlap — a real race.
+- **Disposition:** FIXED (conditional ack `AND state='running'` + a refused-ack error path) and
+  PINNED (`test_queue_stale_ack_refused`); battery 29/0. The gate stays FAIL until a fourth audit.
