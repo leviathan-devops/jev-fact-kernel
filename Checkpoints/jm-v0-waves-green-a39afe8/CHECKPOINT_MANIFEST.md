@@ -1,7 +1,7 @@
 # CHECKPOINT MANIFEST — jm-v0-waves-green-a39afe8
 
 date: 2026-09-21 · seal mode: **B (no lock — living snapshot)**
-source tree sha256: `d7a2e3b593bd6784cb00bacca0866d98` (post-audit2 fix pass)
+source tree sha256: `35e7742545bb011bfaf9df11ed01317a` (post-audit5 fix pass)
 battery (from this copy):  18 pass  0 fail 
 git: branch master @ a39afe8 (+ the W7 follow-ups uncommitted at seal time — see the follow-up commit)
 
@@ -29,3 +29,5 @@ HTTP /decide live · find chain live 44->30->1->1 · adversarial 18/0 after 1 fi
 - audit: AUDIT GATE **FAIL** (0 critical, 30 high) — artifact `artifacts/audit-2026-09-21.json`; fixes applied; RE-AUDIT OWED
 
 - audit2: AUDIT GATE **FAIL** (0 critical, 1 high) — the stale-ack race fixed + pinned; artifact 
+
+- audit5: AUDIT GATE **BLOCKED** (all lanes rate-limited) — the 4th run's FAIL stands as the last valid verdict; 6 artifacts preserved

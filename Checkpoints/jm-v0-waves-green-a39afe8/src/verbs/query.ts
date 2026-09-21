@@ -44,7 +44,8 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   }
   if (opts.tag) {
     if (!opts.tag.includes("=")) throw new Error(`JM_TAG_INVALID: "${opts.tag}" (expected name=value)`);
-    const [k, v] = opts.tag.split("=");
+    const eq = opts.tag.indexOf("=");
+    const k = opts.tag.slice(0, eq), v = opts.tag.slice(eq + 1);   // value may itself contain '='
     sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;
     params.push(k, v);
   }

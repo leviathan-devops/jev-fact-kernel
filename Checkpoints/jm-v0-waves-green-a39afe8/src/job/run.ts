@@ -25,21 +25,31 @@ export async function runQueued<I, O>(opts: {
   let budgetStopped = false;
   const budget = opts.stopAfter ?? Infinity;
 
+  // ATOMIC BUDGET CLAIM: `stopAfter` is a per-run cap on ITEMS WORKED; the check and the
+  // increment happen in ONE synchronous block per worker (no await between), so concurrent
+  // lanes cannot all pass the check before any of them counts.
+  const claimSlot = (): boolean => {
+    if (processed >= budget) return false;
+    processed++;                    // synchronous: no await between check and increment
+    return true;
+  };
+
   for (;;) {
     const doneNow = q.stats().done;
     if (opts.budgetCalls !== undefined && doneNow >= opts.budgetCalls) { budgetStopped = true; break; }
     // EXACT STOP: never claim more than the budget allows (no batch overshoot).
     const room = opts.budgetCalls !== undefined ? Math.max(0, opts.budgetCalls - doneNow) : Infinity;
-    const batch = q.claim(Math.min(opts.concurrency ?? 4, 16, room));
+    const stopRoom = budget !== Infinity ? Math.max(0, budget - processed) : Infinity;
+    if (stopRoom === 0) break;
+    const batch = q.claim(Math.min(opts.concurrency ?? 4, 16, room, stopRoom));
     if (batch.length === 0) break;
     const { errors } = await runPool(batch, async (item) => {
-      if (processed >= budget) return null;        // simulated crash point: leave the row 'running'
+      if (!claimSlot()) return null;               // simulated crash point: leave the row 'running'
       try {
         const out = await opts.work(item.payload as I, item.fingerprint);
         if (!q.complete(item.id, out)) {   // the row was swept mid-work: someone else owns it now
           throw new Error(`JM_ACK_REFUSED: row ${item.id} left 'running' while we worked it`);
         }
-        processed++;
         return out;
       } catch (err) { q.fail(item.id, String(err).slice(0, 200)); throw err; }   // record, never orphan
     }, { concurrency: opts.concurrency });
@@ -47,12 +57,15 @@ export async function runQueued<I, O>(opts: {
     if (processed >= budget) break;                // rows stay 'running' on purpose
   }
 
-  const stats = q.stats();
-  // THE DUP LAW: within the DONE set, rows must equal distinct fingerprints. (Across the
-  // whole table, unique fingerprints legitimately exceed done rows mid-run — that is work
-  // still outstanding, not duplication.)
-  const d = db.query("SELECT COUNT(*) AS n, COUNT(DISTINCT fingerprint) AS uniq FROM queue WHERE state='done'").get() as { n: number; uniq: number };
-  if (d.n !== d.uniq) throw new Error(`JM_DUP_VIOLATION: done=${d.n} distinct_done=${d.uniq}`);
-  db.close();
-  return { jobId: opts.jobId, resumed, processed, done: stats.done, failed: stats.failed, budgetStopped, stats };
+  try {
+    const stats = q.stats();
+    // THE DUP LAW: within the DONE set, rows must equal distinct fingerprints. (Across the
+    // whole table, unique fingerprints legitimately exceed done rows mid-run — that is work
+    // still outstanding, not duplication.)
+    const d = db.query("SELECT COUNT(*) AS n, COUNT(DISTINCT fingerprint) AS uniq FROM queue WHERE state='done'").get() as { n: number; uniq: number };
+    if (d.n !== d.uniq) throw new Error(`JM_DUP_VIOLATION: done=${d.n} distinct_done=${d.uniq}`);
+    return { jobId: opts.jobId, resumed, processed, done: stats.done, failed: stats.failed, budgetStopped, stats };
+  } finally {
+    db.close();     // H2: the connection closes on the error path too (no leak)
+  }
 }

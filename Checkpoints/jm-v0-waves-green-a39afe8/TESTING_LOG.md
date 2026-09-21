@@ -99,7 +99,7 @@ summary: files_reviewed 56 · comments 131 · elapsed 1h37m20s
 canonical (src+tests): 52 — high 1 / medium 24 / low 27
 artifact: artifacts/audit-2026-09-22-reaudit2.json
 ```
-**AUDIT GATE: FAIL (0 critical, 1 high)** — fourth run: `6 canonical` (1 critical / 2 high / 2 medium / 1 low) on `poolside-laguna-s`. The 1 critical is REFUTED BY EVIDENCE (schema applies; all tables exist). The 1 high (cached spend) + the medium frontier were fixed this session. **A FIFTH audit is owed to close the gate.** Artifact: `artifacts/audit-2026-09-22-reaudit3.json`.
+**AUDIT GATE: BLOCKED (lane rate-limited) — the fourth run's FAIL stands as the last VALID verdict.** Fourth run (superseded): `6 canonical` (1 critical / 2 high / 2 medium / 1 low) on `poolside-laguna-s`. The 1 critical is REFUTED BY EVIDENCE (schema applies; all tables exist). The 1 high (cached spend) + the medium frontier were fixed this session. **A FIFTH audit is owed to close the gate.** Artifact: `artifacts/audit-2026-09-22-reaudit3.json`.
 high; the 24 mediums join the frontier queue. The gate closes only on a clean fourth run.
 
 ### THE THIRD RE-AUDIT (2026-09-22, poolside-laguna-s lane)
@@ -113,3 +113,24 @@ canonical (src+tests): 6 — critical 1 / high 2 / medium 2 / low 1
 tables exist; `db.run` applies every statement); the 2 highs (cached spend in filter/find —
 plus the same class found and fixed in decision-tree) and the 2 mediums are fixed and pinned.
 The gate closes only on a clean fifth run.
+
+### THE FIFTH AUDIT ATTEMPT — ALL LANES RATE-LIMITED (2026-09-22)
+```
+lane probes (2-file commit scope):
+  muse-free                failed  0 tokens
+  openrouter-laguna-s-free failed  0 tokens
+  openrouter-laguna-xs-free complete 5,093 tokens  <- the only working lane
+  poolside-laguna-s        failed  429 rate_limited (90/90 requests)
+  poolside-laguna-xs       no json (context canceled)
+
+full-scope runs on the working lane:
+  xs-free @ 58 files  -> failed (429 upstream shared pool)
+  xs-free @ 26 files (--exclude Checkpoints,artifacts,docs) -> partial: 4 findings,
+    21/26 items failed, 8/25 requests failed, 160,471 tokens
+  artifact: artifacts/audit-2026-09-22-scoped-BLOCKED.json
+```
+**AUDIT GATE: BLOCKED** — a degraded run is NEVER reported as PASS (the degraded-run law). The
+fourth run's `FAIL (0 critical, 1 high)` remains the last VALID verdict. The scoped run's 4
+findings were adjudicated and dispositioned (2 high fixed + pinned, 1 medium fixed, 1 medium
+REFUTED by JS single-thread semantics). **The retry condition: any lane returning non-zero tokens
+across the full scope.**

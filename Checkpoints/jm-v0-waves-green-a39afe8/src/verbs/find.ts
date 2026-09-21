@@ -54,8 +54,7 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     const res = await judge.ask({ target_phrase: opts.phrase, candidate: { path: c.path, excerpt } },
       { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } }, "find@v1");
     const p = (res.answers.is_instance as { noul?: number })?.noul ?? 0;
-    if (!res.cached) { calls++; costUsd += res.costUsd; }
-    budget.spend(res.costUsd);
+    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }   // cached hits consume no budget slot
     if (p >= minP) judged.push({ row: c, p, quote: excerpt.slice(0, 160) });
     return null;
   }, { concurrency: opts.concurrency ?? 6 });

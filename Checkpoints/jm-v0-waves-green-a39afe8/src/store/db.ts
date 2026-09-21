@@ -1,6 +1,6 @@
 // src/store/db.ts — open/init the index store; resolve index paths + targets.
 import { Database } from "bun:sqlite";
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { dirname, join, basename, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
@@ -40,7 +40,7 @@ export function loadTargets(): Target[] {
 export function saveTargets(list: Target[]): void {
   const p = targetsPath();
   mkdirSync(dirname(p), { recursive: true });
-  require("node:fs").writeFileSync(p, JSON.stringify(list, null, 2) + "\n");   // sync write: errors throw to the caller, never swallowed
+  writeFileSync(p, JSON.stringify(list, null, 2) + "\n");   // sync write: errors throw to the caller, never swallowed
 }
 
 /** Resolve an argument to {name, root}: `@name` via the registry, else a path. */

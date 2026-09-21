@@ -555,3 +555,40 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
   the suite reads and writes every one of them; 18/18 tests exercise the tables.
 - **DISPOSITION:** REFUTED BY EVIDENCE. The claim stands as a reminder: adjudicate every probe
   failure both ways — including the auditor's.
+
+## EN-020 — the non-atomic `stopAfter` budget check (confirmed, fixed)
+- **SYMPTOM:** the auditor wrote: "the `processed >= budget` check is evaluated non-atomically
+  across concurrent workers. Multiple workers can pass this check before any increments
+  `processed`, causing budget overshoot."
+- **ROOT CAUSE:** the check sat at the top of the worker with an `await` before the increment, so
+  with concurrency 8 every lane could pass a cap of 5 before any counted.
+- **FIX:** `claimSlot()` — a synchronous check-and-increment (no await between) — plus the batch
+  claim clamped by the remaining `stopAfter` room.
+- **VERIFICATION:** `test_budget_stop_after_atomic` (concurrency 8, cap 5 -> `worked === 5`
+  exactly); battery 30/0.
+- **LESSON:** in JS a `++` is atomic per turn; a check-then-await-then-increment is NOT. Budgets
+  must be claimed synchronously.
+
+## EN-021 — the db leak on the dup-invariant path (confirmed, fixed)
+- **SYMPTOM:** "if an exception occurs in the work function or dup violation check, db.close() is
+  never called, leaving the SQLite connection open."
+- **ROOT CAUSE:** the `JM_DUP_VIOLATION` throw sat before `db.close()` with no `finally`.
+- **FIX:** the stats+invariant block now runs inside `try { ... } finally { db.close(); }`.
+- **VERIFICATION:** battery 30/0; the invariant still throws when it should.
+- **LESSON:** any resource opened before a throw needs a `finally`. The error path is a path.
+
+## EN-022 — `jobId` was a write-only constructor param (fixed by USING it)
+- **SYMPTOM:** "Unused parameter: `jobId` is declared but never used within the Queue class."
+- **ADJUDICATION:** true. Rather than delete the param (losing the job identity the queue is
+  constructed with), it is now surfaced via `Queue.job()` for diagnostics.
+- **LESSON:** an unused param is either dead weight or a missing accessor; prefer the accessor when
+  the value identifies the owner.
+
+## EN-023 — the "non-atomic counters" claim, REFUTED for JS (adjudicated)
+- **SYMPTOM:** the auditor claimed `changed++`/`textIndexed++` in concurrent workers "can be lost".
+- **ADJUDICATION:** REFUTED for this runtime. JS has no shared-memory parallelism: a `++` on a
+  closure variable is atomic within an event-loop turn, and there is no preemption mid-statement.
+  The claim would hold under `worker_threads` + `SharedArrayBuffer`, which this code does not use.
+- **DISPOSITION:** no change; recorded so the next reader does not "fix" a non-defect.
+- **LESSON:** adjudicate every finding against the RUNTIME's semantics — a true statement about
+  threaded languages is false about single-threaded JS.

@@ -32,8 +32,7 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
     const res = await judge.ask({ candidate: { path: c.path, size: c.size, excerpt } },
       { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
     const p = (res.answers.match as { noul?: number })?.noul ?? 0;
-    if (!res.cached) { calls++; costUsd += res.costUsd; }
-    budget.spend(res.costUsd);
+    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }   // cached hits consume no budget slot
     const keep = p >= minP;
     rows.push({ path: c.path, size: c.size, p, keep, reason: keep ? "kept" : `p<${minP}`, cached: res.cached });
     return rows[rows.length - 1];

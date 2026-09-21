@@ -90,3 +90,16 @@
 - **Impact:** the gate stays FAIL — correctly: the fixes are claims until a fifth audit passes.
 - **Disposition:** FIXED (cached hits skip `spend`; same-class fix in `decision-tree`; route+reason
   from one signal; tag split on first `=`; saveTargets import) and pinned; battery 29/0.
+
+### F-11 — Every audit lane is rate-limited; the gate is BLOCKED (2026-09-22)
+- **What happened:** five lane probes and three full-scope runs: only `openrouter-laguna-xs-free`
+  returned tokens, and it 429s on the full 58-file scope (`upstream_provider_shared_pool`).
+- **Found:** by probing each lane on a 2-file commit before committing to a full run.
+- **Root cause:** upstream provider shared-pool limits on every configured free lane; the direct
+  poolside lane 429s at 90/90 requests.
+- **Impact:** the fifth audit cannot complete; the fourth run's FAIL remains authoritative.
+- **Disposition:** **BLOCKED** with the retry condition (any lane returning non-zero tokens across
+  the full scope). The scoped partial run's 4 findings were adjudicated (2 high fixed + pinned,
+  1 medium fixed, 1 medium refuted).
+- **Note:** the checkpoint copies inflate the audit scope (58 files vs 26) — future audits should
+  carry `--exclude 'Checkpoints/**'` by default.
