@@ -105,8 +105,11 @@ non-defect into a real one.
 | A15-2 | a non-numeric `--truth` yields NaN (SQLite reads NaN as NULL) | low | CONFIRMED -> fixed | now `JM_ARGS` at exit 2; a valid-but-absent id is `JM_TRUTH_MISSING` |
 | A15-3 | `find`'s default structure differs CLI vs MCP | low | ADJUDICATED -> documented | `md` for a human, `json` for an agent; now stated in the tool description |
 | A15-4 | `--apply` is missing from VALUE_FLAGS | medium | REFUTED (x2) | it is a BOOLEAN flag; adding it would make the parser swallow the next arg |
+| A16-1 | the watch scope set is rebuilt per element | medium | CONFIRMED -> fixed | computed once into a Set |
+| A16-2 | a 200-char error truncation cuts the tail | low | CONFIRMED -> fixed | bounded at 500, head+tail kept |
+| A16-3 | the state-file catch swallows errors | medium | CONFIRMED -> fixed | recorded on the tick + journal; the fix's own two bugs are in EN-040 |
 
-**TALLY: 19 confirmed + fixed, 12 refuted by probe, 0 open.**
+**TALLY: 22 confirmed + fixed, 12 refuted by probe, 0 open.**
 
 ---
 

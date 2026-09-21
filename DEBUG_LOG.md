@@ -925,3 +925,22 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
   do not need the entry.
 - **VERIFICATION:** the guards are pinned by `test_truth_and_usage_guards` (the CLI is spawned, the
   exit codes and the usage text asserted); battery 97/0.
+
+## EN-040 — the watch daemon's silent paths (audit F-15/16), and a bug in my own fix
+- **FIXED (a): the scope set was rebuilt per element.** `list.filter((t) => opts.in!.split(",").map(…)…)`
+  allocated a new array for EVERY registry entry, in a daemon that ticks forever. Now computed once
+  into a `Set` before the loop.
+- **FIXED (b): a 200-char error truncation cut off the tail.** A stack's origin AND its final cause
+  both matter, so the message is bounded at 500 with the middle elided and head+tail kept.
+- **FIXED (c): the state-file catch swallowed everything.** It now records the failure on the tick,
+  and therefore in the journal, so a stale state file is visible rather than mysterious.
+  **AND THE FIRST VERSION OF THIS FIX WAS ITSELF WRONG** — worth recording, because it is the exact
+  class this file exists to catch:
+  1. the journal was appended BEFORE the state attempt, so the CLI's summary counted an error the
+     journal row could not contain (measured: `errors=2` on stdout, `errors: []` in the journal);
+  2. `errors` IS `res.errors` — the same array — so pushing to both duplicated the entry.
+  Both were visible only by RUNNING the failure path (a directory planted at `state.json`), which is
+  why the pin does exactly that. VERIFIED after the fix: stdout `errors=1`, journal
+  `["state_file: Error: EISDIR…"]`, and the happy path still journals `errors: []`.
+- **LESSON:** an error path that was never executed is not a fixed error path. The audit named the
+  swallow; only running the failure showed that the repair had two defects of its own.
