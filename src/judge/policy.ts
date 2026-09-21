@@ -74,6 +74,20 @@ export function fatalJudgeError(errors: { error: string }[], opts: { failOpen?: 
  *
  * Resolution order: the question the verb asked, then the only answer present, then the best
  * `noul` across all answers. Anything without a finite number throws `JM_JUDGE_ANSWER_INVALID`. */
+/** Resolve WHICH answer the verb should read, by the same shape-first order as `noulFrom`:
+ *  the key it asked for, else the only answer present, else the one carrying the strongest
+ *  signal. Throws when nothing usable arrived. (D-042.)
+ *
+ *  `evaluate` read `answers[questionKey]` directly, so a renamed key made every case score 0 —
+ *  and a METRIC computed from fabricated zeros looks like a measurement. */
+export function answerFrom(answers: unknown, expectedKey: string): { key: string; answer: Record<string, unknown> } {
+  const map = (answers ?? {}) as Record<string, Record<string, unknown> | undefined>;
+  const keys = Object.keys(map).filter((k) => map[k] !== undefined);
+  if (map[expectedKey] !== undefined) return { key: expectedKey, answer: map[expectedKey]! };
+  if (keys.length === 1) return { key: keys[0], answer: map[keys[0]]! };
+  throw new Error(`JM_JUDGE_ANSWER_INVALID: no usable answer — expected "${expectedKey}", received [${keys.join(", ") || "nothing"}]`);
+}
+
 export function noulFrom(answers: unknown, expectedKey: string): number {
   const map = (answers ?? {}) as Record<string, { noul?: unknown; probabilities?: Record<string, unknown> } | undefined>;
   const finite = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);

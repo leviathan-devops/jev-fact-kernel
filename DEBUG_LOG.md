@@ -1470,3 +1470,23 @@ ONE SURFACE AND NOT ON ANOTHER.
   TOOLCHAIN before the subject — and never hide a tool's stderr (`2>/dev/null`) on a line whose
   exit code you are about to trust. The exit code 2 was there the whole time; the redirect was
   mine.
+
+## EN-059 — D-042 closed in the last verb: `evaluate` read its answers by key too
+- **HOW FOUND:** the same lens applied until it stops yielding — after filter, find and route were
+  fixed, `grep -rn 'answers as Record<string, unknown>' src/` returned exactly one site left:
+  `evaluate.ts:57`.
+- **WHY IT MATTERED MORE THERE:** the other verbs produce decisions; `evaluate` produces METRICS.
+  A renamed key made `answered` `undefined`, `pOf` returned 0 for every case, and the run then
+  published an agreement/Brier/ECE computed entirely from fabricated zeros — a MEASUREMENT that
+  looks like a measurement.
+- **FIX:** `answerFrom(answers, expectedKey)` in `judge/policy.ts` resolves WHICH answer to read
+  (the key asked for, else the only one present), and `evaluate` scores what it returns. `noulFrom`
+  keeps its own fuller resolution for the probability itself.
+- **VERIFICATION:** against a judge that answers `{verdict:{noul:0.95}}` while the verb asks for
+  `flag`: `p = 0.95, 0.95` (was `0, 0`) and `agreement = 50%` — the correct metric for a
+  uniformly-positive judge against one yes-oracle and one no-oracle. A healthy judge still measures
+  (`n=1 agreement=100% p=0.99`). Pinned in `tests/judge-answer-shape.test.ts`.
+- **THE LENS IS NOW CLOSED:** four answer-reading verbs, one resolver, and the order — asked key,
+  then the only answer present, then throw — is the same everywhere.
+- **LESSON:** an answer-reader is infrastructure. Four verbs each reading their own answers is four
+  chances to read the wrong one, and the failure is always a plausible number.
