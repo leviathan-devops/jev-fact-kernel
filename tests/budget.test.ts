@@ -45,3 +45,18 @@ test("test_budget_roomLeft_predicts_the_refusal", () => {
   expect(() => usd.spend(0)).not.toThrow();     // spending 0 adds nothing, so it cannot exceed
   expect(() => usd.spend(0.01)).toThrow(/JM_BUDGET_EXCEEDED/);   // the first cent past the cap refuses
 });
+
+// ── AUDIT REFUTATION PIN (A10-2): the post-refusal state is the SAFETY PROPERTY ──
+// The audit called the post-increment "inconsistent state (counters incremented before the
+// check)". A probe shows the opposite: no caller catches JM_BUDGET_EXCEEDED (grep confirms), and
+// after a refusal the budget stays CLOSED — roomLeft() is false, so nothing can spend again.
+// Rolling the counters BACK would re-open the guard and permit unlimited retries.
+test("test_budget_stays_closed_after_a_refusal", () => {
+  const b = new Budget({ calls: 2 });
+  b.spend(0); b.spend(0);
+  expect(b.roomLeft()).toBe(false);
+  expect(() => b.spend(0)).toThrow(/JM_BUDGET_EXCEEDED/);
+  expect(b.roomLeft()).toBe(false);                 // STILL closed: the refusal is sticky
+  expect(b.used().calls).toBe(3);                   // the over-cap spend is counted, not hidden
+  expect(() => b.spend(0)).toThrow(/JM_BUDGET_EXCEEDED/);   // and a retry cannot slip through
+});

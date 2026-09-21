@@ -1,8 +1,7 @@
 // src/verbs/report.ts — W7: the status report over the store, the ledger and the registry.
 // The report is a READ: it never writes rows, so `jm report` is safe to run anywhere.
 import type { Database } from "bun:sqlite";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { loadTargets, indexPathFor } from "../store/db.ts";
 import { ledgerPath } from "../ledger.ts";
 
@@ -88,4 +87,3 @@ export function renderReport(r: Report): string {
   return lines.join("\n");
 }
 
-export { readdirSync };

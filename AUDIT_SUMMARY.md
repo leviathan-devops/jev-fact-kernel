@@ -94,8 +94,11 @@ non-defect into a real one.
 | A9-1 | `OPS` in query.ts is a redundant identity map | low | CONFIRMED -> fixed | it could interpolate `undefined`; now a checked whitelist |
 | A9-2 | the LIMIT guard is "unnecessarily complex" | low | REFUTED | the suggested `Math.min(Math.floor(raw),10000)` yields `LIMIT NaN` / `LIMIT -1` (unlimited) |
 | A9-3 | `roomLeft()`'s `>=` should be `>` "to match assert()" | high | REFUTED | boundary probe: cap=3 -> roomLeft true before 1-3, false AT 3; `>` would let a caller spend the call assert() then throws on |
+| A10-1 | `cache.ts` `INSERT OR REPLACE` still resets `hits` | high | REFUTED (again) | the same claim as A4-2, re-probed: hits preserved |
+| A10-2 | `spend()` increments before the cap check = "inconsistent state" | high | REFUTED | no caller catches the throw; the post-refusal state stays CLOSED (roomLeft false, retry refused) — rollback would re-open the budget |
+| A10-3 | `report.ts` imports `dirname`/`join`/`readdirSync` unused | low | CONFIRMED -> fixed | three dead imports removed |
 
-**TALLY: 10 confirmed + fixed, 8 refuted by probe, 0 open.**
+**TALLY: 11 confirmed + fixed, 10 refuted by probe, 0 open.**
 
 ---
 
