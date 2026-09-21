@@ -1,6 +1,7 @@
 # NEXT_STEPS — JM (overwrite; the live queue with acceptance criteria)
 
-**TREE SHA: `0d5d99f34de62b20304d5a79169fdb53` (git 97f522f) · battery 116 pass / 0 fail / 580 expects / 21 files · container rig 7/7** — every canon doc that carries this line carries THIS sha; a disagreement means one is stale.
+**TREE SHA: `8ad162f0005b06cfc4d45a3239ca47ba` (git b80ae12)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 ## THE BLOCKER (nothing ships while this is red)
 

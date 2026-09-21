@@ -48,6 +48,28 @@ for f in sorted(root.glob("*.md")):
 print(f"  canon docs re-synced to {sha}: {n}")
 PY2
 
+# 3c. BUILD_STATE's two inventories — regenerated from the live tree for the same reason.
+python3 - <<'PY3'
+import os, re, pathlib
+def inv(d):
+    rows = []
+    for root, _, fs in os.walk(d):
+        for f in sorted(fs):
+            if f.endswith(".ts"):
+                p = os.path.join(root, f); rows.append((p, sum(1 for _ in open(p, encoding="utf-8"))))
+    rows.sort()
+    return rows, "\n".join("| `" + r + "` | " + str(n) + " |" for r, n in rows)
+srows, sinv = inv("src"); trows, tinv = inv("tests")
+p = pathlib.Path("context_management/BUILD_STATE.md")
+s = p.read_text(encoding="utf-8")
+s = re.sub(r"## THE MODULE INVENTORY \(src/, \d+ files\)\n\n\| file \| lines \|\n\|------\|-------\|\n(\|.*\n)+",
+           "## THE MODULE INVENTORY (src/, " + str(len(srows)) + " files)\n\n| file | lines |\n|------|-------|\n" + sinv + "\n", s)
+s = re.sub(r"## THE TEST INVENTORY \(tests/, \d+ files\)\n\n\| file \| lines \|\n\|------\|-------\|\n(\|.*\n)+",
+           "## THE TEST INVENTORY (tests/, " + str(len(trows)) + " files)\n\n| file | lines |\n|------|-------|\n" + tinv + "\n", s)
+p.write_text(s, encoding="utf-8")
+print("  BUILD_STATE inventories: src=" + str(len(srows)) + " tests=" + str(len(trows)))
+PY3
+
 # 4. the manifest's volatile lines
 python3 - "$CP" "$SHA" "$GIT" <<'PY'
 import re, sys, pathlib
