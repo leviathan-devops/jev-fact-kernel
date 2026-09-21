@@ -84,7 +84,7 @@ Append-only, updated at the moment of work.
 - NEXT: the re-audit verdict; then the medium frontier (N-2..N-6).
 
 ## [2026-09-21] SESSION CLOSE — THE STATE THE NEXT LOG ENTRY INHERITS
-- The engine works live; the battery is 18/0; tsc is 0; the ledger holds 32+ runs.
+- The engine works live; the battery is 24/0; tsc is 0; the ledger holds 32+ runs.
 - The audit gate reads FAIL (the first run's 30 highs, all fixed; the re-audit in flight).
 - The medium frontier (49 findings, five families) is the next fix wave.
 - W2's adapters, W8, the MCP/watch surfaces: unbuilt, with their acceptance criteria written.

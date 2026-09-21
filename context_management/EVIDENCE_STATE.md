@@ -153,8 +153,8 @@ JM_CALIBRATION_ROW 2026-09-21T12:23:44.931Z — n=3; no move warranted — mecha
  EVIDENCE_STATE               carries the audit artifact + the battery counts
  POST-COMPACTION_PROMPT       points at the checkpoint WITHOUT freezing a sha (by design:
                               the pin/doc contract forbids frozen numbers in the resume path)
- battery (repo)               18/0  — matches every doc's claim
- battery (checkpoint copy)    18/0  — byte-identical tests, independently run
+ battery (repo)               24/0  — matches every doc's claim
+ battery (checkpoint copy)    18/0  — the copy predates the frontier wave (refresh owed)
  ledger (repo)                32 rows — matches the run counts quoted in BUILD_REPORT
 ```
 

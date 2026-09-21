@@ -106,7 +106,7 @@
  [ ] `jm target add 'x/../../etc' fs /tmp` cannot escape ~/.jm/index/
  [ ] `--job '../x'` cannot escape ~/.jm/jobs/
  [ ] a job whose root moves resumes with the same fingerprints (root-relative keys)
- [ ] test_path_sanitisation green; battery still 18/0
+ [ ] test_path_sanitisation green; battery still green
 ```
 
 ### N-3 acceptance (cleanup)

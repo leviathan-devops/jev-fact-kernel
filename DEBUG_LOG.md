@@ -216,7 +216,7 @@ audit: src/verbs/filter.ts:42 and src/verbs/find.ts:61 — 'runPool swallows wor
 - **ROOT CAUSE:** `runPool` collects worker exceptions into `errors`; the verbs read `ok` and ignored `errors`.
 - **MECHANISM:** the failure value pattern was used for bookkeeping but not for policy.
 - **FIX:** both verbs now inspect `errors` and rethrow JEV_NO_KEY (fail-closed).
-- **VERIFICATION:** `test_decision_fail_closed` covers the pattern; the battery stays 18/0 after the change.
+- **VERIFICATION:** `test_decision_fail_closed` covers the pattern; the battery stays green after the change (18/0 at the time, 24/0 after the frontier wave).
 - **LESSON:** a collected error that nobody reads is a swallowed exception wearing a data structure.
 
 ## EN-010 — tombstones stayed searchable

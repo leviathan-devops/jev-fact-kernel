@@ -39,7 +39,7 @@
  canon           context_management/ (this set + RUNNING_BUILD_LOG + RUNNING_DEBUG_LOG + RUNTIME_SEAT)
  ship docs       BUILD_REPORT.md · DEBUG_LOG.md · TESTING_LOG.md · FAILURE_LOG.md · THEATRICALITY_LOG.md · AUDIT_SUMMARY.md
  source          src/{cli,serve,ledger,calibrate}.ts · src/{store,judge,job,pools,verbs}/
- tests           tests/*.test.ts (8 files, 18 tests)
+ tests           tests/*.test.ts (9 files, 24 tests)
  runtime state   ~/.jm/index/*.sqlite · ~/.jm/jobs/<id>/ · ~/.jm/ledger.jsonl · ~/.jm/targets.json
  audit           artifacts/audit-2026-09-21.json (+ the re-audit when it lands)
  checkpoints     Checkpoints/jm-design-baseline-7b7f7eb/ · Checkpoints/jm-v0-waves-green-a39afe8/
@@ -76,7 +76,7 @@ If any doc quotes a different number for one of these, the doc is stale — fix 
 
 ```
  cd ~/JARVIS_WORKSPACE/Shared_Workspace/JevManager
- bun test && bunx tsc --noEmit      # expect 18/0 and exit 0 — if not, the tree moved under you
+ bun test && bunx tsc --noEmit      # expect 24/0 and exit 0 — if not, the tree moved under you
  bun src/cli.ts report              # the ledger: how many runs, of what kinds
  git log --oneline | head -5        # the commit chain since the design base
 ```
@@ -129,7 +129,7 @@ recorded (a doc that contradicts the artifact is stale, not authoritative).
 | act band | non-empty on a live corpus | the question is vague (the silent middle) |
 | `truncated` | rare, and you know why | a corpus with files over the caps (expected on @shadow) |
 | escalation file | small but non-empty across many runs | the thresholds are miscalibrated either way |
-| battery | 18/0 after every change | a regression, or a probe that drifted |
+| battery | 24/0 after every change | a regression, or a probe that drifted |
 | tsc | 0 after every change | types and fixtures diverging |
 | the audit gate | PASS, or FAIL with fixes in flight | a claim about to be made without proof |
 
@@ -141,7 +141,7 @@ recorded (a doc that contradicts the artifact is stale, not authoritative).
  find over 30 candidates                     $0.000890 (measured)
  HTTP /decide                                ~$0.0000124 per novel decision (measured); replays $0
  the audit (ocr review, full range)          ~6 minutes, ~2.4M tokens (measured once)
- the battery                                 ~0.2s (18 tests) — run it after EVERY change
+ the battery                                 ~0.2s (24 tests) — run it after EVERY change
 ```
 
 ## 12. THE LEDGER AND CACHE, IN ONE REMINDER
