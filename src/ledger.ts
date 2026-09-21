@@ -49,9 +49,11 @@ export async function withLedger<T>(
     const { result, stats, costUsd = 0, calls = 0, cached = 0 } = await fn();
     const ended = new Date().toISOString();
     ledgerSafe({ ts: ended, kind: "run", verb, args, started, ended, status: "ok", stats, cost_usd: costUsd, calls, cached });
-    // MACHINE-READABLE CONTRACT: with --json, stdout stays pure JSON; the cost line goes to stderr.
-    const costLine = `cost=$${costUsd.toFixed(6)} calls=${calls} cached=${cached}`;
-    if (process.argv.includes("--json")) console.error(costLine); else console.log(costLine);
+    // STDOUT IS DATA, ALWAYS. The cost line is a diagnostic, so it goes to STDERR for EVERY verb
+    // and every structure — a csv redirected to a file must contain csv, and a --json payload must
+    // parse. (Caught by verifying the operating contract: `extract --structure csv > out.csv`
+    // prepended `cost=$…` to the file, corrupting it. D-017.)
+    console.error(`cost=$${costUsd.toFixed(6)} calls=${calls} cached=${cached}`);
     return result;
   } catch (err) {
     const ended = new Date().toISOString();

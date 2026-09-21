@@ -249,3 +249,17 @@ CHUNKED METHOD (the only one that completes under upstream rate limits):
 completed). Retry condition: any lane returning non-zero tokens across the full 36-file source
 scope -> expect status=complete; zero findings flips the gate to PASS.
 Full method + ledger + the paste-ready re-run sequence: `AUDIT_SUMMARY.md`.
+
+### THE OPERATING CONTRACT AS A PROBE (README §18) — 25 claims, 3 defects found
+```
+METHOD  every claim in README §18 was executed against the live CLI before being trusted
+RESULT  first run: 20 passed / 5 failed
+        2 failures were the VERIFIER's own stale expectations (corrected)
+        3 were REAL DEFECTS:
+          D-017 the cost line went to STDOUT -> a piped csv/json was CORRUPTED (silent)
+          D-018 exit codes were per-verb (a typo'd index: 1 from query, 2 from extract)
+          D-019 `target add` accepted a root that does not exist
+        after the fixes: 25 passed / 0 failed, and the doc's own `target rm` line was corrected
+
+battery 88 pass / 0 fail / 331 expects / 17 files · tsc exit 0
+```

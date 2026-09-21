@@ -379,7 +379,244 @@ Indexes live under `~/.jm/`. Redaction runs before any state is hashed or cached
 
 ---
 
-## 18. Wave 0 preview (the first code that will land here)
+## 18. The operating contract (everything the second-operator drill found missing)
+
+A zero-context operator ran the engine from §10/§13 alone and reported 14 gaps. This section is
+the answer to each one, written from MEASURED behaviour, not intent. If a line here disagrees with
+the engine, the engine wins and this file is the bug — re-run the command and fix the line.
+
+### 18.1 The verbs and their exit codes (G12)
+
+There are **17 CLI verbs**. Do not guess one: **run `jm` with no verb and it prints the usage
+dump**. A usage dump is also what you get for an unknown verb — with **exit 2**.
+
+```
+index   query   target(add|ls|rm)   scan   cluster   extract   report
+find    filter  decision-tree       route  evaluate
+serve   mcp     watch               journal  calibrate
+```
+
+| exit | means | example |
+|------|-------|---------|
+| `0` | the verb did its job | `jm query idx --fts x` with matches |
+| `1` | a RUNTIME failure, the environment is at fault | `JM_ERROR: ENOENT` on a deleted file |
+| `2` | a CLIENT error — your arguments are wrong, or the key is absent | `JM_ARGS`, `JM_SCAN_RE_INVALID`, `JM_INDEX_MISSING`, `JEV_NO_KEY` |
+
+Two conventions worth memorising: **`--json` exists on every read verb** (never required, always
+available), and **a write verb creates its index while a read verb refuses a missing one** — see
+18.3.
+
+### 18.2 Targets, the registry, and `--in` (G4)
+
+A target is `{name, kind, root}` and lives in `$JM_HOME/targets.json`. Names are a NAMESPACE:
+they are sanitised for storage, so `../../evil` becomes `_evil`.
+
+```
+jm target add <name> <kind> <root>      # kind = fs | jsonl | sqlite
+jm target ls                            # TSV: name, kind, root
+jm target rm <name>                     # exit 2 + JM_TARGET_UNKNOWN if it was not there
+```
+
+The kinds and what `root` means for each:
+
+| kind | root points at | the rows are |
+|------|----------------|--------------|
+| `fs` | a DIRECTORY (or a single file) | one row per file; `path` = `<target>/<rel>` |
+| `jsonl` | a `.jsonl` (or `.json`) FILE | one row per line/element; `path` = `<file>#L<n>` |
+| `sqlite` | a `.sqlite` FILE | one row per table row; `path` = `<file>#<table>/<pk>` |
+
+`sqlite` needs no table list: **every table is read** (a schema-less DB yields zero rows and is
+not an error). A `sqlite` source is opened **READ-ONLY** — the engine cannot write to your DB,
+and the drill verifies this by comparing the file's size+mtime before and after.
+
+The **multi-target forms** are how you index several sources into ONE index:
+
+```bash
+jm index  --in all --name corpus        # every registered target
+jm index  --in shadow,ocdb --name pair  # just these two
+jm query  --in pair --fts "tombstone"   # the same name resolution on the read side
+jm index  @shadow                       # a SINGLE target; dispatches by its KIND
+```
+
+`--in` **auto-names** the index when `--name` is absent: `all` -> `all`, `a,b` -> `a+b`. A name
+that is not in the registry is **loud** (`JM_TARGET_UNKNOWN`) and names the ones you do have —
+never a silent subset. `@target` and `--in target` are equivalent for every kind; `@` exists so a
+one-target command stays short.
+
+### 18.3 Reads refuse a missing index (G1 — the drill's most severe find)
+
+```bash
+$ jm query corpus --fts tombstone
+$ jm query corups  --fts tombstone        # the typo
+JM_ERROR: JM_INDEX_MISSING: no index "corups" at …/index/corups.sqlite — build it first
+exit 2
+```
+
+Read verbs (`query`, `scan`, `cluster`, `extract`, `report`) **require the index to exist**.
+Write verbs (`index`, `decision-tree`, `calibrate`, …) create it. This asymmetry is the fix for
+a silent failure: before it, a typo produced an EMPTY result at exit 0 **and a phantom index
+file**, so "no matches" and "no such index" were indistinguishable. Never trust an empty answer
+from a verb that did not tell you the index existed.
+
+### 18.4 Query returns POINTERS; the body comes from scan/extract (G11, G16)
+
+```bash
+$ jm query corpus --fts zanzibar
+62      new     /tmp/op2/src.sqlite#t/1
+ ^size  ^state  ^the row id
+```
+
+`query` answers "WHICH rows match", and its columns are `size`, `state`, `path`. It does **not**
+print the text. To see or pull content:
+
+```bash
+jm scan    corpus --lex zanzibar              # rows + a 140-char EXCERPT + a hit count
+jm scan    corpus --lex zanzibar --re 'tomb\w+'   # a regex GATE over the row text
+jm extract corpus --lex zanzibar --re 'id: ([0-9]+)'   # capture group 1 (or group 0) per hit
+```
+
+`scan`'s leading integer is the **hit count** (0 when no `--re` was given), then size, then path,
+then the excerpt. Only rows that were indexed WITH text can be text-searched; `text=0` in an
+index line means the file was hashed but not text-extracted (too large, or a binary kind).
+
+### 18.5 cluster groups; it does not judge (G11)
+
+```bash
+$ jm cluster corpus --lex zanzibar
+n=2   sqlite:op2db   /tmp/op2   [body,drift,nothing,observed]   1, 2
+ ^group size        ^source     ^the token SIGNATURE          ^exemplar ids
+```
+
+Clusters partition by **`(source, kind)` first**, then by the token signature within each bucket.
+The signature is the top-N most frequent non-stop words ≥4 chars, **ties broken
+alphabetically** — so a tie between `service` and `tombstone` puts `service` first. There is no
+model here: the same input gives the same clusters in the same order. `n` counts the members;
+`small` counts clusters below `--min`; `grouped + ungrouped = candidates`.
+
+### 18.6 The structure contract: `md` · `json` · `csv` (G9)
+
+`--structure` accepts exactly those three, and **`--out`'s extension selects it** when
+`--structure` is absent:
+
+```bash
+jm extract corpus --re 'x' --out /tmp/x.csv      # writes REAL csv (header + RFC4180 quoting)
+jm extract corpus --re 'x' --structure tsv       # JM_EXTRACT_STRUCTURE: tsv (have: md, json, csv)
+```
+
+`find`'s structures are `md` and `json` only. (Before the fix, a `.csv` path received JSON and
+`--structure csv` silently rendered markdown — a declared structure the code did not honour is
+worse than a missing feature.)
+
+### 18.7 Keys: two sources, one polarity (G8)
+
+The judge resolves a key in this order, and **never logs or stores it**:
+
+1. `TYPESAFE_API_KEY` (env), else
+2. `~/.config/typesafe/key` (file), else
+3. absent.
+
+| class | verbs | with no key |
+|-------|-------|-------------|
+| **keyless** | `index`, `query`, `scan`, `cluster`, `extract`, `report`, `serve`, `mcp`, `watch` | work normally, `cost=$0` |
+| **judged** | `find` (its judge stage), `filter`, `decision-tree`, `route`, `evaluate`, `calibrate` | **CLI exit 2** with `JEV_NO_KEY` · **HTTP 503** |
+
+Fail-closed means the judged path writes **nothing** and decides **nothing** — zero decisions,
+not a default. To test the starve path, redirect `HOME` (unsetting the env var alone is not
+enough: the file is a legitimate second source):
+
+```bash
+env -u TYPESAFE_API_KEY HOME=/tmp/nokey jm route --task "…"    # exit 2, JEV_NO_KEY
+```
+
+### 18.8 The MCP surface: stdio, and how to drive it (G6, G13)
+
+`jm mcp` speaks **JSON-RPC 2.0 over stdio**, one JSON object per line. No HTTP, no port. A
+paste-ready session:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"jm_query","arguments":{"fts":"x"}}}' \
+  | jm mcp
+```
+
+An `initialize`/`notifications/initialized` handshake is **the correct client behaviour**; a bare
+`tools/list` line is also answered, so a one-line probe works. Two framing rules the client must
+honour: a **notification produces NO response frame** (a responder that answers anyway
+desynchronises the client), and a **tool failure arrives as a RESULT with `isError: true`**, not
+as a JSON-RPC error — the agent must SEE the failure while the transport stays alive.
+
+The four tools are `jm_query`, `jm_find`, `jm_decide`, `jm_index`. They are the CLI verbs with
+the same names and the same semantics; an agent's answer and a curl answer cannot drift apart.
+
+### 18.9 The daemon: what a tick IS (G10)
+
+```bash
+jm watch --once --in a,b        # one reconcile tick
+jm watch --interval 30000       # the loop (ms)
+jm journal --limit 20           # read the journal back
+```
+
+A tick **re-ingests the scoped targets through their adapters and journals the result**. It is
+**idempotent**: a second tick on an unchanged corpus writes `changed=0`. The journal is real
+JSONL at **`$JM_HOME/watch/journal.jsonl`**, one object per tick:
+
+```json
+{"at":"…","targets":2,"rows":4,"changed":4,"ms":17,
+ "actions":[{"target":"a","kind":"fs","changed":2,"rows":2},…],"errors":[]}
+```
+
+A broken target is **journaled in `errors`**, never fatal: a daemon that dies on a bad config
+cannot reconcile anything. **The tick's index name is derived from `--in`** (`a,b` -> `a+b`), so a
+tick does NOT write into an index you built with `--name` unless you scope it that way — if you
+want the tick and your manual runs to share an index, give them the same `--in` set or index with
+`--in` yourself. Of §13's four named duties, **only index-watch is implemented**; the other three
+are planned and are stated here so silence is not read as proof.
+
+### 18.10 report: every field, defined (G5, G15)
+
+```bash
+$ jm report corpus
+index:        corpus (72.0 KB)      # the index DB file's size, not the corpus size
+files:        6 live · 0 gone · 6 with text     # live = state != 'gone'
+docs/fts:     6 docs · 6 fts rows   # the text mirror; should track `with text`
+tags:         0                     # judge-written tags (0 in a keyless index)
+runs:         0 · decisions: 0      # rows the engine wrote INTO this index
+cache:        0 rows · 0 hits       # the shared judge cache attached to this index
+kinds:        text=2 sqlite:op2db=2 jsonl:rows=2
+targets:      corpus(fs) other(sqlite)          # the GLOBAL registry
+ledger:       23 rows · 23 ok · 0 failed · $0.000000   # the GLOBAL ledger
+ledger verbs: index=12 query=5 scan=2 cluster=2 extract=2
+```
+
+Three things it will not tell you by itself: the report **appends a ledger row** (so the second
+run counts one more than the first — self-accounting, not drift); `targets` and `ledger` are
+**global**, not scoped to the index you named; and a malformed ledger line counts as `failed`
+rather than being dropped.
+
+### 18.11 The ledger row: what a run leaves behind (G14)
+
+Every CLI run appends one line to `$JM_LEDGER` (`$JM_HOME/ledger.jsonl`):
+
+```json
+{"ts":"…","kind":"run","verb":"extract",
+ "args":{"index":"f5","re":"…","structure":"csv","out":"/tmp/op5.csv"},
+ "started":"…","ended":"…","status":"ok",
+ "stats":{"rows":1,"values":2,"empty":0,"structure":"csv"},
+ "cost_usd":0,"calls":0,"cached":0}
+```
+
+`args` records **the flags the verb consumed**, so the row can reconstruct the run it proves —
+this is a repair: the flags a caller passed used to be dropped, which made the row a weaker
+witness than it claimed to be. A KEYLESS row carries no state hash, route or truth because it
+judged nothing; a JUDGED row carries them in `stats`. A row with `status: "error"` still lands —
+a failed run is evidence too.
+
+---
+
+## 19. Wave 0 preview (the first code that will land here)
 
 ```
  src/cli.ts                      verb router + --json + cost line

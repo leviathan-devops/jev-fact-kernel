@@ -756,3 +756,32 @@ that DID land was adjudicated against the runtime by probe before any edit. The 
 
 **TALLY: 9 confirmed + fixed · 6 refuted by probe.** A refuted finding is recorded, never dropped:
 the six refutations are what tells a future reader that these are NOT defects.
+
+## EN-032 — D-017/D-018: the cost line corrupted piped output; the exit codes were per-verb
+Both were found by VERIFYING the new README operating contract against the live engine — the doc
+was written first and then executed. That is the point of the exercise: a doc claim is a claim.
+
+- **D-017 (silent corruption) — the cost line went to STDOUT.** `jm extract … --structure csv >
+  out.csv` wrote `cost=$0.000000 calls=0 cached=0` as the file's FIRST LINE, so a csv consumer
+  saw a malformed header; `jm query … --json > out.json` produced unparseable json. The old code
+  sent the cost line to stderr ONLY when `--json` was present, which meant every other structure
+  was polluted. FIX: the cost line is a DIAGNOSTIC and goes to stderr for EVERY verb and every
+  structure. VERIFIED: the piped csv's line 1 is `path,value`; the piped json parses; stderr still
+  carries `cost=$…`. PIN: `test_cost_line_never_pollutes_stdout`.
+- **D-018 (unbranchable errors) — the same error class returned different exit codes.** A typo'd
+  index exited 1 from `query`/`report` and 2 from `extract`/`scan`, because the opens that happen
+  BEFORE a verb's try block escaped to the top-level handler, which always exited 1 (and one
+  hand-rolled ternary per catch site). FIX: one `exitCodeFor(err)` — `2` for every `JM_*:` code
+  and `JEV_NO_KEY` (a client error), `1` otherwise — wired into every catch AND the last error
+  boundary. VERIFIED by spawning the real CLI on eight client-error cases plus a success case.
+  PIN: `test_exit_code_policy_is_uniform`.
+- **D-019 — `target add` accepted a root that does not exist.** The mistake surfaced later, at
+  index time, far from where it was made. FIX: the registry is a pointer store and a pointer to
+  nothing is refused at WRITE time (exit 2, the path named, `~` expanded first). VERIFIED by
+  probe. A target that exists is still accepted unchanged.
+- **ALSO CORRECTED: the doc itself.** §18.2 said `target rm` exits 1; the (now uniform) policy
+  makes it 2. The verification sweep caught the doc lying about the engine — the same sweep
+  re-verified all 25 claims after the fix: **25 passed / 0 failed**.
+- **LESSON:** writing the operating contract and then RUNNING it is a defect-finding instrument in
+  its own right — it found three defects (two silent) that the audit, the battery, the runtime
+  seat, the second-operator drill and two adversarial sweeps had all missed. The doc is a probe.
