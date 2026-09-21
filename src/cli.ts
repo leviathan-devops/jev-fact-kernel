@@ -375,6 +375,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else {
         console.log(`route=${r.route} choice=${r.choice || "(none)"} p=${r.p.toFixed(3)}${r.runnerUp ? ` runner-up=${r.runnerUp.id}(${r.runnerUp.p.toFixed(3)})` : ""}`);
+        console.log(`judged: ${r.rated.length} of a ${r.candidates}-entry catalogue (shortlist: ${r.shortlist.slice(0, 4).join(", ")}${r.shortlist.length > 4 ? ", …" : ""})`);
         console.log(`reason: ${r.reason}`);
         if (r.injection) console.log(`injection: ${r.injection}`);
       }

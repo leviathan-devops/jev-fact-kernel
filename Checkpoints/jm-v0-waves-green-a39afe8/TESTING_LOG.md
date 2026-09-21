@@ -560,3 +560,22 @@ ALSO    the trend's first number was `seen.size`, which the round-robin caps —
 PIN     3 seeds in 3 clusters -> 3 patterns with n=[10,10,10] (the old fetch: ONE pattern of n=30)
 battery 131 pass / 0 fail / 667 expects / 24 files · tsc exit 0
 ```
+
+### D-034 — A VERB THAT HAD NEVER WORKED, AND THE GREEN TESTS THAT HID IT
+```
+MEASURED (live api.typesafe.ai, one probe per question type):
+  noul    -> 200 + a probability
+  choice  -> HTTP 400 "Invalid request."
+  mcq     -> HTTP 400 "Invalid request."
+
+route asked with `mcq`. Every call it ever made returned 400. Every test passed, because the mock
+answered the shape the code expected — the mock validated the code against ITSELF.
+
+FIX   one `noul` per CANDIDATE over a deterministic lexical SHORTLIST (12 of 456 entries)
+LIVE  jm route --task "find every place the theatrical enforcement claim was made ..."
+      -> route=act choice=skill:omp-session-forensics p=0.800  (runner-up container-tui-session-log 0.780)
+      -> cost=$0.000168 calls=12        THE FIRST TIME THIS VERB HAS EVER WORKED
+ALSO  validateRecipe now refuses choice/mcq with the measured reason (it accepted them before, so a
+      recipe using one passed validation and failed on every call)
+battery 132 pass / 0 fail / 641 expects / 24 files · tsc exit 0
+```

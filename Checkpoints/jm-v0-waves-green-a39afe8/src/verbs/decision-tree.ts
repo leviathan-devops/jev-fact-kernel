@@ -28,8 +28,16 @@ export function validateRecipe(r: unknown): Recipe {
   }
   for (const [name, question] of Object.entries(q as Record<string, unknown>)) {
     const t = (question as { type?: unknown } | null)?.type;
-    if (t !== "noul" && t !== "choice" && t !== "mcq") {
-      throw new Error(`JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} (have: noul, choice, mcq)`);
+    // THE LIVE API ACCEPTS `noul` ONLY (D-034, measured against api.typesafe.ai: `choice` and
+    // `mcq` both return HTTP 400 "Invalid request."). Accepting them here validated a shape that
+    // cannot run — the validator was checking the recipe against the CODE's idea of the API rather
+    // than against the API. A recipe using either type is refused AT LOAD, with the reason, instead
+    // of failing later on every call.
+    if (t !== "noul") {
+      throw new Error(
+        `JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} — the live judge accepts ` +
+        `\"noul\" ONLY (measured: choice/mcq -> HTTP 400). Express a choice as one noul per candidate.`,
+      );
     }
   }
   if (o.policy !== undefined) {

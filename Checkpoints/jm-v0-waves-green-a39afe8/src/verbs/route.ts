@@ -1,12 +1,26 @@
 // src/verbs/route.ts — W5/S13: the catalogue Choice. Decide WHICH capability should act.
-// Builds the menu from what is actually installed (skills · tools · models), asks the judge,
-// and on `act` produces the INJECTION TEXT a caller prepends before the model sees the prompt.
+//
+// THE SHAPE OF THE QUESTION IS A MEASURED CONSTRAINT, NOT A PREFERENCE (D-034):
+// the live Typesafe API accepts `noul` questions ONLY. Measured against the real endpoint:
+//   noul    -> 200, a probability back
+//   choice  -> HTTP 400 "Invalid request."
+//   mcq     -> HTTP 400 "Invalid request."
+// So a single "pick from this menu" question is NOT expressible, and this verb was non-functional
+// against the real judge for the whole build — every test passed against a mock, which is exactly
+// how the defect survived. The shipping shape is one `noul` per CANDIDATE ("does this capability
+// apply to the task?"), which discriminates for real: on a find-a-phrase task the live API rated
+// tool:jm_find 0.77 and skill:ascii-diagrams 0.10.
+//
+// A 456-entry catalogue cannot afford 456 calls, so a deterministic LEXICAL pre-score chooses the
+// shortlist and the judge ranks it: deterministic-first, judged-second, the same shape as the rest
+// of the engine.
 import type { Database } from "bun:sqlite";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { Judge } from "../judge/client.ts";
-import { routeOf, signalOf, DEFAULT_POLICY, type Policy, type ChoiceAnswer, type NoulAnswer } from "../judge/policy.ts";
+import { Budget } from "../pools/budget.ts";
+import { reasonForSignal, DEFAULT_POLICY, type Policy } from "../judge/policy.ts";
 
 export interface CatalogueEntry { id: string; kind: "skill" | "tool" | "model"; name: string; hint?: string; }
 export interface Catalogue { entries: CatalogueEntry[]; sources: string[]; }
@@ -16,22 +30,28 @@ export interface RouteOpts {
   catalogue?: Catalogue;        // inject for tests; else built from disk
   policy?: Policy;
   context?: string;
+  shortlist?: number;           // how many candidates the judge rates (default 12)
+  budgetCalls?: number;         // a hard cap on judge calls for the shortlist
 }
+
+export interface Rated { id: string; p: number; }
 
 export interface RouteResult {
   choice: string;               // the selected catalogue id ("" when the ladder escalates)
   route: "act" | "escalate" | "noop";   // "reject" is folded into "escalate" (same caller action)
   p: number;                    // the winner's probability
-  runnerUp?: { id: string; p: number };   // logged, always (the near-miss is the useful part)
+  runnerUp?: Rated;             // logged, always (the near-miss is the useful part)
   injection?: string;           // present ONLY on act
-  candidates: number;
+  candidates: number;           // the catalogue size
+  shortlist: string[];          // what the lexical pre-score put in front of the judge
+  rated: Rated[];               // every judged candidate, ranked
   calls: number;
   cached: boolean;
   costUsd: number;
   reason: string;
 }
 
-/** The live catalogue: skills on disk, the tool names this engine exposes, and the judge's model. */
+/** The live catalogue: skills on disk plus the tool names this engine exposes. */
 export function buildCatalogue(indexName?: string): Catalogue {
   const sources: string[] = [];
   const entries: CatalogueEntry[] = [];
@@ -58,54 +78,73 @@ export function buildCatalogue(indexName?: string): Catalogue {
   return { entries, sources };
 }
 
+/** The deterministic shortlist: token overlap between the task and a capability's name+hint.
+ *  Ties break on id, so the same task always produces the same shortlist. */
+export function shortlistOf(cat: Catalogue, task: string, k: number): CatalogueEntry[] {
+  const taskTokens = new Set(task.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2));
+  const scored = cat.entries.map((entry) => {
+    const capTokens = `${entry.name} ${entry.hint ?? ""}`.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+    return { entry, overlap: capTokens.filter((t) => taskTokens.has(t)).length };
+  });
+  scored.sort((a, b) => (b.overlap - a.overlap) || (a.entry.id < b.entry.id ? -1 : 1));
+  return scored.slice(0, Math.min(k, scored.length)).map((x) => x.entry);
+}
+
 /** Ask the judge which capability should act. Fail polarity: no key -> throw (caller exits 2). */
 export async function route(db: Database, opts: RouteOpts): Promise<RouteResult> {
   const cat = opts.catalogue ?? buildCatalogue();
   if (cat.entries.length === 0) throw new Error("JM_ROUTE_CATALOGUE_EMPTY: no skills, tools or models found");
   const policy = opts.policy ?? DEFAULT_POLICY;
+  const budget = new Budget({ calls: opts.budgetCalls });
 
-  const menu = cat.entries.map((e) => `${e.id}${e.hint ? ` (${e.hint})` : ""}`).join("\n");
-  const questions = {
-    choice: {
-      type: "mcq" as const,
-      instructions: `Which ONE capability should act on the task? Choose from this exact menu:\n${menu}\nIf none fits, choose "none".`,
-      choices: [...cat.entries.map((e) => e.id), "none"],
-    },
-  };
-  const state = { task: opts.task, ...(opts.context ? { context: opts.context } : {}) };
-
+  const shortlist = shortlistOf(cat, opts.task, opts.shortlist ?? 12);
   const judge = new Judge(db, {});
-  const res = await judge.ask(state, questions, "route@v1");
-  const typed = (res.answers as { choice?: ChoiceAnswer | NoulAnswer }).choice;
-  const probs = typed && typed.type === "choice" ? (typed.probabilities ?? {}) : {};
-  const ranked = Object.entries(probs).sort((a, b) => (b[1] - a[1]) || (a[0] < b[0] ? -1 : 1));
-  const top = ranked[0] ?? (typed && typed.type === "choice" ? [typed.choice, signalOf(typed)] as [string, number] : ["none", signalOf(typed)]);
-  const winner = top;
-  const runner = ranked[1];
-  const decided = routeOf(typed, policy);        // the SAME ladder decision-tree uses
-  // "reject" folds into "escalate": both hand the decision to a human, so the caller's action
-  // set stays three-valued.
-  // THE MENU IS THE CONTRACT: a judge answer naming an id the catalogue does NOT contain must
-  // never become an act + injection (ADV-2 probe test_adv_route_choice_outside_the_menu: the
-  // engine emitted "[JM ROUTE] Use skill:NOT-IN-MENU" for a capability that does not exist).
-  const inMenu = winner[0] !== "none" && cat.entries.some((e) => e.id === winner[0]);
-  const ladder: "act" | "escalate" | "noop" = decided.route === "act" ? "act" : decided.route === "noop" ? "noop" : "escalate";
-  const folded: RouteResult["route"] = ladder === "act" && !inMenu ? "escalate" : ladder;
+  let calls = 0, costUsd = 0, cached = false;
+  const rated: Rated[] = [];
+  let stopped = false;
+
+  for (const e of shortlist) {
+    if (!budget.claim()) { stopped = true; break; }   // the same synchronous claim every pool uses
+    const res = await judge.ask(
+      { task: opts.task, ...(opts.context ? { context: opts.context } : {}), capability: e.id },
+      { applies: { type: "noul", instructions: `Does the capability "${e.id}" apply to the task? Answer with a probability in [0,1].` } },
+      "route@v2",
+    );
+    const p = (res.answers as { applies?: { noul?: number } }).applies?.noul ?? 0;
+    budget.settle(res.costUsd, res.cached);
+    if (res.cached) cached = true; else { calls++; costUsd += res.costUsd; }
+    rated.push({ id: e.id, p });
+  }
+  rated.sort((a, b) => (b.p - a.p) || (a.id < b.id ? -1 : 1));
+
+  const winner = rated[0] ?? { id: "none", p: 0 };
+  const runner = rated[1];
+  const decided = reasonForSignal(winner.p, policy);   // the SAME ladder as decision-tree
+  const inMenu = winner.id !== "none" && cat.entries.some((e) => e.id === winner.id);
+  // "reject" folds to "escalate" (both hand the decision to a human), so the caller's action set
+  // stays three-valued.
+  const folded: RouteResult["route"] =
+    decided.route === "act" ? (inMenu ? "act" : "escalate") : decided.route === "noop" ? "noop" : "escalate";
+  const shortNote = stopped ? " (BUDGET_STOPPED: the shortlist was judged only in part)" : "";
 
   return {
-    choice: folded === "act" ? winner[0] : "",
+    choice: folded === "act" ? winner.id : "",
     route: folded,
-    p: winner[1],
-    runnerUp: runner ? { id: runner[0], p: runner[1] } : undefined,
+    p: winner.p,
+    runnerUp: runner,
     injection: folded === "act"
-      ? `[JM ROUTE] Use ${winner[0]} (p=${winner[1].toFixed(3)}). Runner-up: ${runner ? `${runner[0]} (p=${runner[1].toFixed(3)})` : "none"}.` // injected BEFORE the model sees the prompt
+      ? `[JM ROUTE] Use ${winner.id} (p=${winner.p.toFixed(3)}). Runner-up: ${runner ? `${runner.id} (p=${runner.p.toFixed(3)})` : "none"}.`
       : undefined,
     candidates: cat.entries.length,
-    calls: res.costUsd === 0 ? 0 : 1,
-    cached: res.cached,
-    costUsd: res.costUsd,
+    shortlist: shortlist.map((e) => e.id),
+    rated,
+    calls,
+    cached,
+    costUsd,
     reason: folded === "act"
-      ? `${winner[0]} at p=${winner[1].toFixed(3)} >= act ${policy.act}`
-      : !inMenu && ladder === "act" ? `judge chose ${winner[0]} at p=${winner[1].toFixed(3)} but it is NOT in the catalogue -> escalate` : `${decided.reason} -> ${folded}`,
+      ? `${winner.id} at p=${winner.p.toFixed(3)} >= act ${policy.act}${shortNote}`
+      : !inMenu && decided.route === "act"
+        ? `judge chose ${winner.id} at p=${winner.p.toFixed(3)} but it is NOT in the catalogue -> escalate`
+        : `${decided.reason} -> ${folded}${shortNote}`,
   };
 }
