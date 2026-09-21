@@ -59,3 +59,40 @@ export function fatalJudgeError(errors: { error: string }[], opts: { failOpen?: 
   if (noKey) return noKey.error;
   return opts.failOpen ? null : errors[0].error;
 }
+
+
+/** READ AN ANSWER BY SHAPE, NOT BY KEY (D-042).
+ *
+ * `filter` read `answers.match.noul`, `find` read `answers.is_instance.noul`, `route` read
+ * `answers.applies.noul` — and each used `?? 0`. Measured against a judge that answered
+ * `{ verdict: { noul: 0.95 } }`: filter made SIX real calls, the judge said 0.95 (a clear yes), the
+ * verb read 0, and it reported `kept=0` — "no row here is a problem". `decision-tree` was immune
+ * because `answersToPolicyValue` walks `Object.values()` and takes the max, so this is a solved
+ * problem in the same codebase, in one verb out of three.
+ *
+ * A misshapen answer is a JUDGE FAILURE, not a confident negative: nothing usable throws.
+ *
+ * Resolution order: the question the verb asked, then the only answer present, then the best
+ * `noul` across all answers. Anything without a finite number throws `JM_JUDGE_ANSWER_INVALID`. */
+export function noulFrom(answers: unknown, expectedKey: string): number {
+  const map = (answers ?? {}) as Record<string, { noul?: unknown; probabilities?: Record<string, unknown> } | undefined>;
+  const finite = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+  const asked = map[expectedKey];
+  if (asked) {
+    const direct = finite(asked.noul);
+    if (direct !== null) return direct;
+    if (asked.probabilities) {                      // a choice-shaped answer still carries a signal
+      const vals = Object.values(asked.probabilities).map(finite).filter((v): v is number => v !== null);
+      if (vals.length > 0) return Math.max(...vals);
+    }
+  }
+  const keys = Object.keys(map).filter((k) => map[k] !== undefined);
+  if (keys.length === 1) {                          // the judge renamed the key; use what arrived
+    const only = finite(map[keys[0]]?.noul);
+    if (only !== null) return only;
+  }
+  const all = keys.map((k) => finite(map[k]?.noul)).filter((v): v is number => v !== null);
+  if (all.length > 0) return Math.max(...all);      // the same shape decision-tree already trusts
+  throw new Error(`JM_JUDGE_ANSWER_INVALID: no usable answer — expected "${expectedKey}", received [${keys.join(", ") || "nothing"}]`);
+}

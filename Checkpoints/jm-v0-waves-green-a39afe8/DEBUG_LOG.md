@@ -1386,3 +1386,32 @@ ONE SURFACE AND NOT ON ANOTHER.
   controlled endpoint the suite runs itself.
 - **LESSON:** `grep` for the failure-handling idiom after fixing one instance of it. A policy
   duplicated three times is a policy that will be fixed once and wrong twice.
+
+## EN-056 — D-042: a renamed answer key produced a CONFIDENT NEGATIVE
+- **HOW FOUND:** the D-041 lens applied one level deeper — after fixing HOW a failure is
+  classified, the next question is HOW AN ANSWER IS READ. Three verbs each read their answer with
+  `answers.<theirQuestion>.noul ?? 0`.
+- **THE PROBE (a judge that answers with a different key):**
+  ```
+  the judge returns {"verdict":{"type":"noul","noul":0.95}}  (the verbs ask for match/is_instance/applies)
+  filter          -> kept=0 judged=6 calls=6     SIX real calls, the judge said 0.95, the verb read 0
+  find            -> patterns=0 trend=6 → 6 → 0 → 0
+  decision-tree   -> route=act reason=agg=0.95   CORRECT — its reader walks Object.values()
+  ```
+  A misnamed key made two verbs report "no" at full confidence, while a third verb in the SAME
+  codebase was already immune. The problem was solved once and copied nowhere.
+- **ROOT CAUSE:** `?? 0` conflates "the answer is zero" with "there is no answer". The second is a
+  JUDGE FAILURE and the first is a verdict; a fallback that maps one onto the other is a
+  wrong-answer generator.
+- **FIX:** `noulFrom(answers, expectedKey)` in `judge/policy.ts` — read the asked key, else the only
+  answer present, else the best `noul` across all answers (the shape decision-tree trusts), and
+  THROW `JM_JUDGE_ANSWER_INVALID` when nothing usable arrived. Wired into filter, find and route.
+- **VERIFICATION:**
+  ```
+  wrong-key judge -> filter kept=6 judged=6 · find patterns=1   (the signal is READ again)
+  no-usable-number -> THROWS JM_JUDGE_ANSWER_INVALID             (not a confident "no")
+  healthy judge    -> filter returns rows                        (unchanged)
+  ```
+  Pinned by `tests/judge-answer-shape.test.ts` — five cases including the polarity.
+- **LESSON:** `x ?? 0` on a judge's answer is a silent lie generator. Decide explicitly what a
+  MISSING answer means, and make "missing" a failure rather than a value.

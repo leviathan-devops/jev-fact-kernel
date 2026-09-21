@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `1d0bd7b64e2f00bbefb7feb6982272f4` (git d86e91e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `aa40548bb66aac1171885052f9cd19ee` (git b845000)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -51,7 +52,7 @@ sealed copy does not belong here.
 | `src/judge/cache.ts` | 55 |
 | `src/judge/client.ts` | 49 |
 | `src/judge/key.ts` | 26 |
-| `src/judge/policy.ts` | 61 |
+| `src/judge/policy.ts` | 98 |
 | `src/judge/transport.ts` | 66 |
 | `src/ledger.ts` | 64 |
 | `src/mcp.ts` | 185 |
@@ -75,7 +76,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 30 files)
+## THE TEST INVENTORY (tests/, 31 files)
 
 | file | lines |
 |------|-------|
@@ -96,6 +97,7 @@ sealed copy does not belong here.
 | `tests/helpers.ts` | 30 |
 | `tests/index.test.ts` | 57 |
 | `tests/job-report.test.ts` | 101 |
+| `tests/judge-answer-shape.test.ts` | 38 |
 | `tests/judge-outage.test.ts` | 76 |
 | `tests/judge-policy.test.ts` | 103 |
 | `tests/ladder-reason.test.ts` | 55 |

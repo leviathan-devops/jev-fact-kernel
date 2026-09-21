@@ -5,7 +5,7 @@ import { Judge } from "../judge/client.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 import { excerptAround, seedsOf } from "./excerpt.ts";
-import { fatalJudgeError } from "../judge/policy.ts";
+import { fatalJudgeError, noulFrom } from "../judge/policy.ts";
 import { queryIndex } from "./query.ts";
 
 export interface FilterOpts {
@@ -40,7 +40,7 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
     const excerpt = excerptAround(doc?.text ?? "", seeds, cap);
     const res = await judge.ask({ candidate: { path: c.path, size: c.size, excerpt } },
       { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
-    const p = (res.answers.match as { noul?: number })?.noul ?? 0;
+    const p = noulFrom(res.answers, "match");   // by SHAPE, never a bare `?? 0` (D-042)
     budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
     if (!res.cached) { calls++; costUsd += res.costUsd; }
     const keep = p >= minP;
