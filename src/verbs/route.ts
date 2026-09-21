@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { Judge } from "../judge/client.ts";
 import { Budget } from "../pools/budget.ts";
-import { reasonForSignal, DEFAULT_POLICY, type Policy } from "../judge/policy.ts";
+import { reasonForSignal, noulFrom, DEFAULT_POLICY, type Policy } from "../judge/policy.ts";
 
 export interface CatalogueEntry { id: string; kind: "skill" | "tool" | "model"; name: string; hint?: string; }
 export interface Catalogue { entries: CatalogueEntry[]; sources: string[]; }
@@ -110,7 +110,7 @@ export async function route(db: Database, opts: RouteOpts): Promise<RouteResult>
       { applies: { type: "noul", instructions: `Does the capability "${e.id}" apply to the task? Answer with a probability in [0,1].` } },
       "route@v2",
     );
-    const p = (res.answers as { applies?: { noul?: number } }).applies?.noul ?? 0;
+    const p = noulFrom(res.answers, "applies");   // by SHAPE, never a bare `?? 0` (D-042)
     budget.settle(res.costUsd, res.cached);
     if (res.cached) cached = true; else { calls++; costUsd += res.costUsd; }
     rated.push({ id: e.id, p });

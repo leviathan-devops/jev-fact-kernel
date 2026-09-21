@@ -8,7 +8,7 @@ import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 import { queryIndex, type QueryRow } from "./query.ts";
 import { excerptAround, quoteAround, seedsOf } from "./excerpt.ts";
-import { fatalJudgeError } from "../judge/policy.ts";
+import { fatalJudgeError, noulFrom } from "../judge/policy.ts";
 
 export interface FindOpts {
   phrase: string; common?: number; structure?: "md" | "json"; minP?: number;
@@ -89,7 +89,7 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     const excerpt = excerptAround(text, seeds, maxExcerpt);
     const res = await judge.ask({ target_phrase: opts.phrase, candidate: { path: c.path, excerpt } },
       { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } }, "find@v1");
-    const p = (res.answers.is_instance as { noul?: number })?.noul ?? 0;
+    const p = noulFrom(res.answers, "is_instance");   // by SHAPE, never a bare `?? 0` (D-042)
     budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
     if (!res.cached) { calls++; costUsd += res.costUsd; }
     if (p >= minP) judged.push({ row: c, p, quote: quoteAround(text, seeds, 160) });
