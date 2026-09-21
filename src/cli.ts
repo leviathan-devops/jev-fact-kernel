@@ -2,6 +2,8 @@
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
 import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
 import { targetsIn, ingestAll } from "./targets.ts";
+import { serveStdio } from "./mcp.ts";
+import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
 import { decisionTree, type Recipe } from "./verbs/decision-tree.ts";
@@ -45,6 +47,9 @@ function usage(): void {
   jm index --in a,b|all [--name N]                 multi-target ingest (fs | jsonl | sqlite)
   jm query --in a,b|all [--fts P] [--where W]      query the multi-target index
   jm target add <name> <kind> <root> | jm target ls | jm target rm <name>
+  jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
+  jm watch [--once] [--interval MS] [--in a,b]     the reconcile daemon (journal per tick)
+  jm journal [--limit N] [--json]                  the watch journal
   jm report [--json]
 `);
 }
@@ -227,6 +232,25 @@ async function main(): Promise<number> {
       else console.log(`JM_FIND trend: ${res.trend} · out=${res.out}`);
       return res.budgetStopped ? 3 : 0;
     } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "mcp") {
+    // The MCP surface on stdio: an agent (OMP, Claude, any MCP client) calls jm_* tools.
+    await serveStdio();
+    return 0;
+  }
+
+  if (verb === "watch") {
+    // The daemon surface: `--once` for a single reconcile tick (tests/cron), else the loop.
+    const r = await watch({ intervalMs: flag("interval") ? Number(flag("interval")) : undefined, index: flag("name"), once: has("once"), in: flag("in") });
+    return 0;
+  }
+
+  if (verb === "journal") {
+    const rows = readJournal(flag("limit") ? Number(flag("limit")) : 20);
+    if (has("json")) console.log(JSON.stringify(rows, null, 2));
+    else for (const r of rows) console.log(`${r.at}\ttargets=${r.targets}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
+    return 0;
   }
 
   if (verb === "serve") {
