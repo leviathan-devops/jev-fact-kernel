@@ -1554,3 +1554,49 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **LESSON:** the same `?? 0` appeared on the WRITE side (D-043) and the READ side (D-045) of one
   column. Fixing where a value is stored does not fix where it is read — and the reader that
   moves THRESHOLDS is the one where a fabricated zero does the most damage.
+
+## EN-063 — D-046: a call with no `usage` block was billed at $0, and the USD cap could never fire
+- **HOW FOUND:** sweeping every numeric fallback in the tree (`grep '?? [0-9]' src/`) and
+  adjudicating each. Most are benign option defaults (`opts.x ?? default`). Two were not, and one
+  of them was the cost.
+- **THE PROBE (a judge that answers correctly but omits `usage`):**
+  ```
+  answers: {"flag":{"type":"noul","noul":0.9}}
+  inputTokens: 0   costUsd: 0        <- a call that HAPPENED, billed at nothing
+  50 such calls against a $0.0001 usd cap -> usd=0  roomLeft=TRUE    the cap can never fire
+  ```
+- **WHY IT MATTERS:** the cost flows into the LEDGER (`cost_usd`) and the BUDGET (`usd` cap). An
+  absent accounting field therefore disabled a guard silently — and the spec's whole cost posture
+  ("budgets are hard", "every run prints its cost") rests on that number being measured.
+- **FIX:** the client REPORTS the gap (`usageMissing: true`) instead of laundering it into a 0, and
+  the three pooled verbs treat a usage-less call like any other judge failure — through the SAME
+  `fatalJudgeError` policy D-040/D-041 built. `fail: "closed"` refuses; `fail: "open"` degrades with
+  a marked row.
+- **VERIFICATION:**
+  ```
+  usage-less response -> usageMissing=true, the answer still usable
+  fail=closed         -> THREW JM_JUDGE_USAGE_MISSING
+  fail=open           -> completed, 1 MARKED noop row
+  a normal response   -> unaffected (calls=1, decided=1)
+  ```
+  Pinned by `tests/judge-usage.test.ts` (3 tests).
+- **LESSON:** an unmeasurable quantity must REFUSE a limit enforcement, not satisfy it. `?? 0` on a
+  cost is not a default — it is an assertion that the call was free.
+
+## EN-064 — the D-046 pin's own bug: a CACHE HIT between its two phases (and a masked failure)
+- **SYMPTOM:** the pin's fail-open phase asserted `bands.noop === 1` and got `0`, in the LIVE tree
+  and in the seal's copy. Worse: the `&&` chain that produced the commit printed `tail -2` of the
+  battery, which showed the expect-count line rather than the pass/fail line — **so the commit ran
+  on a failing suite**, and only the seal's own battery surfaced it.
+- **ROOT CAUSE (the pin, not the code):** both phases used `recipe: "u"` at version 1 — the same
+  schema string — with the same row, so the SAME fingerprint. The fail-closed phase made a real
+  call, wrote the cache, then threw. The fail-open phase then CACHE-HIT: no call, therefore no
+  `usageMissing`, so it decided normally on the cached 0.9 and produced `act`, not the marked noop.
+  **That is correct engine behaviour** — a cache hit costs nothing to measure — and a wrong test:
+  the phase must make a REAL call to exercise the policy. Each phase now gets its own state.
+- **THE INSTRUMENT LESSON, and it is the sharper one:** `bun test 2>&1 | tail -2` HIDES the result
+  line when the output layout shifts. The pass/fail counts are the FIRST lines after the last test,
+  not the last lines of the block. The gate runner greps `^ *[0-9]+ (pass|fail)` for exactly this
+  reason — and my ad-hoc command did not.
+- **FIX:** the pin corrected; and the verification command for commits now reads the COUNTS
+  explicitly (`bun test 2>&1 | grep -E "^ *[0-9]+ (pass|fail)"`), the same way the gate runner does.

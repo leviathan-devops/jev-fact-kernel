@@ -112,7 +112,8 @@ export async function decisionTree(opts: {
       // ">= act", including the noops and the escalates — D-030).
       const decided = reasonForSignal(value, policy);
       const d: DecisionRow = { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model, signal: value };
-      budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
+      budget.settle(res.costUsd, res.cached);
+    if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
     } catch (err) {

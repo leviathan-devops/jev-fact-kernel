@@ -1,6 +1,9 @@
 # TASK_QUEUE — the live queue (OVERWRITE semantics: completed moves to done, active to next)
 
-**TREE SHA: `f69a828f298eb96288a431b943f5cf9c` (git b7d7e95)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `f8e95debbe84fc6224f2ed635916a883` (git 7497408)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
+
+
 
 
 

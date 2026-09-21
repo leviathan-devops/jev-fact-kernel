@@ -90,7 +90,8 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     const res = await judge.ask({ target_phrase: opts.phrase, candidate: { path: c.path, excerpt } },
       { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } }, "find@v1");
     const p = noulFrom(res.answers, "is_instance");   // by SHAPE, never a bare `?? 0` (D-042)
-    budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
+    budget.settle(res.costUsd, res.cached);
+    if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
     if (!res.cached) { calls++; costUsd += res.costUsd; }
     if (p >= minP) judged.push({ row: c, p, quote: quoteAround(text, seeds, 160) });
     return null;

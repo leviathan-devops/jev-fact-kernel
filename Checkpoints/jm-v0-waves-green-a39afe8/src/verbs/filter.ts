@@ -41,7 +41,8 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
     const res = await judge.ask({ candidate: { path: c.path, size: c.size, excerpt } },
       { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
     const p = noulFrom(res.answers, "match");   // by SHAPE, never a bare `?? 0` (D-042)
-    budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
+    budget.settle(res.costUsd, res.cached);
+    if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
     if (!res.cached) { calls++; costUsd += res.costUsd; }
     const keep = p >= minP;
     rows.push({ path: c.path, size: c.size, p, keep, reason: keep ? "kept" : `p<${minP}`, cached: res.cached });

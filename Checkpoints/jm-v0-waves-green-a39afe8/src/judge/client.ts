@@ -10,7 +10,13 @@ export const USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;   // published rate; no ou
 
 export class JevNoKeyError extends Error { constructor() { super(`${JEV_NO_KEY}: no TYPESAFE_API_KEY and no ~/.config/typesafe/key`); this.name = JEV_NO_KEY; } }
 
-export interface AskResult { answers: JudgeResponse["answers"]; model: string; cached: boolean; inputTokens: number; costUsd: number; fingerprint: string; }
+export interface AskResult {
+  answers: JudgeResponse["answers"]; model: string; cached: boolean; inputTokens: number; costUsd: number;
+  /** TRUE when the response carried no `usage` block, so the cost above is a placeholder, not a
+   *  measurement. Callers with a budget must treat this as a judge failure (D-046). */
+  usageMissing?: boolean;
+  fingerprint: string;
+}
 
 export class Judge {
   private key: string | null;
@@ -33,6 +39,11 @@ export class Judge {
     return this.key;
   }
 
+  /** A response with NO `usage` block cannot be costed (D-046). Measured: the client billed such a
+   *  call at 0, and a $0.0001 usd cap never fired across 50 of them — an absent accounting field
+   *  silently disabled a budget guard. The CALLER decides what that means (the verbs treat it like
+   *  any other judge failure, under their own fail polarity); the client's job is to REPORT it
+   *  rather than launder it into a number. */
   async ask(state: unknown, questions: Record<string, unknown>, schemaVersion = "v1"): Promise<AskResult> {
     const model = this.model();
     const qHash = createHash("sha256").update(JSON.stringify(questions)).digest("hex").slice(0, 16);
@@ -48,7 +59,9 @@ export class Judge {
     const key = this.requireKey();
     const resp = await callSystemOne(key, { state, model, questions });
     cachePut(this.db, fp, "typesafe", resp.model, schemaVersion, fp, resp.answers);
-    const costUsd = (resp.usage?.input_tokens ?? 0) * USD_PER_INPUT_TOKEN;
-    return { answers: resp.answers, model: resp.model, cached: false, inputTokens: resp.usage?.input_tokens ?? 0, costUsd, fingerprint: fp };
+    const tokens = resp.usage?.input_tokens;
+    const usageMissing = typeof tokens !== "number" || !Number.isFinite(tokens);
+    const costUsd = usageMissing ? 0 : tokens * USD_PER_INPUT_TOKEN;
+    return { answers: resp.answers, model: resp.model, cached: false, inputTokens: usageMissing ? 0 : tokens, costUsd, usageMissing, fingerprint: fp };
   }
 }
