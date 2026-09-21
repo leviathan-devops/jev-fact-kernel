@@ -65,20 +65,55 @@ function walk(root: string, opts: IndexOpts, out: string[] = []): string[] {
 
 const sha = (buf: Uint8Array | string) => createHash("sha256").update(buf).digest("hex");
 
+export interface OneFileResult { rel: string; changed: boolean; textIndexed: boolean; bytesHashed: number; truncated: boolean; }
+
+/** Index ONE file (the unit the queue and the batch walker share). Idempotent by (size,mtime)+sha. */
+export function indexFile(db: Database, root: string, abs: string, opts: IndexOpts = {}): OneFileResult {
+  const maxText = opts.maxTextBytes ?? 262_144;
+  const maxHash = opts.maxHashBytes ?? 8 * 1024 * 1024;
+  const rel = relative(root, abs);
+  const st = statSync(abs);
+  const now = new Date().toISOString();
+  const prev = db.query("SELECT id, size, mtime FROM files WHERE path = ?").get(rel) as { id: number; size: number; mtime: number } | null;
+  if (prev && prev.size === st.size && prev.mtime === Math.floor(st.mtimeMs)) {
+    return { rel, changed: false, textIndexed: false, bytesHashed: 0, truncated: false };  // incremental skip
+  }
+  const ext = extname(rel).toLowerCase();
+  const kind = TEXT_EXT.has(ext) ? "text" : "binary";
+  let digest: string | null = null, text: string | null = null, bytesHashed = 0, truncated = false;
+  if (st.size <= maxHash) {
+    const buf = readFileSync(abs);
+    bytesHashed = buf.byteLength;
+    digest = sha(buf);
+    if (kind === "text" && st.size <= maxText) text = buf.toString("utf8"); else if (kind === "text") truncated = true;
+  } else truncated = true;
+  const ti = text !== null ? 1 : 0;
+  if (prev) {
+    db.query("UPDATE files SET size=?, mtime=?, sha256=?, kind=?, text_indexed=?, state=?, indexed_at=? WHERE path=?")
+      .run(st.size, Math.floor(st.mtimeMs), digest, kind, ti, "changed", now, rel);
+    db.query("DELETE FROM docs WHERE file_id = ?").run(prev.id);
+    db.query("DELETE FROM docs_fts WHERE path = ?").run(rel);
+  } else {
+    db.query("INSERT INTO files(path, size, mtime, sha256, kind, text_indexed, state, indexed_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run(rel, st.size, Math.floor(st.mtimeMs), digest, kind, ti, "new", now);
+  }
+  if (text !== null) {
+    const row = db.query("SELECT id FROM files WHERE path = ?").get(rel) as { id: number };
+    db.query("INSERT INTO docs(file_id, path, text) VALUES (?,?,?)").run(row.id, rel, text);
+    db.query("INSERT INTO docs_fts(text, path) VALUES (?,?)").run(text, rel);
+  }
+  return { rel, changed: true, textIndexed: text !== null, bytesHashed, truncated };
+}
+
+/** List the absolute paths a walk yields (shared by the batch and queued paths). */
+export function listFiles(root: string, opts: IndexOpts = {}): string[] { return walk(root, opts); }
+
 export function indexTarget(db: Database, name: string, root: string, opts: IndexOpts = {}): IndexStats {
   const t0 = Date.now();
   const maxText = opts.maxTextBytes ?? 262_144;      // 256 KB
   const maxHash = opts.maxHashBytes ?? 8 * 1024 * 1024; // 8 MB
   const paths = walk(root, opts);
   const now = new Date().toISOString();
-
-  const getFile = db.query("SELECT id, size, mtime, sha256 FROM files WHERE path = ?");
-  const insFile = db.query("INSERT INTO files(path, size, mtime, sha256, kind, text_indexed, state, indexed_at) VALUES (?,?,?,?,?,?,?,?)");
-  const updFile = db.query("UPDATE files SET size=?, mtime=?, sha256=?, kind=?, text_indexed=?, state=?, indexed_at=? WHERE path=?");
-  const delDocs = db.query("DELETE FROM docs WHERE file_id = ?");
-  const delFts = db.query("DELETE FROM docs_fts WHERE path = ?");
-  const insDoc = db.query("INSERT INTO docs(file_id, path, text) VALUES (?,?,?)");
-  const insFts = db.query("INSERT INTO docs_fts(text, path) VALUES (?,?)");
 
   let changed = 0, textIndexed = 0, bytesHashed = 0, truncated = false;
   const seen = new Set<string>();
@@ -87,41 +122,12 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
     for (const full of paths) {
       const rel = relative(root, full);
       seen.add(rel);
-      const st = statSync(full);
-      const mtime = Math.floor(st.mtimeMs);
-      const prev = getFile.get(rel) as { id: number; size: number; mtime: number; sha256: string | null } | null;
-      if (prev && prev.size === st.size && prev.mtime === mtime) continue; // unchanged → skip (C2)
-
-      const ext = extname(rel).toLowerCase();
-      const kind = TEXT_EXT.has(ext) ? "text" : "binary";
-      let digest: string | null = null;
-      let text: string | null = null;
-      if (st.size <= maxHash) {
-        const buf = readFileSync(full);
-        bytesHashed += buf.byteLength;
-        digest = sha(buf);
-        if (kind === "text" && st.size <= maxText) text = buf.toString("utf8");
-        else if (kind === "text") truncated = true;
-      } else {
-        truncated = true; // too large to hash this pass — recorded, never silent
-      }
-      const ti = text !== null ? 1 : 0;
-      if (prev) {
-        updFile.run(st.size, mtime, digest, kind, ti, "changed", now, rel);
-        delDocs.run(prev.id); delFts.run(rel);
-        changed++;
-      } else {
-        insFile.run(rel, st.size, mtime, digest, kind, ti, "new", now);
-        changed++;
-      }
-      if (text !== null) {
-        const row = getFile.get(rel) as { id: number };
-        insDoc.run(row.id, rel, text);
-        insFts.run(text, rel);
-        textIndexed++;
-      }
+      const r = indexFile(db, root, full, { ...opts, maxTextBytes: maxText, maxHashBytes: maxHash });
+      if (r.changed) changed++;
+      if (r.textIndexed) textIndexed++;
+      bytesHashed += r.bytesHashed;
+      if (r.truncated) truncated = true;
     }
-    // tombstones: rows not seen in this walk
     const all = db.query("SELECT path FROM files WHERE state != 'gone'").all() as { path: string }[];
     const gone = db.query("UPDATE files SET state='gone', indexed_at=? WHERE path=?");
     for (const r of all) if (!seen.has(r.path)) gone.run(now, r.path);

@@ -30,3 +30,24 @@ Updated at the MOMENT of the work (fresh-capture rule).
 - DISPOSITION: not a defect — the enforcement working. All probes now run as real
   scripts (`bun run <file>` / heredoc python), never `-e` one-liners.
 - LESSON: on this host, inline exec is unavailable by design; build the check as a file.
+
+## [2026-09-21] W1 — D-003 Budget off-by-one: a cap of N refused the Nth call
+- SYMPTOM: `new Budget({calls:5})` threw `JM_BUDGET_EXCEEDED: calls=5 cap=5` on the 5th spend
+- ROOT CAUSE: `assert()` used `calls >= cap`, so the call that REACHES the cap was refused
+  instead of the call that would EXCEED it.
+- FIX: `calls > cap` (src/pools/budget.ts) + the queue now claims only the remaining room,
+  so a stop is exact (done == cap, never cap + batch).
+- VERIFICATION: budget run → `done=100 ... budget_stopped=true`, exit 3, `pending=11731` preserved.
+- LESSON: the two classic boundary errors in one day — the filter that eats everything (D-001) and
+  the cap that refuses its own last unit (D-003). Boundaries are where the tests must live.
+
+## [2026-09-21] W1 — D-004 Flaky crash test (probe error)
+- SYMPTOM: `expect(stuck).toBeGreaterThan(0)` failed intermittently — batch boundaries meant a
+  clean run could end with zero orphaned rows.
+- ROOT CAUSE: the first draft simulated a crash by relying on how many items a pool batch happened
+  to process; with 50 items / concurrency 4 the last batch landed exactly on the budget.
+- FIX: the test now simulates the crash explicitly (enqueue, claim 10, complete 1, close the db) —
+  deterministic, and it tests the real law (sweep returns orphaned rows).
+- VERIFICATION: `test_resume_no_dup` green ×2; the live kill -9 run left exactly `running: 8`.
+- LESSON: a test that depends on timing is a test that lies sometimes. Simulate the failure mode
+  directly instead of hoping the scheduler produces it.

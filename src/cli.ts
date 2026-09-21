@@ -2,6 +2,7 @@
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
 import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
 import { indexTarget } from "./verbs/index.ts";
+import { runIndexJob } from "./job/indexJob.ts";
 import { queryIndex } from "./verbs/query.ts";
 import { withLedger, readLedger } from "./ledger.ts";
 
@@ -73,6 +74,20 @@ async function main(): Promise<number> {
       exclude: flag("exclude")?.split(","),
       limit: flag("limit") ? Number(flag("limit")) : undefined,
     };
+    if (has("queued")) {
+      const q = await withLedger("index", { arg, name: indexName, root, queued: true }, async () => {
+        const r = await runIndexJob({
+          indexDb: db, jobId: flag("job") ?? `idx-${indexName}`,
+          root, opts, concurrency: flag("concurrency") ? Number(flag("concurrency")) : 8,
+          budgetCalls: flag("budget-calls") ? Number(flag("budget-calls")) : undefined,
+        });
+        return { result: r, stats: { ...r } as Record<string, unknown>, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(q, null, 2));
+      else console.log(`JM_QUEUED done=${q.done} pending=${q.pending} running=${q.running} files=${q.files} resumed=${q.resumed} budget_stopped=${q.budgetStopped}${q.error ? " error=" + q.error : ""} ms=${q.ms}`);
+      return q.budgetStopped ? 3 : 0;
+    }
     const stats = await withLedger("index", { arg, name: indexName, root }, async () => {
       const s = indexTarget(db, indexName, root, opts);
       return { result: s, stats: { ...s } as Record<string, unknown>, costUsd: 0 };
