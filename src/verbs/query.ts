@@ -26,7 +26,8 @@ function parseWhere(expr: string): { sql: string; params: Bind[] } {
 export interface QueryRow { path: string; size: number; mtime: number; kind: string | null; state: string; sha256: string | null; }
 
 export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
-  const limit = Math.min(opts.limit ?? 50, 10_000);
+  const rawLimit = opts.limit ?? 50;
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 10_000) : 50;   // NaN/negative/float -> default (LIMIT -1 would mean unlimited)
   const params: Bind[] = [];
   let sql: string;
   if (opts.fts) {
@@ -46,6 +47,6 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
     sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;
     params.push(k, v ?? "");
   }
-  sql += ` ORDER BY f.size DESC LIMIT ${limit}`;
+  sql += opts.fts ? ` ORDER BY bm25(docs_fts) LIMIT ${limit}` : ` ORDER BY f.size DESC LIMIT ${limit}`;   // FTS by relevance, scans by size
   return db.query(sql).all(...params) as QueryRow[];
 }

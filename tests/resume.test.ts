@@ -54,8 +54,11 @@ function test_resume_no_dup() {
     try {
       const { db } = openJob("j2");
       const q = new Queue(db, "j2");
-      expect(q.enqueue("k", [{ fingerprint: "same", payload: 1 }])).toBe(1);
-      expect(q.enqueue("k", [{ fingerprint: "same", payload: 2 }])).toBe(0);  // ignored, not duplicated
+      const first = q.enqueue("k", [{ fingerprint: "same", payload: 1 }]);
+      expect(first).toEqual({ added: 1, updated: 0, skipped: 0 });
+      // a re-enqueue of a PENDING row ADOPTS the new payload (the audit's fix): never stale, never duplicated
+      const second = q.enqueue("k", [{ fingerprint: "same", payload: 2 }]);
+      expect(second).toEqual({ added: 0, updated: 1, skipped: 0 });
       expect(q.stats().pending).toBe(1);
       db.close();
     } finally { sb.cleanup(); }

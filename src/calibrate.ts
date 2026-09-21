@@ -8,17 +8,20 @@ export interface CalibrationReport {
 }
 
 export function calibrate(db: Database): CalibrationReport {
+  const exists = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='decisions'").get();
+  if (!exists) return { decisions: 0, bands: { act: 0, escalate: 0, noop: 0 }, meanSignal: 0, truthFilled: 0, truthRate: 0 };
   const rows = db.query("SELECT answer_json, conf, policy FROM decisions").all() as { answer_json: string; conf: number | null; policy: string | null }[];
   const bands = { act: 0, escalate: 0, noop: 0 };
   let sum = 0, n = 0;
   for (const r of rows) {
-    const p = JSON.parse(r.policy ?? "{}") as { act?: number; flag?: number };
+    let p: { act?: number; flag?: number } = {};
+    try { p = JSON.parse(r.policy ?? "{}") as { act?: number; flag?: number }; } catch { p = {}; }   // one malformed row must not abort calibration
     const s = r.conf ?? 0;
     sum += s; n++;
     if (s >= (p.act ?? 0.8)) bands.act++; else if (s >= (p.flag ?? 0.5)) bands.escalate++; else bands.noop++;
   }
   const meanSignal = n ? sum / n : 0;
-  const truth = db.query("SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL").get() as { n: number };
+  const truth = db.query("SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL AND context_ref != ''").get() as { n: number };   // '' is not a truth
   const filled = truth.n;
   const report: CalibrationReport = {
     decisions: rows.length, bands, meanSignal, truthFilled: filled,
@@ -36,7 +39,8 @@ export function calibrate(db: Database): CalibrationReport {
 export function recordCalibration(db: Database, report: CalibrationReport, note: string): string {
   const at = new Date().toISOString();
   const payload = JSON.stringify({ report, note, at });
-  db.run("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [`calibration:${at}`, payload]);
+  const key = `calibration:${at}:${Math.random().toString(36).slice(2, 8)}`;   // two events in one ms must not overwrite
+  db.run("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [key, payload]);
   return at;
 }
 
