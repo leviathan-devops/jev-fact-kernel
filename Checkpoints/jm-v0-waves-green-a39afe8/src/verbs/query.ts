@@ -28,7 +28,12 @@ function parseWhere(expr: string): { sql: string; params: Bind[] } {
   return { sql: clauses.join(" AND "), params };
 }
 
-export interface QueryRow { path: string; size: number; mtime: number; kind: string | null; state: string; sha256: string | null; }
+export interface QueryRow {
+  path: string; size: number; mtime: number; kind: string | null; state: string; sha256: string | null;
+  /** BM25 relevance for an FTS query (LOWER = better in SQLite's bm25(); absent for a non-FTS
+   *  query, which is ordered by size). Surfaced so callers do not have to re-derive a rank. */
+  rank?: number;
+}
 
 export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   const rawLimit = opts.limit ?? 50;
@@ -36,7 +41,7 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   const params: Bind[] = [];
   let sql: string;
   if (opts.fts) {
-    sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256
+    sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256, bm25(docs_fts) AS rank
              FROM docs_fts x JOIN files f ON f.path = x.path
             WHERE docs_fts MATCH ? AND f.state != 'gone'`;
     params.push(opts.fts);
@@ -56,5 +61,17 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   }
   const order = opts.fts ? ` ORDER BY bm25(docs_fts)` : ` ORDER BY f.size DESC`;
   sql += order + ` LIMIT ?`; params.push(limit);   // bound, never interpolated   // FTS by relevance, scans by size
-  return db.query(sql).all(...params) as QueryRow[];
+  try {
+    return db.query(sql).all(...params) as QueryRow[];
+  } catch (err) {
+    // An FTS5 MATCH expression is a QUERY LANGUAGE and the phrase comes from the user. Malformed
+    // syntax ("split-brain", "x OR", "NEAR(", "table:col", "*") used to leak a raw SQLiteError at
+    // exit 1 - the wrong code for a client error, carrying driver internals. Name it and help.
+    // (D-023, found by the adversarial pass over the post-W1 surfaces.)
+    const m = String(err);
+    if (opts.fts && /fts5|MATCH|parse error|no such column|unterminated|syntax error/i.test(m)) {
+      throw new Error(`JM_FTS_INVALID: "${opts.fts}" is not a valid FTS5 expression - quote a literal phrase in double quotes (\"split-brain\") and use AND/OR/NEAR only between quoted terms [${m.slice(0, 80)}]`);
+    }
+    throw err;
+  }
 }

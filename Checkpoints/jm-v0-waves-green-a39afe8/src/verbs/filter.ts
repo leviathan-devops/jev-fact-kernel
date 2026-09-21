@@ -26,13 +26,14 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
 
   const { errors } = await runPool(candidates, async (c) => {
     if (budgetStopped) return null;
-    if (!budget.roomLeft()) { budgetStopped = true; return null; }
+    if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
     const excerpt = (doc?.text ?? "").slice(0, cap);
     const res = await judge.ask({ candidate: { path: c.path, size: c.size, excerpt } },
       { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
     const p = (res.answers.match as { noul?: number })?.noul ?? 0;
-    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }   // cached hits consume no budget slot
+    budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
+    if (!res.cached) { calls++; costUsd += res.costUsd; }
     const keep = p >= minP;
     rows.push({ path: c.path, size: c.size, p, keep, reason: keep ? "kept" : `p<${minP}`, cached: res.cached });
     return rows[rows.length - 1];

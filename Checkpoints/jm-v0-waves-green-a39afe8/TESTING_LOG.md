@@ -287,3 +287,19 @@ JM_CONTAINER_RIG PASS — 7/7 angles                  (identical on both)
 artifact: artifacts/container-rig-2026-09-21.json · runner: scripts-container-rig.sh
 ```
 **T8/T9 (fire gate twin, token cap) belong to W8 and are NOT claimed.**
+
+### W4 GATE — FIND (C5) — GREEN, and the missing named test is written
+```
+$ bun test -t test_find_patterns
+3 pass · 0 fail · 31 expects
+  test_find_patterns ................ every pattern carries n + EXEMPLAR IDS (C5 literally)
+  test_find_phrase_with_no_matches ... empty pattern set + a valid trend, no throw, no fabrication
+  test_find_budget_caps_the_chain .... a capped chain STOPS and says so
+
+THE PIN NAMED `test_find_patterns`; IT DID NOT EXIST. Writing it found three defects:
+  D-023  `--fts "split-brain"` leaked a raw SQLiteError at exit 1 -> JM_FTS_INVALID, exit 2
+  D-024  `--budget-calls 1` made 3 calls in the POOL verbs (check-then-await) -> claim/settle
+  D-025  `--common N` was accepted and NEVER READ (documented in the MCP schema) -> applied
+battery 96 pass / 0 fail / 399 expects / 19 files · tsc exit 0
+```
+**W4: GREEN** (with the named test that the contract required and the code never had).
