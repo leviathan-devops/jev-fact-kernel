@@ -604,6 +604,31 @@ with your manual runs, pass the same `--name` to both. Of §13's four named duti
 index-watch is implemented**; the other three are planned and are stated here so silence is not
 read as proof.
 
+### 18.10a report --job: the per-job reconciliation (C8)
+
+```bash
+$ jm report --job last --name myindex
+job:          c8job
+queue:        12 rows · 12 done · 0 pending · 0 running · 0 failed
+fingerprints: 12 distinct · 0 duplicate
+index files:  12 live
+ledger:       1 rows total · 1 naming this job · 1 ok · 0 failed · $0.000000
+reconciled:   YES — no duplicate fingerprints (the UNIQUE constraint enforces this structurally); 0 rows left running
+```
+
+`--job last` picks the most recently modified queue. The verb reconciles the two halves of a run:
+the QUEUE (rows by state, and distinct fingerprints) and the LEDGER (every row, plus the rows that
+NAME this job).
+
+**Exit codes carry the verdict.** `0` = reconciled. `3` = NOT reconciled — a row left `running`
+(exactly what a crash leaves) or a duplicate fingerprint. `2` = the job does not exist
+(`JM_JOB_MISSING`), and no job directory is created for a typo.
+
+The duplicate count is a defensive read: `queue.fingerprint` carries a **UNIQUE** constraint, so a
+duplicate cannot be inserted at all. The crash-resume property holds STRUCTURALLY, which is a
+stronger guarantee than an arithmetic check — stated here so the guarantee is not misattributed to
+the wrong mechanism.
+
 ### 18.10 report: every field, defined (G5, G15)
 
 ```bash
