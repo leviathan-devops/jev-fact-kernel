@@ -39,12 +39,37 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   // 2 SEEDS — deterministic tokenisation (no model)
   const seeds = seedsOf(opts.phrase);
 
-  // 3 FETCH — BM25/FTS per seed, deduped by path
+  // 3 FETCH — BM25/FTS per seed, ROUND-ROBIN, deduped by path.
+  //
+  // Seed-by-seed with a slice was a MONOPOLY: the candidate set was built in seed order and then
+  // truncated, so if the first seed had >= limit hits, the others contributed NOTHING. Measured on
+  // the real corpus: "theatrical enforcement claim" (seeds theatrical=345, enforcement=361,
+  // claim=486 hits) produced 100 candidates, ALL of them from `theatrical` — the chain then judged
+  // one token's hits and reported patterns for the whole phrase. (D-033, the same class as D-031/32:
+  // the stage that decides was not shown evidence for the thing it was asked about.)
+  const limit = opts.limit ?? 100;
+  const perSeed = seeds.map((s) => queryIndex(db, { fts: s, limit }));
   const seen = new Map<string, QueryRow>();
-  for (const s of seeds) for (const r of queryIndex(db, { fts: s, limit: opts.limit ?? 100 })) if (!seen.has(r.path)) seen.set(r.path, r);
+  for (let rank = 0; rank < limit; rank++) {
+    for (const list of perSeed) {
+      const r = list[rank];
+      if (!r) continue;
+      if (!seen.has(r.path)) seen.set(r.path, r);
+      if (seen.size >= limit) break;
+    }
+    if (seen.size >= limit) break;
+  }
+  // a seed whose hits are exhausted above still contributes anything it has (a short list)
+  for (const list of perSeed) for (const r of list) if (!seen.has(r.path) && seen.size < limit) seen.set(r.path, r);
+
+  // The TREND's first number is "how many rows the seeds could reach", which is a different fact
+  // from "how many candidates we will judge" — the round-robin above caps the map at `limit`, so
+  // the union is counted separately rather than reported as the capped size.
+  const union = new Set<string>();
+  for (const list of perSeed) for (const r of list) union.add(r.path);
 
   // 4 NARROW — cap the judge surface (the ≥100× cut lives here in aggregate use)
-  const candidates = Array.from(seen.values()).slice(0, opts.limit ?? 100);
+  const candidates = Array.from(seen.values()).slice(0, limit);
 
   // 5 JUDGE — one Noul per candidate over a bounded excerpt
   const judged: { row: QueryRow; p: number; quote: string }[] = [];
@@ -127,6 +152,6 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     phrase: opts.phrase, seeds, fetched: seen.size, narrowed: candidates.length, judged: judged.length,
     kept: judged.length, clusters: patterns.length, calls, costUsd, budgetStopped, patterns, out,
     belowCommon: dropped,
-    trend: `${seen.size} → ${candidates.length} → ${judged.length} → ${patterns.length}`,
+    trend: `${union.size} → ${candidates.length} → ${judged.length} → ${patterns.length}`,
   };
 }
