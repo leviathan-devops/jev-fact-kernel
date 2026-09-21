@@ -730,3 +730,29 @@ found two confirmed defects on its first run.
   line kept and marked.
 - **LESSON:** a probe plan must be regenerated whenever the SURFACE MAP grows. The first sweep was
   green on the surface it knew; the new verbs were unprobed until now — and two of them were wrong.
+
+## EN-031 — the ledger of audit adjudications (what was fixed, what was REFUTED, and how)
+The audit lanes stayed rate-limited all session, so most runs came back `partial`. Every finding
+that DID land was adjudicated against the runtime by probe before any edit. The record:
+
+| # | claim | severity | verdict | evidence |
+|---|-------|----------|---------|----------|
+| A4-1 | db.run(sql) applies only the FIRST statement | critical | **REFUTED** | probe: all 13 tables created |
+| A4-2 | cachePut's INSERT OR REPLACE resets `hits` to 0 | high | **REFUTED** | probe: hits=7 preserved; pinned at the REAL call site |
+| A5-1 | the `processed >= budget` check is non-atomic | high | CONFIRMED -> fixed | concurrency 8 + cap 5 overshot; now `claimSlot()` |
+| A5-2 | `db.close()` skipped on the exception path | high | CONFIRMED -> fixed | try/finally |
+| A5-3 | `jobId` is an unused constructor param | medium | CONFIRMED -> fixed | surfaced as `Queue.job()` |
+| A5-4 | `changed++`/`textIndexed++` can be lost | medium | **REFUTED** | JS has no shared-memory parallelism; a `++` is atomic per turn |
+| A6-1 | package.json lacks a trailing newline | low | CONFIRMED -> fixed | appended |
+| A7-1 | `join(full, "..")` should be `dirname(full)` | low | CONFIRMED -> fixed | readability |
+| A7-2 | empty catch blocks swallow errors | medium | CONFIRMED -> fixed | the contract is now stated in the comment |
+| A7-3 | comments use a non-ASCII em dash | low | CONFIRMED -> fixed | helpers.ts is ASCII-only now |
+| A7-4 | `rel` is an unclear variable name | low | CONFIRMED -> fixed | renamed `relativePath` |
+| A8-1 | `src/pools/budget.ts` comment is inaccurate (off-by-one) | low | **REFUTED** | the comment already says "a cap of N allows exactly N calls" |
+| A8-2 | the duplicate `report` handler is dead code | high | CONFIRMED -> fixed | two handlers, the second unreachable (EN-029) |
+| A8-3 | extract's return has a DUPLICATE `total` property | high | **REFUTED** | `grep -c "total,"` = 1; the auditor invented it |
+| A8-4 | extract's `re` should be `const` (never modified) | medium | **REFUTED** | line 31 reassigns it: `re = new RegExp(...)` |
+| A8-5 | the STOP set contains an unreachable CJK entry | low | CONFIRMED -> fixed | the tokenizer emits ASCII only; the entry was dead data |
+
+**TALLY: 9 confirmed + fixed · 6 refuted by probe.** A refuted finding is recorded, never dropped:
+the six refutations are what tells a future reader that these are NOT defects.
