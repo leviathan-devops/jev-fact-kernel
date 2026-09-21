@@ -1030,3 +1030,28 @@ ONE SURFACE AND NOT ON ANOTHER.
   by the auditor's own concession — bun is the RUNTIME, not a dependency.
 - **LESSON:** a misleading variable name generated a false HIGH. Renaming is not cosmetic when the
   next reader is an auditor.
+
+## EN-045 — D-030: the decision REASON contradicted the decision (found by reading live output)
+- **FOUND BY:** running the escalation-band scenarios through the REAL judge and reading the
+  per-row verdicts rather than the exit status. The exit status was 0 and the bands were right;
+  the REASON column was not.
+- **SYMPTOM (verbatim, before the fix):**
+  ```
+  i=2 escalate  p=0.590  agg=0.59 >= act=0.8 / flag=0.5     <- "0.59 >= 0.8"? the route is right, the reason lies
+  i=3 noop      p=0.150  agg=0.15 >= act=0.8 / flag=0.5
+  ```
+- **ROOT CAUSE:** the reason was a fixed template string
+  (`` `agg=${v} >= act=${a} / flag=${f}` ``) printed for EVERY row regardless of the branch that
+  fired. The route came from a correct ternary; the reason did not come from it at all.
+- **WHY IT MATTERS:** the reason is the line an operator (or a later auditor) reads to justify a
+  route. An audit trail that misstates its own comparison is worse than no audit trail, because it
+  reads as evidence.
+- **FIX:** `reasonForSignal(value, policy)` in `judge/policy.ts` — the ladder's WORDING in one
+  place, beside the ladder — used by decision-tree. The three reasons are now
+  `agg=0.98 >= act=0.8` (act), `agg=0.59 in [flag=0.5, act=0.8)` (escalate), `agg=0.15 < flag=0.5`
+  (noop), and a test asserts each matches its route and AGREES with `routeOf` on the same signal.
+- **VERIFICATION:** the same five scenarios re-run: every reason matches its route; the cache
+  absorbed the replay (`calls=0 cached=5`) because the answers did not change — correctly, since
+  the reason is DERIVED from the answer rather than part of its fingerprint.
+- **LESSON:** an exit status and a band count can both be right while the explanation beside them
+  is wrong. Read the field a human will read.
