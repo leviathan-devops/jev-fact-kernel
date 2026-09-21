@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { queryIndex } from "./verbs/query.ts";
-import { withLedger, readLedger } from "./ledger.ts";
+import { withLedger } from "./ledger.ts";
 
 const argv = process.argv.slice(2);
 const verb = argv[0];
@@ -64,7 +64,6 @@ function usage(): void {
   jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
   jm watch [--once] [--interval MS] [--in a,b]     the reconcile daemon (journal per tick)
   jm journal [--limit N] [--json]                  the watch journal
-  jm report [--json]
 `);
 }
 
@@ -439,19 +438,6 @@ async function main(): Promise<number> {
     else {
       console.log(`JM_CALIBRATE decisions=${rep.decisions} act=${rep.bands.act} escalate=${rep.bands.escalate} noop=${rep.bands.noop} mean=${rep.meanSignal.toFixed(2)} truth=${rep.truthFilled}`);
       if (rep.suggestion) console.log(`  SUGGESTION act=${rep.suggestion.act} — ${rep.suggestion.reason}`);
-    }
-    return 0;
-  }
-
-  if (verb === "report") {
-    const rows = readLedger();
-    const byVerb: Record<string, number> = {};
-    for (const r of rows) byVerb[r.verb] = (byVerb[r.verb] ?? 0) + 1;
-    const totalCost = rows.reduce((a, r) => a + (r.cost_usd ?? 0), 0);
-    if (has("json")) console.log(JSON.stringify({ rows: rows.length, byVerb, totalCost }, null, 2));
-    else {
-      console.log(`runs=${rows.length} cost=$${totalCost.toFixed(6)}`);
-      for (const [k, v] of Object.entries(byVerb)) console.log(`  ${k}: ${v}`);
     }
     return 0;
   }

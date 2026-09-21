@@ -689,3 +689,17 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 - **LESSON:** every one of these was invisible to the test suite because the suite tests the paths
   the AUTHOR knows. A zero-context operator walks the paths the DOCS imply. The drill is the only
   instrument that reaches that class — run it after every surface change.
+
+## EN-029 — dead duplicate `report` handler in the CLI (found by the src-chunk audit, fixed)
+- **SYMPTOM (audit, HIGH):** "DEAD CODE: This second `if (verb === "report")` block is
+  unreachable... leftover from a refactoring."
+- **ROOT CAUSE:** the W7 `report` verb was inserted ABOVE the original ledger-only `report`
+  handler; the original kept its position at the bottom and could never run. The usage text also
+  carried a duplicate `jm report` line, and `readLedger` became an unused import.
+- **IMPACT:** none at runtime (the first handler wins), but the file carried a second, differently
+  behaving `report` — a trap for the next editor who changes "the" report and sees no effect.
+- **FIX:** the dead block deleted (its ledger view is subsumed by the surviving report's `ledger`
+  field), the duplicate usage line removed, the now-unused `readLedger` import dropped.
+- **VERIFICATION:** battery 71/0; `jm report f6` and `--json` both live off the surviving handler.
+- **LESSON:** an insert-above-the-old-handler refactor leaves a corpse that a diff will not show.
+  A grep for the verb name across the file would have caught it; the audit caught it instead.
