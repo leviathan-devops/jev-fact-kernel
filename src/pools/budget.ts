@@ -19,6 +19,13 @@ export class Budget {
     }
   }
 
+  /** True while another call fits inside the caps (callers check this BEFORE spending). */
+  roomLeft(): boolean {
+    if (this.caps.calls !== undefined && this.calls >= this.caps.calls) return false;
+    if (this.caps.usd !== undefined && this.usd >= this.caps.usd) return false;
+    return true;
+  }
+
   used(): { calls: number; usd: number; caps: { calls?: number; usd?: number } } {
     return { calls: this.calls, usd: this.usd, caps: this.caps };
   }

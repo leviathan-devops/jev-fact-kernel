@@ -51,3 +51,23 @@ Updated at the MOMENT of the work (fresh-capture rule).
 - VERIFICATION: `test_resume_no_dup` green ×2; the live kill -9 run left exactly `running: 8`.
 - LESSON: a test that depends on timing is a test that lies sometimes. Simulate the failure mode
   directly instead of hoping the scheduler produces it.
+
+## [2026-09-21] W5 — D-005 Budget checked AFTER the call (3 calls under a cap of 2)
+- SYMPTOM: `decision-tree --budget-calls 2` made 3 calls before stopping.
+- ROOT CAUSE: the budget asserted only at the top of the worker; with the post-call spend
+  the third call slipped through the boundary.
+- FIX: `Budget.roomLeft()` — the caller checks room BEFORE the call, spends after; the cap is
+  now exact (cap=2 → 2 calls, then stop).
+- VERIFICATION: `test_decision_budget_stop` green (`calls=2`, `budgetStopped=true`).
+- LESSON: check capacity before the action, account after it. Two boundary bugs in the same
+  family (D-003/D-005) — the boundary is where the money and the lies both live.
+
+## [2026-09-21] W5 — D-006 Artifact carried run metadata, breaking replay determinism
+- SYMPTOM: two identical runs produced different decisions.json (only `cached` differed).
+- ROOT CAUSE: the written artifact included the transport bookkeeping (`cached`), so the
+  second (cache-hit) run could never be byte-identical to the first.
+- FIX: the artifact is the DECISION (`i, route, reason, answers, model`); run metadata lives
+  only in the ledger/console.
+- VERIFICATION: fresh pair → identical sha a3bc30351f68dad8, calls=0 cached=3.
+- LESSON: an artifact that includes HOW it was produced can never be replayed. Separate the
+  decision from the delivery.

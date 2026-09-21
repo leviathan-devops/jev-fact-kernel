@@ -25,3 +25,17 @@ Append-only, updated at the moment of work.
   `DONE=11831 DISTINCT_DONE=11831 -> dup=ZERO`; budget run → `done=100 budget_stopped=true` exit 3;
   battery 10 pass / 0 fail · tsc exit 0.
 - NEXT: W2 adapters (sqlite/jsonl) + cross-target query.
+
+## [2026-09-21] W3+W5 — JUDGE CLIENT + DECISION-TREE landed (the core product path)
+- WHAT: src/judge/{key,transport,cache,policy,client}.ts · src/verbs/decision-tree.ts ·
+  the `jm decision-tree` CLI verb · tests/decision.test.ts.
+- WHY: this is the product — bounded evidence in, typed calibrated judgment out, cached
+  forever, routed by policy, recorded. Everything else is plumbing.
+- HOW: key resolution env→file (fingerprint only); the ONE network seam (transport) with a
+  canned-response mode for tests; cache fingerprint = sha256(model ⊕ schema ⊕ canonical(redact(state)));
+  policy thresholds never inline; fail-closed without a key.
+- EVIDENCE (THE LIVE RECEIPT): real API, model jev-1.13.0 — daemon-crash row → act 0.97,
+  README-typo row → noop 0.08, checkout-500s row → act 0.90, cost $0.000044 for 3 calls.
+  Replay → calls=0 cached=3; two fresh runs byte-identical (sha a3bc30351f68dad8).
+  Battery 13 pass / 0 fail · tsc exit 0.
+- NEXT: W3 retrieve verbs + W4 find chain.

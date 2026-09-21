@@ -3,6 +3,8 @@
 import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
+import { decisionTree, type Recipe } from "./verbs/decision-tree.ts";
+import { readFileSync } from "node:fs";
 import { queryIndex } from "./verbs/query.ts";
 import { withLedger, readLedger } from "./ledger.ts";
 
@@ -112,6 +114,35 @@ async function main(): Promise<number> {
     if (has("json")) console.log(JSON.stringify(rows, null, 2));
     else for (const r of rows) console.log(`${r.size}\t${r.state}\t${r.path}`);
     return 0;
+  }
+
+  if (verb === "decision-tree") {
+    const rowsPath = flag("rows");
+    const recipePath = flag("recipe");
+    if (!rowsPath || !recipePath) { console.error("JM_ARGS: jm decision-tree --rows F --recipe F [--context F] [--criteria F] [--out F]"); return 2; }
+    const recipe = JSON.parse(readFileSync(recipePath, "utf8")) as Recipe;
+    const db = openDb(indexPathFor(flag("name") ?? "decisions"));
+    try {
+      const res = await withLedger("decision-tree", { rows: rowsPath, recipe: recipePath }, async () => {
+        const r = await decisionTree({
+          db, rowsPath, recipe,
+          contextPath: flag("context"), criteriaPath: flag("criteria"),
+          outPath: flag("out"), escalationPath: flag("escalation"),
+          concurrency: flag("concurrency") ? Number(flag("concurrency")) : 6,
+          budgetCalls: flag("budget-calls") ? Number(flag("budget-calls")) : undefined,
+        });
+        return { result: r, stats: { ...r } as Record<string, unknown>, costUsd: r.costUsd, calls: r.calls, cached: r.cached };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(res, null, 2));
+      else console.log(`JM_DECISIONS rows=${res.rows} decided=${res.decisions} act=${res.bands.act} escalate=${res.bands.escalate} noop=${res.bands.noop} calls=${res.calls} cached=${res.cached}` + (res.budgetStopped ? " BUDGET_STOPPED" : ""));
+      return res.budgetStopped ? 3 : 0;
+    } catch (err) {
+      db.close();
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`JM_ERROR: ${msg}`);
+      return msg.includes("JEV_NO_KEY") ? 2 : 1;   // FAIL-CLOSED (L4)
+    }
   }
 
   if (verb === "report") {
