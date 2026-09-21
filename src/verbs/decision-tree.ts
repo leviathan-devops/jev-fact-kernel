@@ -14,6 +14,35 @@ export interface Recipe {
   policy?: Partial<Policy>;
 }
 
+/** Validate a recipe BEFORE any work. A malformed recipe used to run to completion: no
+ *  questions -> no judge calls -> every row `noop`, exit 0 — a silent wrong answer that reads as
+ *  a successful triage (D-020). A recipe is a CLIENT artifact: a bad one is a client error. */
+export function validateRecipe(r: unknown): Recipe {
+  const o = r as Partial<Recipe> | null;
+  if (!o || typeof o !== "object") throw new Error("JM_RECIPE_INVALID: not an object");
+  if (typeof o.recipe !== "string" || o.recipe.length === 0) throw new Error("JM_RECIPE_INVALID: `recipe` must be a non-empty string");
+  if (typeof o.version !== "number" || !Number.isFinite(o.version)) throw new Error("JM_RECIPE_INVALID: `version` must be a number");
+  const q = o.questions;
+  if (!q || typeof q !== "object" || Array.isArray(q) || Object.keys(q).length === 0) {
+    throw new Error("JM_RECIPE_INVALID: `questions` must be a NON-EMPTY object (an empty one judges nothing and silently noops every row)");
+  }
+  for (const [name, question] of Object.entries(q as Record<string, unknown>)) {
+    const t = (question as { type?: unknown } | null)?.type;
+    if (t !== "noul" && t !== "choice" && t !== "mcq") {
+      throw new Error(`JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} (have: noul, choice, mcq)`);
+    }
+  }
+  if (o.policy !== undefined) {
+    const p = o.policy as Partial<Policy>;
+    for (const [k, v] of Object.entries(p)) {
+      if (k === "fail") continue;
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) throw new Error(`JM_RECIPE_INVALID: policy.${k} must be a number in [0,1]`);
+    }
+    if (p.act !== undefined && p.flag !== undefined && p.flag > p.act) throw new Error("JM_RECIPE_INVALID: policy.flag must not exceed policy.act");
+  }
+  return o as Recipe;
+}
+
 export interface DecisionRow { i: number; route: string; reason: string; answers: unknown; cached: boolean; model: string; }
 
 export interface DecisionTreeResult {

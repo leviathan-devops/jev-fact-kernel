@@ -12,7 +12,7 @@ import { report, renderReport } from "./verbs/report.ts";
 import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
-import { decisionTree, type Recipe } from "./verbs/decision-tree.ts";
+import { decisionTree, validateRecipe, type Recipe } from "./verbs/decision-tree.ts";
 import { filterIndex } from "./verbs/filter.ts";
 import { find } from "./verbs/find.ts";
 import { startServer } from "./serve.ts";
@@ -215,7 +215,9 @@ async function main(): Promise<number> {
     const rowsPath = flag("rows");
     const recipePath = flag("recipe");
     if (!rowsPath || !recipePath) { console.error("JM_ARGS: jm decision-tree --rows F --recipe F [--context F] [--criteria F] [--out F]"); return 2; }
-    const recipe = JSON.parse(readFileSync(recipePath, "utf8")) as Recipe;
+    let recipe: Recipe;
+    try { recipe = validateRecipe(JSON.parse(readFileSync(recipePath, "utf8"))); }
+    catch (err) { console.error(`JM_ERROR: ${String(err)}`); return 2; }   // a bad recipe is a CLIENT error, before any work
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     try {
       const res = await withLedger("decision-tree", { rows: rowsPath, recipe: recipePath }, async () => {

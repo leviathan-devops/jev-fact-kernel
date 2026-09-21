@@ -785,3 +785,22 @@ was written first and then executed. That is the point of the exercise: a doc cl
 - **LESSON:** writing the operating contract and then RUNNING it is a defect-finding instrument in
   its own right — it found three defects (two silent) that the audit, the battery, the runtime
   seat, the second-operator drill and two adversarial sweeps had all missed. The doc is a probe.
+
+## EN-033 — D-020: a malformed recipe ran to completion and reported a successful triage
+- **FOUND BY:** writing the recipe-schema section of the operating contract and then executing
+  every example — including the bad ones.
+- **SYMPTOM:** `jm decision-tree --rows r.jsonl --recipe '{"recipe":"bad"}'` printed
+  `JM_DECISIONS rows=3 decided=3 act=0 escalate=0 noop=3 calls=0 cached=0` and **exited 0**.
+- **MECHANISM:** a missing `questions` map means no question is asked, so no judge call is made,
+  so every row resolves to `noop` — and nothing in the pipeline distinguishes "the recipe says
+  noop" from "the recipe asked nothing". A run that judged NOTHING reported a completed triage.
+- **FIX:** `validateRecipe()` runs BEFORE any work and is a CLIENT error (exit 2). It refuses: a
+  non-object, a missing/empty `recipe` or `version`, an empty `questions` map, an unknown question
+  `type` (legal: `noul`, `choice`, `mcq`), a non-numeric or out-of-range policy value, and a
+  `policy` whose `flag` exceeds its `act`.
+- **VERIFICATION:** five malformed shapes -> exit 2 with `JM_RECIPE_INVALID`; a well-formed recipe
+  is accepted and runs (live: `act=1 escalate=1 noop=1 calls=3 $0.000044`, then `calls=0 cached=3`
+  byte-identical on the replay). Both halves pinned by `test_bad_recipe_is_a_client_error_before_any_work`.
+- **LESSON:** "produced no output" and "produced a noop output" must be different observable
+  outcomes. Any stage with an optional input list needs a non-emptiness check at load, because the
+  empty case usually degrades into a plausible-looking success.

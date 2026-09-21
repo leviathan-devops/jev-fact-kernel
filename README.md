@@ -614,6 +614,69 @@ witness than it claimed to be. A KEYLESS row carries no state hash, route or tru
 judged nothing; a JUDGED row carries them in `stats`. A row with `status: "error"` still lands —
 a failed run is evidence too.
 
+### 18.12 The recipe file: the schema, and what a bad one does (G3)
+
+`--recipe` takes a **FILE PATH**, never a recipe name (`--recipe screening-escalate` fails with
+`ENOENT`). A recipe is the durable description of one judgment:
+
+```json
+{
+  "recipe": "screening-escalate",
+  "version": 1,
+  "status": "shadow",
+  "state_fields": ["title", "body"],
+  "questions": {
+    "flag": {
+      "type": "noul",
+      "instructions": "Is this item a REAL problem that needs a human, rather than noise? Answer with a probability in [0,1]."
+    }
+  },
+  "policy": { "act": 0.8, "flag": 0.5, "fail": "closed" }
+}
+```
+
+| field | required | meaning |
+|-------|----------|---------|
+| `recipe` | yes | the name the ledger and the report carry |
+| `version` | yes | a number; bump it when the semantics change (the cache fingerprint includes it) |
+| `questions` | yes | a **non-empty** map of question-name -> `{type, instructions}` |
+| `state_fields` | no | which row fields the state handed to the judge is built from |
+| `policy` | no | `act`/`flag`/`fail`; defaults to `{act: 0.8, flag: 0.5, fail: "closed"}` |
+| `status` | no | `shadow` while a recipe is being watched, `live` once it is trusted |
+
+Question `type` is one of **`noul`** (a probability in [0,1] — the workhorse), **`choice`** or
+**`mcq`** (a pick from a set, with probabilities). The answered signal feeds the ladder:
+`signal >= act` -> `act`, `signal >= flag` -> `escalate`, else `noop`. **The aggregate signal is
+the MAX over all answered questions**, so a recipe with two questions routes on its strongest
+answer.
+
+A recipe is validated **before any work happens**, and a bad one is a **client error (exit 2)**:
+
+```bash
+$ jm decision-tree --rows r.jsonl --recipe recipe.json
+JM_ERROR: JM_RECIPE_INVALID: `questions` must be a NON-EMPTY object …
+exit 2
+```
+
+That validation exists because of a measured failure: a recipe with no `questions` used to run to
+completion — no question to ask, so no judge call, so **every row `noop`, exit 0**. A run that
+judged nothing reported a successful triage. The five shapes that now refuse: a missing
+`recipe`/`version`, an empty `questions`, an unknown question `type`, and a `policy` whose `flag`
+exceeds its `act`.
+
+A real run of the recipe above, on three rows (live judge, `$0.000044`):
+
+```
+$ jm decision-tree --rows rows.jsonl --recipe recipes/screening-escalate.json --out out.md
+JM_DECISIONS rows=3 decided=3 act=1 escalate=1 noop=1 calls=3 cached=0
+$ jm decision-tree --rows rows.jsonl --recipe recipes/screening-escalate.json --out out2.md
+JM_DECISIONS rows=3 decided=3 act=1 escalate=1 noop=1 calls=0 cached=3
+```
+
+`--out` receives the decision rows (route, reason, the raw answers, the model id); the same rows
+land in the `decisions` table of the named index. Read them with `jm report` (the `decisions`
+count) — `jm query` reads the FILES table and will not show them.
+
 ---
 
 ## 19. Wave 0 preview (the first code that will land here)

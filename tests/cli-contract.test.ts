@@ -90,3 +90,38 @@ describe("CLI contract", () => {
     expect(r.out).toContain("jm watch");
   });
 });
+
+describe("recipe validation (D-020)", () => {
+  test("test_bad_recipe_is_a_client_error_before_any_work", async () => {
+    // A recipe with no `questions` used to run to completion: no question -> no judge call ->
+    // every row noop, exit 0. A run that judged nothing reported a successful triage.
+    const sb = makeSandbox();
+    try {
+      fill(sb.root, { "rows.jsonl": '{"i":1,"title":"x","body":"y"}\n' });
+      const rows = join(sb.root, "rows.jsonl");
+      const bad = [
+        '{"recipe":"x"}',
+        '{"recipe":"x","version":1}',
+        '{"recipe":"x","version":1,"questions":{}}',
+        '{"recipe":"x","version":1,"questions":{"q":{"type":"weird"}}}',
+        '{"recipe":"x","version":1,"questions":{"q":{"type":"noul"}},"policy":{"flag":0.9,"act":0.2}}',
+      ];
+      let i = 0;
+      for (const body of bad) {
+        const p = join(sb.root, `bad-${i++}.json`);
+        writeFileSync(p, body);
+        const r = await jm(["decision-tree", "--rows", rows, "--recipe", p]);
+        expect({ recipe: body, code: r.code }).toEqual({ recipe: body, code: 2 });
+        expect(r.err).toMatch(/JM_RECIPE_INVALID/);
+      }
+      // the POSITIVE half: a well-formed recipe is ACCEPTED — it gets past validation and into
+      // the work (the judge may answer with the host key or refuse with JEV_NO_KEY depending on
+      // the environment; neither is a validation failure).
+      const good = join(sb.root, "good.json");
+      writeFileSync(good, JSON.stringify({ recipe: "r", version: 1, questions: { flag: { type: "noul", instructions: "?" } }, policy: { act: 0.8, flag: 0.5, fail: "closed" } }));
+      const ok = await jm(["decision-tree", "--rows", rows, "--recipe", good]);
+      expect(ok.err).not.toMatch(/JM_RECIPE_INVALID/);
+      expect(ok.out + ok.err).toMatch(/JM_DECISIONS|JEV_NO_KEY/);     // it ran, or it hit the key wall
+    } finally { sb.cleanup(); }
+  });
+});
