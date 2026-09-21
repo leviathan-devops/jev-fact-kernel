@@ -27,7 +27,7 @@ export interface QueryRow { path: string; size: number; mtime: number; kind: str
 
 export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   const rawLimit = opts.limit ?? 50;
-  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 10_000) : 50;   // NaN/negative/float -> default (LIMIT -1 would mean unlimited)
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(Math.min(rawLimit, 10_000)) : 50;   // NaN/negative/float -> default (LIMIT -1 would mean unlimited)
   const params: Bind[] = [];
   let sql: string;
   if (opts.fts) {
@@ -43,10 +43,12 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
     sql += ` AND ${w.sql}`; params.push(...w.params);
   }
   if (opts.tag) {
+    if (!opts.tag.includes("=")) throw new Error(`JM_TAG_INVALID: "${opts.tag}" (expected name=value)`);
     const [k, v] = opts.tag.split("=");
     sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;
-    params.push(k, v ?? "");
+    params.push(k, v);
   }
-  sql += opts.fts ? ` ORDER BY bm25(docs_fts) LIMIT ${limit}` : ` ORDER BY f.size DESC LIMIT ${limit}`;   // FTS by relevance, scans by size
+  const order = opts.fts ? ` ORDER BY bm25(docs_fts)` : ` ORDER BY f.size DESC`;
+  sql += order + ` LIMIT ?`; params.push(limit);   // bound, never interpolated   // FTS by relevance, scans by size
   return db.query(sql).all(...params) as QueryRow[];
 }

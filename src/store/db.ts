@@ -40,7 +40,7 @@ export function loadTargets(): Target[] {
 export function saveTargets(list: Target[]): void {
   const p = targetsPath();
   mkdirSync(dirname(p), { recursive: true });
-  Bun.write(p, JSON.stringify(list, null, 2) + "\n");
+  require("node:fs").writeFileSync(p, JSON.stringify(list, null, 2) + "\n");   // sync write: errors throw to the caller, never swallowed
 }
 
 /** Resolve an argument to {name, root}: `@name` via the registry, else a path. */

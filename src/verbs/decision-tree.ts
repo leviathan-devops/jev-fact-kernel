@@ -45,6 +45,7 @@ export async function decisionTree(opts: {
                            fail: opts.policy?.fail ?? opts.recipe.policy?.fail ?? DEFAULT_POLICY.fail };
   const judge = new Judge(opts.db, {});
   const budget = new Budget({ calls: opts.budgetCalls });
+  if (policy.fail === "open") console.error("JM_POLICY: fail=open — judge outages continue with marked rows");
   const decisions: DecisionRow[] = [];
   const escalations: DecisionRow[] = [];
   let cached = 0, calls = 0, costUsd = 0, budgetStopped = false;
@@ -54,7 +55,13 @@ export async function decisionTree(opts: {
     if (!budget.roomLeft()) { budgetStopped = true; return null; }   // HARD CAP: no room, no call
     const state = { row, criteria, context };
     try {
-      const res = await judge.ask(state, opts.recipe.questions, `${opts.recipe.recipe}@v${opts.recipe.version}`);
+      let res;
+      try {
+        res = await judge.ask(state, opts.recipe.questions, `${opts.recipe.recipe}@v${opts.recipe.version}`);
+      } catch (err) {
+        if (policy.fail === "open") return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 100)}`, answers: null, cached: false, model: "" } as DecisionRow;
+        throw err;    // fail-closed (the default): propagate, never a silent success
+      }
       const value = answersToPolicyValue(res.answers as never);
       const { route, reason } = routeOf(res.answers[Object.keys(opts.recipe.questions)[0]] as never, policy);
       // recompute with the aggregate signal for multi-question recipes

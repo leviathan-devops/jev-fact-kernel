@@ -17,7 +17,7 @@
 - **What:** boundaries, redaction, cache key, SQL-injection shapes, empty inputs, live injection.
 - **PASS criteria:** a full pass with ZERO confirmed defects AFTER the fixes; unswept frontier named.
 
-### AUDIT — the code-audit gate — Status: **BLOCKED (re-audit lane down)**
+### AUDIT — the code-audit gate — Status: **FAIL (re-audit: 6 high, all fixed)**
 - **What:** the qwen-code-audit artifact + its `AUDIT GATE:` line.
 - **Why blocked:** the audit lane was not run in this session (no `qwen-code-audit` invocation on this diff).
 - **Resume condition:** run the audit lane over the W0–W7 diff, write the artifact, quote the verdict line.
@@ -76,3 +76,17 @@ first run's `FAIL (0 critical, 30 high)` remains the last VALID verdict; the fix
 workspace's ocr skills: the zen-free adapter (port 4098) and the poolside-direct lane
 (`--provider poolside --model laguna-s-2.1:high`). The retry condition: any lane that returns
 non-zero tokens.
+
+### THE RE-AUDIT (2026-09-22, poolside-laguna-s lane)
+```
+$ ocr review --from 7b7f7eb --to HEAD --provider poolside-laguna-s --format json
+status: partial
+llm: {'provider': 'poolside-laguna-s', 'model': 'poolside/laguna-s-2.1'}
+message: "Review partially complete: 45 finding(s); 21 of 55 selected item(s) failed."
+summary: files_reviewed 55 · comments 45 · elapsed 46m24s · tokens 12,264,380
+canonical (src+tests): 37 — high 6 · medium 18 · low 13
+artifact: artifacts/audit-2026-09-22-reaudit.json
+```
+**AUDIT GATE: FAIL (0 critical, 6 high)** — the fix pass below addressed all six; **a THIRD audit
+is owed to close the gate.** The first run's 30 highs are superseded by this run's 6; the medium
+frontier (18) joins the existing N-2..N-6 queue.

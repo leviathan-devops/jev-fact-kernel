@@ -11,7 +11,10 @@ export class Budget {
     }
   }
 
-  spend(usd: number): void { this.calls += 1; this.usd += usd; this.assert(); }
+  spend(usd: number): void {
+    if (!Number.isFinite(usd) || usd < 0) throw new Error(`JM_BUDGET_INVALID: spend(${usd}) (must be a finite number >= 0)`);
+    this.calls += 1; this.usd += usd; this.assert();
+  }
 
   /** A cap of N allows exactly N calls; the (N+1)th refuses and NAMES the cap.
    *  (Off-by-one fixed 2026-09-21: the check was >=, which refused the Nth call itself.) */
@@ -32,6 +35,6 @@ export class Budget {
   }
 
   used(): { calls: number; usd: number; caps: { calls?: number; usd?: number } } {
-    return { calls: this.calls, usd: this.usd, caps: this.caps };
+    return { calls: this.calls, usd: this.usd, caps: { ...this.caps } };   // a copy: callers must not mutate the guard
   }
 }

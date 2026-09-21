@@ -41,17 +41,22 @@ export async function withLedger<T>(
   fn: () => Promise<{ result: T; stats: Record<string, unknown>; costUsd?: number; calls?: number; cached?: number }>,
 ): Promise<T> {
   const started = new Date().toISOString();
+  let ledgerFailed: string | null = null;
+  const ledgerSafe = (row: LedgerRow): void => {
+    try { appendLedger(row); } catch (e) { ledgerFailed = String(e).slice(0, 120); }   // H1: the record path must never mask the real error
+  };
   try {
     const { result, stats, costUsd = 0, calls = 0, cached = 0 } = await fn();
     const ended = new Date().toISOString();
-    appendLedger({ ts: ended, kind: "run", verb, args, started, ended, status: "ok", stats, cost_usd: costUsd, calls, cached });
+    ledgerSafe({ ts: ended, kind: "run", verb, args, started, ended, status: "ok", stats, cost_usd: costUsd, calls, cached });
     // MACHINE-READABLE CONTRACT: with --json, stdout stays pure JSON; the cost line goes to stderr.
     const costLine = `cost=$${costUsd.toFixed(6)} calls=${calls} cached=${cached}`;
     if (process.argv.includes("--json")) console.error(costLine); else console.log(costLine);
     return result;
   } catch (err) {
     const ended = new Date().toISOString();
-    appendLedger({ ts: ended, kind: "run", verb, args, started, ended, status: "error", stats: { error: String(err) }, cost_usd: 0, calls: 0, cached: 0 });
+    ledgerSafe({ ts: ended, kind: "run", verb, args, started, ended, status: "error", stats: { error: String(err) }, cost_usd: 0, calls: 0, cached: 0 });
+    if (ledgerFailed) throw new Error(`JM_LEDGER_FAILED: ${ledgerFailed} (while reporting: ${String(err).slice(0, 100)})`);
     throw err;
   }
 }
