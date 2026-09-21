@@ -73,6 +73,26 @@ echo "═══ L4 — THE CONTAINER RIG (host parity half) ═══"
 tok "container rig T1-T7 (host)" bash -c "timeout 500 bun run tests/container/harness.ts 2>&1 | grep -q 'JM_CONTAINER_RIG PASS'"
 
 echo ""
+echo "═══ CONCURRENT WRITERS ON ONE INDEX (D-035) ═══"
+# The store had NO busy_timeout while both other openers did, so simultaneous CLI runs failed with
+# `database is locked`. This check runs four indexers at once and requires ALL FOUR to exit 0.
+CONC_HOME=/tmp/jm-gates-conc
+rm -rf "$CONC_HOME"; mkdir -p "$CONC_HOME" /tmp/jm-gates-conc-corpus
+for i in $(seq 1 40); do echo "concurrent body $i tombstone" > /tmp/jm-gates-conc-corpus/f$i.md; done
+JM_HOME="$CONC_HOME" $J target add conc fs /tmp/jm-gates-conc-corpus >/dev/null 2>&1
+for i in 1 2 3 4; do
+  ( JM_HOME="$CONC_HOME" $J index --in all --name race >"/tmp/jm-gates-conc-$i.out" 2>&1; echo $? > "/tmp/jm-gates-conc-$i.rc" ) &
+done
+wait
+FAILS=$(grep -l "database is locked" /tmp/jm-gates-conc-*.out 2>/dev/null | wc -l)
+NONZERO=$(cat /tmp/jm-gates-conc-*.rc | grep -cv '^0$' || true)
+tok "4 concurrent indexers, no lock errors" bash -c "[ \"$FAILS\" -eq 0 ]"
+tok "4 concurrent indexers all exit 0" bash -c "[ \"$NONZERO\" -eq 0 ]"
+# the row count is on the `files:` line — the first line's number is the index size in KB
+ROWS=$(JM_HOME="$CONC_HOME" $J report race 2>/dev/null | grep '^files:' | grep -oE '[0-9]+' | head -1)
+tok "the race left a complete index ($ROWS files)" bash -c "[ \"$ROWS\" -eq 40 ]"
+
+echo ""
 echo "═══ THE DAEMON AS A LONG-LIVED PROCESS (not --once) ═══"
 # The daemon's LOOP had only ever been run as a single tick. This check runs it for real: start
 # it, wait for two ticks, SIGTERM THE CHILD (the wrapper is `bun run`, so the child is the

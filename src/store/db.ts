@@ -15,6 +15,12 @@ export interface Target { name: string; kind: TargetKind; root: string; opts?: R
 export function openDb(path: string): Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
+  // ORDER MATTERS: the timeout must be in force BEFORE the pragma that needs a lock. Setting
+  // `journal_mode = WAL` first meant the one statement most likely to contend ran unprotected —
+  // measured: with the timeout set after it, ONE of four simultaneous indexers still died with
+  // `database is locked`. (D-035; both other openers in this codebase have the timeout too, and
+  // the STORE — the most contended file of the three — was the one missing it.)
+  db.run("PRAGMA busy_timeout = 5000");
   db.run("PRAGMA journal_mode = WAL");
   db.run(SCHEMA_SQL);
   const row = db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: string } | null;

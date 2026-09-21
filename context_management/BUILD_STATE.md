@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `949d8335df9c793a36a45d82d29738a0` (git 15f4028)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `f69d3b32692efbe1de77deb4567b667b` (git a63804e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -51,7 +52,7 @@ sealed copy does not belong here.
 | `src/pools/budget.ts` | 60 |
 | `src/pools/pool.ts` | 27 |
 | `src/serve.ts` | 100 |
-| `src/store/db.ts` | 74 |
+| `src/store/db.ts` | 80 |
 | `src/store/schema.ts` | 69 |
 | `src/targets.ts` | 180 |
 | `src/verbs/cluster.ts` | 93 |
@@ -68,7 +69,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 26 files)
+## THE TEST INVENTORY (tests/, 27 files)
 
 | file | lines |
 |------|-------|
@@ -78,6 +79,7 @@ sealed copy does not belong here.
 | `tests/adversarial3.test.ts` | 242 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cli-contract.test.ts` | 147 |
+| `tests/concurrency.test.ts` | 55 |
 | `tests/container/harness.ts` | 241 |
 | `tests/decide.test.ts` | 209 |
 | `tests/decision.test.ts` | 112 |

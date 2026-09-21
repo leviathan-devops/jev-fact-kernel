@@ -606,3 +606,18 @@ GATED: two new checks in scripts-gates.sh (the loop ticks + journals over >=2 ti
 it). GATES: 35 passed / 0 failed.
 RESIDUAL (named, not claimed): the daemon has not been run under a SERVICE MANAGER, so
 restart-on-crash and boot-time start are unproven.
+
+### D-035 — THE CONCURRENCY BOUNDARY (two layers, both measured)
+```
+PROBE   4 simultaneous `jm index --in all --name race` on ONE index
+FOUND   2 of 4 died: "JM_ERROR: database is locked" at exit 1
+ROOT 1  openDb had NO busy_timeout while BOTH other openers did (adapters/sqlite.ts, job/store.ts)
+        — the STORE, the most contended file, was the one missing it
+ROOT 2  with the timeout set AFTER `journal_mode = WAL`, one of four racers STILL died: the pragma
+        most likely to contend ran unprotected
+FIX     busy_timeout moved BEFORE the WAL pragma
+AFTER   3 rounds x 4 simultaneous indexers -> exits [0 0 0 0] every round, zero lock errors, the
+        index complete (60/60 with text)
+GATED   tests/concurrency.test.ts (four REAL processes + the pragma ORDER) and three new checks in
+        scripts-gates.sh
+battery 134 pass / 0 fail / 647 expects / 25 files · tsc exit 0 · GATES 38 passed / 0 failed

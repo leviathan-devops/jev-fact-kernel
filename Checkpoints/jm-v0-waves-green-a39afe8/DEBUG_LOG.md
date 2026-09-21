@@ -1186,3 +1186,35 @@ ONE SURFACE AND NOT ON ANOTHER.
   one test per external boundary must cross it for real** — the engine's judge path had one
   (`test_cache_zero_calls` uses a mock too; the live calls in the runtime seat are what caught
   find's bugs), and this verb had none.
+
+## EN-050 — D-035: concurrent CLI writers lost data to `database is locked`
+- **FOUND BY:** the boundary-crossing lens applied to CONCURRENCY — "has this ever run as more than
+  one process at a time?" Every prior test ran in ONE process; the store had never met a second
+  writer.
+- **THE MEASUREMENT:** four simultaneous `jm index --in all --name race` runs on one index:
+  ```
+  run1 exit=1  JM_ERROR: database is locked
+  run2 exit=1  JM_ERROR: database is locked
+  run3 exit=0  changed=0
+  run4 exit=0  changed=60
+  ```
+  Two of four runs DIED. (The `rows: 50` in the first reading was the query's default LIMIT, not a
+  row count — verified afterwards at 60/60. An instrument mistake caught before it became a
+  "finding".)
+- **ROOT CAUSE (two layers):**
+  1. `openDb` — the STORE, the most contended file in the codebase — set no `busy_timeout`,
+     while BOTH other openers did: `adapters/sqlite.ts` (a read-only source) and `job/store.ts`
+     (the queue db, with the comment "contended writes WAIT, not fail-fast"). The one place that
+     needed it was the one place missing it.
+  2. **ORDER:** setting `busy_timeout` AFTER `PRAGMA journal_mode = WAL` left the single most
+     contention-prone statement unprotected — measured: one of four racers still died. The timeout
+     must be in force BEFORE the pragma that needs a lock.
+- **FIX + VERIFICATION:** `PRAGMA busy_timeout = 5000` moved ahead of the WAL pragma. Three
+  consecutive rounds of four simultaneous indexers: **exits [0 0 0 0] every round, zero lock
+  errors**, and the index complete (60/60 with text, 60 FTS hits).
+- **PINNED TWO WAYS:** `tests/concurrency.test.ts` spawns four REAL CLI processes (a lock error
+  only exists across processes) and separately asserts the pragma ORDER, because the order is the
+  fix; `scripts-gates.sh` runs the race as three gates (no lock errors, all exit 0, the index is
+  complete).
+- **LESSON:** a default that is safe in one process becomes a data-loss path in two. `SQLite`'s
+  default `busy_timeout` is ZERO — a single writer never notices, and the second one fails.
