@@ -77,22 +77,52 @@ JM_DECISIONS rows=100 decided=100 calls=0 cached=100
 Byte-identical routes and answers across the two runs, and ZERO judge calls on the replay. Pinned
 by `test_cache_zero_calls`.
 
-### C8 — ledger completeness (`jm report --job last`) — **NOT MET (recorded)**
+### C8 — ledger completeness (`jm report --job last`) — **MET** (was NOT MET; CLOSED this session)
 
+**The first measurement, before the verb existed:**
 ```
 $ jm report --job last
 exit=2
 ```
+`jm report` took an INDEX name, not `--job`. It reported the GLOBAL ledger (rows / ok / failed / cost
+/ per-verb counts) and the index's own `runs` / `decisions` counts, so the DATA the criterion wants
+was visible — but the criterion's INTERFACE was absent. It was recorded as an open violation rather
+than reinterpreted as satisfied by a similar-looking verb, because "close enough" is how a criterion
+quietly disappears.
 
-`jm report` takes an INDEX name, not `--job`. It reports the GLOBAL ledger — rows, ok, failed,
-cost, per-verb counts (`ledger: 23 rows · 23 ok · 0 failed · $0.000000` and
-`ledger verbs: index=12 query=5 …`) — and it reports the index's own `runs`/`decisions` counts, so
-the DATA the criterion wants is visible. What is absent is the criterion's INTERFACE: there is no
-per-job reconciliation view that ties one job id's queue rows to its ledger rows.
+**The verb was then implemented, and the criterion re-measured:**
+```
+$ jm index @c8 --queued --job c8job --name c8idx
+JM_QUEUED done=12 pending=0 running=0 files=12 resumed=0 budget_stopped=false ms=32
 
-**WHY IT IS NOT SILENTLY DELETED FROM THE LIST, AND WHY IT IS STILL OPEN:** the interface is a real
-deliverable the spec names by its invocation. It is recorded as owed rather than reinterpreted as
-satisfied by a similar-looking verb, because "close enough" is how a criterion quietly disappears.
+$ jm report --job last --name c8idx
+job:          c8job
+queue:        12 rows · 12 done · 0 pending · 0 running · 0 failed
+fingerprints: 12 distinct · 0 duplicate
+index files:  12 live
+ledger:       1 rows total · 1 naming this job · 1 ok · 0 failed · $0.000000
+ledger verbs: index=1
+reconciled:   YES — no duplicate fingerprints (the UNIQUE constraint enforces this structurally); 0 rows left running
+exit=0
+```
+Both halves reconcile: the QUEUE (12 rows, all done, 12 distinct) and the LEDGER (1 row, and that row
+NAMES this job — a second fix, since the queued index had not been recording its job id, so no
+reconciliation was possible even with the verb).
+
+**The negative half, measured:** planting a claimed-but-unacked row (exactly what a crash leaves)
+turns the verdict around — `queue: 12 rows · 11 done · 1 running … reconciled: NO — 1 rows left
+running`, **exit 3**. A reconciliation that cannot fail is not a reconciliation.
+
+**The phantom guard:** `jm report --job c8joob` (a typo) is `JM_JOB_MISSING` at **exit 2** and
+creates **no job directory** — `openJob()` CREATES the directory, so without the guard this verb
+would have reported an empty-but-healthy job. The D-009 class, refused here too.
+
+**What the report does NOT claim:** the DUP LAW it prints is enforced by the queue's `UNIQUE
+fingerprint` constraint, not by the report's arithmetic — the count is a defensive read. That is
+stated in the verb's own output so the guarantee is not misattributed to the wrong mechanism.
+
+Pinned by `tests/job-report.test.ts` (5 tests: reconcile, the leftover-running failure, the typo
+refusal plus no-phantom, `last` picking the newest by mtime, and the UNIQUE-constraint proof).
 
 ### C9 — cost line — **DEVIATED (deliberate, recorded)**
 
@@ -158,7 +188,7 @@ The angle asserts `orphaned > 0` BEFORE it will call itself passed — the first
 probe slept 320 ms and killed the process during start-up, which would have been a green light over
 a run that proved nothing.
 
-### C14 — MCP reachable — **MET (host-live; NOT yet session-live)**
+### C14 — MCP reachable — **MET host-live; REGISTERED; the session-live half is one restart away**
 
 ```
 $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jm mcp
@@ -166,11 +196,36 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jm mcp
 $ printf '%s\n' '{…"tools/call","params":{"name":"jm_query","arguments":{"index":"op3corpus","fts":"ledger"}}}' | jm mcp
 rows: 1  (the expected SQLite row)
 ```
-The criterion's phrase is "an OMP session calls `jm_find`". That requires registering this server as
-an MCP client in the host's config and starting a session — neither of which a running session can
-do to itself. The protocol path is proven end to end (initialize, notification-with-no-response,
-tools/list, tools/call, and the isError framing); the SESSION-live half is stated as owed rather
-than claimed.
+The criterion's phrase is "an OMP session calls `jm_find`". The protocol path is proven end to end
+(initialize, notification-with-no-response, tools/list, tools/call, and the isError framing), and
+this session added the missing half of the SETUP:
+
+**The registration is DONE.** JM is declared in OMP's own MCP registry
+(`~/.omp/agent/mcp.json`, backed up before the edit), pointing at a launcher that pins its working
+directory so the server starts from ANY cwd:
+
+```
+"jm": {
+  "command": "/home/leviathan/JARVIS_WORKSPACE/Shared_Workspace/JevManager/scripts-jm-mcp.sh",
+  "args": [],
+  "env": { "PATH": "…/.bun/bin:…", "JM_HOME": "/home/leviathan/.jm" }
+}
+```
+Proven from a foreign cwd — `cd /tmp && … scripts-jm-mcp.sh` answered `tools/list` with
+`['jm_query', 'jm_find', 'jm_decide', 'jm_index']`.
+
+**What is still owed, and why it cannot be closed from inside this session:** an MCP server mounts
+at session START. A running session cannot restart itself, and this host's gate refuses headless
+smoke probes (`[STTGF ESCALATE] HEADLESS — running container test is MANDATORY`), so the
+session-live half needs either a fresh interactive session or the sanctioned container rig. The
+verification for whoever starts one is exactly:
+
+```
+# in a NEW omp session
+call jm_find with {"phrase": "<a known phrase>", "index": "<an index that exists>"}
+# expect: rows back, not a "tool not found"
+```
+Until that runs, this line says host-live + registered, and NOT session-live.
 
 ### C15–C18 — the fire-gate criteria — **NOT APPLICABLE**
 
@@ -215,9 +270,8 @@ they are left short and this line states the shortfall.
 
 | # | open item | class | what would close it |
 |---|-----------|-------|---------------------|
-| 1 | **C8** — no `report --job <id\|last>` per-job reconciliation view | missing interface | implement the verb and record its output here |
 | 2 | **C20** — three append-only logs below the 200-line floor | by nature | append as events occur; never pad |
-| 3 | **C14** — MCP is host-live, not session-live | environment | register the server in a client and run a session |
+| 3 | **C14** — MCP is host-live and REGISTERED, not yet session-live | environment | restart a session (see C14's section) |
 | 4 | **C15–C18** — the fire gate | PARKED (operator) | the F1/F6 rulings |
 
 ---

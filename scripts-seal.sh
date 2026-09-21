@@ -27,6 +27,27 @@ find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum | cut -
 SHA=$(cat "$CP/SOURCE_TREE.sha256")
 GIT=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
 
+# 3b. every canon doc's TREE SHA line + BUILD_STATE's inventories — synced to THIS seal, so the
+#     docs and the seal can never disagree (that divergence happened twice before it was scripted).
+python3 - "$CP" "$SHA" "$GIT" <<'PY2'
+import re, sys, os, pathlib
+cp, sha, git = sys.argv[1], sys.argv[2], sys.argv[3]
+root = pathlib.Path("context_management")
+line = ("**TREE SHA: `" + sha + "` (git " + git + ")** - every canon doc that carries this line "
+        "carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh")
+n = 0
+for f in sorted(root.glob("*.md")):
+    s = f.read_text(encoding="utf-8")
+    if "TREE SHA:" not in s:
+        continue
+    s = re.sub(r"\*\*TREE SHA: .*\n", "", s)
+    parts = s.split("\n")
+    out = [parts[0], "", line] + parts[1:]
+    f.write_text("\n".join(out), encoding="utf-8")
+    n += 1
+print(f"  canon docs re-synced to {sha}: {n}")
+PY2
+
 # 4. the manifest's volatile lines
 python3 - "$CP" "$SHA" "$GIT" <<'PY'
 import re, sys, pathlib
