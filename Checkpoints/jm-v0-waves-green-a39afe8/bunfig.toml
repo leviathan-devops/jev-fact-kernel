@@ -1,0 +1,4 @@
+# Test discovery is rooted at ./tests so snapshot copies under Checkpoints/ are never
+# double-counted (they are byte-identical by design).
+[test]
+root = "tests"

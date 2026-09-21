@@ -1,5 +1,7 @@
 # COMPACTION_SURVIVAL — JM (overwrite; state-at-a-glance + the operating laws + recovery)
 
+**TREE SHA: `0d5d99f34de62b20304d5a79169fdb53` (git 97f522f) · battery 116 pass / 0 fail / 580 expects / 21 files · container rig 7/7** — every canon doc that carries this line carries THIS sha; a disagreement means one is stale.
+
 ## 1. STATE AT A GLANCE (2026-09-21)
 
 ```
@@ -203,7 +205,6 @@ recorded (a doc that contradicts the artifact is stale, not authoritative).
 
 ## CURRENT (appended 2026-09-21, git 8b42ff8)
 
-**TREE SHA: `22178de50f7d2037999fd0efb7d7d53c` (git 3345d2c) · battery 116 pass / 0 fail / 580 expects / 21 files · container rig 7/7** — all five read-first docs carry this line; a disagreement means one is stale.
 
 
 **Battery: 89 pass / 0 fail / 343 expects / 17 files · `bunx tsc --noEmit` exit 0.**
