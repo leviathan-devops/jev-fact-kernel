@@ -159,6 +159,18 @@ chunk). The src chunk (36 files, the largest) has never completed — every atte
 assertions, a live runtime seat, a zero-context operator drill, and two adversarial sweeps — none
 of which is the audit, and none of which substitutes for it.
 
+### 5.1 THE METHODS EXHAUSTED (so the next operator does not repeat them)
+
+| method | result |
+|--------|--------|
+| one full-scope run, default settings | `partial` every time (rate limits mid-run) |
+| **scope chunking** (src / tests / root separately) | tests + root reached `complete` with 0 findings; src never did |
+| **half-scope** (18-file and 21-file splits) | failed on rate limits |
+| `--resume <session-id>` on a partial session | reviewed the missing files, still `partial` |
+| **`--concurrency 1`** with a 60-minute timeout | **62 requests, 62 failed, 0 tokens** — proving the limit is the LANE'S QUOTA, not a request burst. The knob fixed the wrong hypothesis, which is itself the finding. |
+| five lanes probed across the session | `openrouter-laguna-xs-free` works in windows; `poolside-laguna-s`, `muse-free`, `openrouter-laguna-s-free` return 0 tokens |
+| 26 runs total | 26 confirmed findings fixed, 16 refuted by probe, 0 open |
+
 **RETRY CONDITION (mechanical):** any lane returning a non-zero token count across the full
 36-file source scope. On that condition, re-run:
 

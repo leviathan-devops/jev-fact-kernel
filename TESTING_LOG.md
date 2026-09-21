@@ -369,3 +369,22 @@ What writing them found: filter's question key is `match` (not `flag`), the /dec
 wrong one leaves every p at 0, which READS as "the code is broken" when the mock is what is wrong.
 battery 116 pass / 0 fail / 580 expects / 21 files · tsc exit 0
 ```
+
+### THE AUDIT GATE — THE FINAL METHOD AUDIT (why BLOCKED is the honest word)
+```
+METHODS TRIED AND THEIR OUTCOMES
+  full scope, defaults .............. partial every run (limits mid-run)
+  scope chunking (src/tests/root) ... tests + root reached COMPLETE with 0 findings; src never
+  half scope (18 and 21 files) ...... failed on rate limits
+  --resume <session> ................ reviewed the gaps, still partial
+  --concurrency 1 --timeout 60 ...... 62 requests, 62 FAILED, 0 tokens
+                                      ^ this one MATTERS: it disproves the burst hypothesis.
+                                        The limit is the lane's QUOTA, not the request rate.
+TREND ACROSS THE LAST RUNS (38 files = the whole source scope, every time)
+  F-11 partial 0 findings · F-12 partial 1 (refuted) · F-13 partial 5 (all fixed) ·
+  F-14 failed 0 · F-15 partial 6 (all adjudicated) · F-17 partial 1 (refuted) ·
+  F-21 partial 4 (1 refuted, 3 fixed) · F-22 partial 1 (refuted) · S-31 failed 0 tokens
+```
+**AUDIT GATE: BLOCKED.** Two chunks COMPLETE with zero findings; the source chunk `partial` in
+every attempt. 26 findings confirmed and fixed (ten of them silent wrong answers), 16 refuted by
+probe and recorded with their evidence. **No ship-ready claim is made.**
