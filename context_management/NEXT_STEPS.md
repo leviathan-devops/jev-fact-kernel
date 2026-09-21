@@ -234,6 +234,8 @@ JM_HOME; G14 ledger `args` dropped flags). The remaining DOC work:
 
 ## CURRENT (appended 2026-09-21, git 8b42ff8)
 
+**TREE SHA: `22178de50f7d2037999fd0efb7d7d53c` (git c122136) · battery 116 pass / 0 fail / 580 expects / 21 files · container rig 7/7** — all five read-first docs carry this line; a disagreement means one is stale.
+
 **Battery: 89 pass / 0 fail / 343 expects / 17 files · `bunx tsc --noEmit` exit 0.**
 **Container rig (spec §9 T1–T7): PASS 7/7 in a fresh Debian-12 container AND on the host.**
 
