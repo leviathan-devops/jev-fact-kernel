@@ -17,6 +17,8 @@ import { Budget } from "../src/pools/budget.ts";
 import { validateRecipe } from "../src/verbs/decision-tree.ts";
 import { tick } from "../src/watch.ts";
 import { scanIndex } from "../src/verbs/scan.ts";
+import { handle } from "../src/mcp.ts";
+import { indexExists } from "../src/store/db.ts";
 
 describe("ADV-3 budget claims", () => {
   test("test_claim_cannot_overshoot_under_concurrency", () => {
@@ -215,5 +217,26 @@ describe("ADV-3 index roots", () => {
     db.run("CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, path TEXT UNIQUE, size INTEGER, mtime INTEGER, sha256 TEXT, kind TEXT, text_indexed INTEGER, state TEXT, indexed_at TEXT)");
     expect(() => indexTarget(db, "x", "/definitely/not/here", {})).toThrow(/JM_INDEX_MISSING/);
     db.close();
+  });
+});
+
+describe("ADV-3 surfaces (the round-2 second-operator findings)", () => {
+  test("test_mcp_read_tools_refuse_a_missing_index", async () => {
+    // D-028: the MCP surface used openDb() for EVERY tool, so `jm_query` on a typo'd index
+    // returned {"rows":[],"n":0} — the exact silent wrong answer D-009 fixed on the CLI, still
+    // live here. §18.8's "same semantics" claim is what exposed it.
+    const sb = makeSandbox();
+    try {
+      process.env.JM_HOME = sb.home;
+      saveTargets([]);
+      const r = await handle({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "jm_query", arguments: { index: "nosuch", fts: "x" } } });
+      const res = r!.result as { isError: boolean; content: { text: string }[] };
+      expect(res.isError).toBe(true);
+      expect(res.content[0].text).toMatch(/JM_INDEX_MISSING/);
+      expect(indexExists("nosuch")).toBe(false);            // and it created NOTHING
+      const f = await handle({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "jm_find", arguments: { phrase: "x", index: "nosuch" } } });
+      expect((f!.result as { isError?: boolean }).isError).toBe(true);
+      expect(indexExists("nosuch")).toBe(false);
+    } finally { sb.cleanup(); }
   });
 });

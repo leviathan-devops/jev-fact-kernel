@@ -977,3 +977,36 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
 - **LESSON:** a sanitiser that is not injective is a MERGE, not a sanitisation. Two fixes in a row
   (D-008 paths, D-015 names) each closed one door into the same room; the ADV sweep is what walked
   through the third. When a value becomes a KEY, prove the mapping is one-to-one.
+
+## EN-043 — the ROUND-2 second-operator drill: the docs were true for the CLI and false for the surfaces
+The round-2 operator (zero context, 10 steps, docs-only) completed every step — and its report
+exposed three defects plus one false doc line. All four are the same class: A CLAIM THAT HELD ON
+ONE SURFACE AND NOT ON ANOTHER.
+
+- **D-028 (the D-009 defect, alive on the MCP surface).** `jm_query` with a typo'd index returned
+  `{"rows": [], "n": 0}` at JSON-RPC success — the exact silent wrong answer fixed for the CLI in
+  D-009 — AND materialised `index/nosuchindex.sqlite`. `callTool` used `openDb()` (create-if-missing)
+  for every tool. FIX: `jm_query`/`jm_find` are READ tools and use `openIndexExisting`, so a typo is
+  `JM_INDEX_MISSING` as an `isError` result; `jm_index` still creates (it is the write tool).
+  §18.8's sentence "the same semantics as the CLI" is what exposed it — the doc was right and the
+  code was wrong.
+- **W5 (a health check that created state).** `GET /health` called `openDb()` and therefore
+  materialised `index/decisions.sqlite` on a LIVENESS PROBE. FIX: `/health` is now a pure REPORT —
+  200 whenever the process is up, `index_exists: true|false` stated in the body, and a throwaway
+  in-memory db for the judge's key provenance when the index is absent. A health endpoint that
+  404s because a default index is missing cannot do its job, so it reports instead of refusing.
+- **D-029 (the HTTP read path's error shape).** `/find` on a missing index threw out of `fetch` —
+  a 500 with a stack. It is now a **404 carrying the engine's own sentence**, because the caller
+  needs the same text the CLI prints.
+- **W1 (a FALSE DOC LINE, corrected).** §18.9 claimed a tick's index name is derived from `--in`
+  (`a,b` -> `a+b`). Measured: a tick writes to `--name`, defaulting to `all`. The operator measured
+  `index/all.sqlite` where the doc promised `ta+tb`. The paragraph is corrected, `--name` is added
+  to the watch usage line, and the journal-per-tick fact (a tick appends a line whether or not
+  anything changed) is now stated.
+- **VERIFICATION:** MCP refuses + creates nothing; MCP on a real index still answers; `/health`
+  200 with `index_exists:false` and ZERO files created; `/find` 404 with `JM_INDEX_MISSING`; the
+  full battery 111/0. Pinned by `test_mcp_read_tools_refuse_a_missing_index`.
+- **LESSON:** fixing a defect on ONE surface does not fix the CLASS. D-009 was "a read verb must
+  refuse a missing index"; the CLI learned it, the MCP and HTTP surfaces did not, and only a
+  zero-context operator following the docs walked into the gap. When a rule is stated as a
+  CONTRACT ("the same semantics"), grep every surface that claims it.

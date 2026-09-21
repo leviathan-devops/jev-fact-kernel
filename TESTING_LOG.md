@@ -326,3 +326,26 @@ battery 110 pass / 0 fail / 534 expects / 20 files · tsc exit 0
 (the W0 surface), ADV-2 (post-W1 surfaces), ADV-3 (everything changed since ADV-2) — all three run,
 all findings fixed, the unswept frontier NAMED as the parked W8 surface (the fire gate has no code
 to probe).
+
+### THE SECOND-OPERATOR DRILL, ROUND 2 — the operating contract put to the test
+```
+OPERATOR   SecondOperator3 (zero context, docs-only: README 10/13/18 + RUNTIME_SEAT)
+RESULT     all 10 steps completed · 1 docs-insufficient verdict · 3 defects · 1 false doc line
+REPO       nothing modified by the operator
+
+WHAT §18 GOT RIGHT (verified by an operator who had never seen the engine):
+  steps 1,2,3,5,6,7,8 = docs-sufficient, each citing its §18.x sub-section
+  (targets/--in, pointers-vs-body, report fields, serve+health, the MCP session shape,
+   the tick and its journal object) — the round-1 gaps are CLOSED.
+
+WHAT IT STILL FOUND:
+  D-028  `jm_query` with a typo'd index returned {"rows":[],"n":0} at success AND created a
+         phantom index — the D-009 defect, alive on the MCP surface (fixed: read tools refuse)
+  W5     `GET /health` MATERIALISED index/decisions.sqlite (fixed: health is a pure report)
+  D-029  `/find` on a missing index threw a 500 (fixed: 404 with the engine's own sentence)
+  W1     §18.9 said a tick's index comes from `--in` (`a,b`->`a+b`); measured `index/all.sqlite`.
+         The doc line was FALSE and is corrected; `--name` added to the watch usage.
+battery 111 pass / 0 fail / 539 expects / 20 files · tsc exit 0
+```
+**ROUND 2: PASSED** — the documented contract carried a zero-context operator through all ten
+steps, and the three defects it exposed are fixed and pinned.

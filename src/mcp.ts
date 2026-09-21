@@ -2,7 +2,7 @@
 // Protocol: JSON-RPC 2.0 over stdio — initialize · tools/list · tools/call. No framework.
 // Every tool returns a content block with the SAME shapes the HTTP surface returns, so an
 // agent's answer and a curl answer cannot drift apart.
-import { openDb, indexPathFor } from "./store/db.ts";
+import { openDb, openIndexExisting, indexPathFor } from "./store/db.ts";
 import { queryIndex } from "./verbs/query.ts";
 import { find } from "./verbs/find.ts";
 import { Judge } from "./judge/client.ts";
@@ -116,7 +116,14 @@ export async function handle(req: JsonRpcRequest): Promise<Record<string, unknow
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
   const indexName = typeof args.index === "string" ? args.index : (name === "jm_decide" ? "decisions" : "all");
-  const db = openDb(indexPathFor(indexName));
+  // SAME SEMANTICS AS THE CLI (D-028): a READ tool refuses a missing index, a WRITE tool creates
+  // one. This surface used openDb() for everything, so `jm_query` on a typo'd index returned
+  // `{"rows": [], "n": 0}` at exit 0 AND materialised a phantom index file - the D-009 defect,
+  // still live here after the CLI was fixed. (§18.8's "same semantics" claim was what exposed it.)
+  const READ_TOOLS = new Set(["jm_query", "jm_find"]);
+  const db = READ_TOOLS.has(name)
+    ? openIndexExisting(indexName, indexPathFor(indexName))
+    : openDb(indexPathFor(indexName));
   try {
     if (name === "jm_query") {
       const rows = queryIndex(db, {
