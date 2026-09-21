@@ -1,7 +1,7 @@
 # CHECKPOINT MANIFEST — jm-v0-waves-green-a39afe8
 
 date: 2026-09-21 · seal mode: **B (no lock — living snapshot)**
-source tree sha256: \ (post-audit fix pass)
+source tree sha256: `9dc2e8c4dcc694567800447dee79d1df` (post-audit fix pass)
 battery (from this copy):  18 pass  0 fail 
 git: branch master @ a39afe8 (+ the W7 follow-ups uncommitted at seal time — see the follow-up commit)
 
@@ -25,3 +25,5 @@ HTTP /decide live · find chain live 44->30->1->1 · adversarial 18/0 after 1 fi
 - SPEC_VIOLATION_LOG.md ABSENT (no spec violations recorded this session — the absence is stated,
   per the absence-honesty rule).
 - The second-operator drill owed; the escalation band has no live row; @ocws never walked.
+
+- audit: AUDIT GATE **FAIL** (0 critical, 30 high) — artifact `artifacts/audit-2026-09-21.json`; fixes applied; RE-AUDIT OWED
