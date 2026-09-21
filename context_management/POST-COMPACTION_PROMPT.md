@@ -91,7 +91,7 @@ battery. If you cannot verify something, say BLOCKED and name the resume conditi
 
 ```bash
 # --- the substrate
-bun test                                  # 18 pass / 0 fail / 87 expects / 8 files
+bun test                                  # 24 pass / 0 fail / 110 expects / 9 files
 bunx tsc --noEmit                         # TSC_EXIT=0
 bun src/cli.ts report                     # runs=N cost=$0.000000 + per-verb counts
 

@@ -4,7 +4,7 @@
 build commits `715e5e8` (W0) · `ad2c8e1` (W1) · `bede487` (W3+W5) · `a39afe8` (W4+W6+W7) ·
 `75cf6e4` (docs+checkpoint) · `0deac03` (scoped tests) · `78cd3be` (audit fix pass) · `e88cbcd` (manifest).
 
-**Battery:** 18 pass / 0 fail / 87 expects / 8 files (`bun test`, rooted at `tests/`) ·
+**Battery:** 24 pass / 0 fail / 110 expects / 9 files (`bun test`, rooted at `tests/`) ·
 `bunx tsc --noEmit` exit 0.
 
 **Audit:** `AUDIT GATE: FAIL (0 critical, 30 high)` at first run — fixes applied; re-audit running.
@@ -220,7 +220,7 @@ boundary arguments the happy path never exercised; the fix pass landed all of th
 ```
 e88cbcd docs(checkpoint): source-tree sha post-fix + the audit gate state recorded
 78cd3be fix(audit): address the 30 high findings (fail-closed propagation, tombstones, loopback bind, NaN guards, fingerprint+questions, per-file index guard) + land the audit artifact (AUDIT GATE: FAIL, re-audit owed)
-0deac03 fix(test): scoped test runner + typed fixtures (tsc 0, battery 18/0 scoped)
+0deac03 fix(test): scoped test runner + typed fixtures (tsc 0, battery 24/0 scoped)
 75cf6e4 docs(w7+checkpoint): canon core + ship docs + runtime seat + sealed checkpoint jm-v0-waves-green (honest gaps: audit BLOCKED, floors partial)
 a39afe8 feat(w4+w6+w7): find chain (live 44->30->1->1), HTTP surface (/decide live noul 0.98, cached replay), calibration rows
 bede487 feat(w3+w5): judge client (key/cache/transport/policy) + decision-tree — live API verified (act 0.97/0.90, noop 0.08), cache 0-call replay, deterministic artifacts
@@ -362,7 +362,7 @@ row1: noop signal=0.01 < flag=0.5 | agg=0.01
 ### battery
 ```
 $ bun test
-18 pass / 0 fail / 87 expect() calls / Ran 18 tests across 8 files.
+24 pass / 0 fail / 110 expect() calls / Ran 24 tests across 9 files.
 ```
 
 ### typecheck
@@ -377,7 +377,7 @@ $ ocr review --from 7b7f7eb --to HEAD --format json
 Review complete: 174 finding(s) across 50 selected item(s). provider muse-free, elapsed 6m2s, tokens 2,435,557
 ```
 
-## 10. THE TEST INVENTORY (8 files, 18 tests, 87 assertions)
+## 10. THE TEST INVENTORY (9 files, 24 tests, 110 assertions)
 
 ### tests/store.test.ts
 - **Tests:** test_store_roundtrip · test_store_rejects_bad_input

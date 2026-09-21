@@ -7,7 +7,7 @@
  commits     7b7f7eb (design base) · 715e5e8 (W0) · ad2c8e1 (W1) · bede487 (W3+W5)
              a39afe8 (W4+W6+W7) · 75cf6e4 (docs+checkpoint) · 0deac03 (scoped tests)
              78cd3be (audit fix pass) · e88cbcd (manifest)
- battery     18 pass / 0 fail / 87 expects / 8 files      tsc exit 0
+ battery     24 pass / 0 fail / 110 expects / 9 files      tsc exit 0
  index       @shadow 11,831 files (2.5% incremental re-run) · @reports 57 files
  judge       live-verified (jev-1.13.0) · cache replay 0 calls · sha-identical artifacts
  crash law   SIGKILL -> running:8 -> resume -> done=11831, dup=ZERO
@@ -63,7 +63,7 @@
 ## 5. THE NUMBERS THAT MUST MATCH (the cross-consistency set)
 
 ```
- battery            18 / 0         (repo and the checkpoint copy — independently run)
+ battery            24 / 0         (repo and the checkpoint copy — independently run)
  tsc                exit 0
  index @shadow      11,831 files / 11,306 fts rows
  ledger             ~32 run rows at the time of writing (grows)

@@ -504,3 +504,19 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 > Every entry here was invisible from the editor and obvious from the driver's seat — which is
 > the entire argument for building, then RUNNING, then auditing, in that order.
 
+
+## EN-016 — the frontier wave: fourteen medium findings, seven files
+- **CLASS:** the audit's medium layer — unvalidated inputs, missing filters, stale payloads, and
+  metadata disclosure (the same families as the highs, one severity down).
+- **THE FIXES (each grounded in the audit's own words):** `safeName` + root-hash derived names
+  (collisions and traversal); the job-id guard; `busy_timeout=5000` (contended writes wait);
+  `loadTargets` throws `JM_TARGETS_CORRUPT` instead of returning `[]`; `@target` verifies the root;
+  the query limit clamp (NaN/negative/float can no longer become `LIMIT -1`); FTS ordered by
+  `bm25()` not size; `signalOf` refuses unknown types and clamps NaN/out-of-range; calibrate skips
+  empty truths, keys its rows uniquely, tolerates malformed policies; `/decide` answers 400 on a
+  malformed body and `/health` gates key metadata behind the token; the queue adopts a new payload
+  for a pending fingerprint instead of silently keeping the stale one.
+- **VERIFICATION:** tsc 0; battery 24/0/110/9; `tests/guards.test.ts` pins six of the behaviours;
+  commits `9ea25f5`, `ccbd40f`.
+- **LESSON:** the medium layer is the same disease at lower severity — fix the CLASS and the next
+  twelve instances never happen.

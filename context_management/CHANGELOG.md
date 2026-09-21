@@ -69,7 +69,7 @@ yet · `@ocws` (219G) was never walked.
 
 `Checkpoints/jm-design-baseline-7b7f7eb/` (the pre-build round-zero, src-empty recorded as an honest
 gap) and `Checkpoints/jm-v0-waves-green-a39afe8/` (the sealed post-fix tree + docs + the audit
-artifact; battery 18/0 verified from the copy).
+artifact; battery 18/0 verified from the copy (later 24/0).
 
 ### THE FIX PASS (post-audit, commit `78cd3be`)
 
@@ -79,7 +79,7 @@ false success); tombstone filtering in both query branches; the loopback bind + 
 queue's claim clamp (a NaN became `LIMIT -1`); the fingerprint gaining the questions hash; the
 per-file guard in the index batch; `q.fail` recording for failed worker items; and the CLI's
 value-flag completeness. The dispositions for the three declined/refuted findings are in
-`AUDIT_SUMMARY.md`. Battery 18/0, tsc 0 after the pass.
+`AUDIT_SUMMARY.md`. Battery 18/0 at the fix pass (later 24/0), tsc 0.
 
 ### THE SESSION'S SHAPE (what the reader should take)
 
@@ -108,7 +108,7 @@ Append with this shape:
 
 ```
  NEW (source)      src/{cli,serve,ledger,calibrate}.ts + src/{store,judge,job,pools,verbs}/  (22 files, 1,405 lines)
- NEW (tests)       tests/*.test.ts (8 files, 18 tests, 87 assertions)
+ NEW (tests)       tests/*.test.ts (9 files, 24 tests, 110 assertions)
  NEW (package)     packages/jm/ (mission, discovery, DPL1 spec, waves, goals, index, master prompt)
  NEW (docs)        BUILD_REPORT · DEBUG_LOG · TESTING_LOG · FAILURE_LOG · THEATRICALITY_LOG · AUDIT_SUMMARY
  NEW (canon)       context_management/ (11 docs incl. the 2 high-frequency logs + the seat record)
@@ -153,7 +153,7 @@ Append with this shape:
  bede487  feat(w3+w5): judge client + decision-tree — live API verified, cache 0-call replay, deterministic artifacts
  a39afe8  feat(w4+w6+w7): find chain, HTTP surface, calibration rows
  75cf6e4  docs(w7+checkpoint): canon core + ship docs + runtime seat + sealed checkpoint
- 0deac03  fix(test): scoped test runner + typed fixtures (tsc 0, battery 18/0 scoped)
+ 0deac03  fix(test): scoped test runner + typed fixtures (tsc 0, battery 18/0 scoped (later 24/0))
  78cd3be  fix(audit): the 30 high findings + the audit artifact (AUDIT GATE: FAIL, re-audit owed)
  e88cbcd  docs(checkpoint): source-tree sha post-fix + the audit gate state recorded
 ```
@@ -183,7 +183,7 @@ one borderline case (T-05: a calibration row at n=3, labelled as a mechanism pro
                 budgets · HTTP · calibration (mechanism) · the battery · the audit lane
  NOT BUILT      W2 sqlite/jsonl adapters · route/evaluate verbs · MCP surface · watch daemon · W8
  GATE           AUDIT GATE: FAIL (0 critical, 30 high) — the fix pass landed; the re-audit is the proof
- SESSION TOTAL  9 commits · 22 src files (1,405 lines) · 8 test files (18 tests, 87 assertions) ·
+ SESSION TOTAL  9 commits · 22 src files (1,405 lines) · 9 test files (24 tests, 110 assertions) ·
                 15 debug entries · 61 recorded rulings/positions · 2 checkpoints · 1 audit artifact
 ```
 

@@ -90,3 +90,17 @@ Append-only, updated at the moment of work.
 - W2's adapters, W8, the MCP/watch surfaces: unbuilt, with their acceptance criteria written.
 - The checkpoint `jm-v0-waves-green-a39afe8` carries the post-fix tree; refresh it after any change.
 - The two logs above carry the moment-of-work entries; this one closes the session's arc.
+
+## [2026-09-21] FRONTIER WAVE 1 — THE MEDIUM FINDINGS (the audit's second layer)
+- WHAT: 14 medium findings fixed — path sanitisation (`safeName`, hash-suffixed derived names),
+  the job-id traversal guard, `busy_timeout`, the registry loud-fail, the `@target` existence check,
+  the query limit clamp, FTS `bm25` ordering, the policy guard (unknown types never route on
+  confidence), the calibrate guards (empty-truth exclusion, no same-ms overwrite, malformed-policy
+  tolerance, missing-table safety), the serve 400-on-malformed + key-metadata gate, and the queue's
+  payload adoption (a re-enqueue of a pending row now takes the NEW payload).
+- WHY: the audit's medium set is where the risk lives; each fix addresses a CLASS, not an instance.
+- HOW: surgical patches grounded in the audit's own finding text (extracted per file), plus
+  `tests/guards.test.ts` pinning six of the new behaviours.
+- EVIDENCE: `bunx tsc --noEmit` exit 0 · `bun test` 24 pass / 0 fail / 110 expects / 9 files ·
+  commits `9ea25f5` + `ccbd40f`.
+- NEXT: the re-audit verdict on the poolside lane; then frontier wave 2 (the remaining ~35 mediums).

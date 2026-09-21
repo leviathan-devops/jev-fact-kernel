@@ -34,7 +34,7 @@
 
 ### SCRIPT
 - **The run:** `bun test tests/` (8 files) and `bunx tsc --noEmit`.
-- **The raw output (tail):** `18 pass / 0 fail / 87 expect() calls / Ran 18 tests across 8 files.` · `TSC_EXIT=0`
+- **The raw output (tail):** `24 pass / 0 fail / 110 expect() calls / Ran 24 tests across 9 files.` · `TSC_EXIT=0`
 - **The verdict:** PASS
 - **The artifacts:** tests/{store,index,query,ledger,resume,budget,decision,adversarial}.test.ts
 

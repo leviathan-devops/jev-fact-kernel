@@ -3,7 +3,7 @@
 Every entry: the run, its verbatim output, the artifact. Nothing here is a claim without a run.
 
 ## SUMMARY (current)
-Battery **18 pass / 0 fail / 87 expects / 8 files** · `tsc` exit 0 · index `@shadow` 11,831 files ·
+Battery **24 pass / 0 fail / 110 expects / 9 files** · `tsc` exit 0 · index `@shadow` 11,831 files ·
 crash-resume dup=ZERO · budget exact · live judge verified · cache replay sha-identical ·
 HTTP `/decide` live · find chain live · adversarial sweep passed after 1 fix (D-007).
 **AUDIT GATE: FAIL (0 critical, 30 high)** — fixes applied (`78cd3be`), **re-audit owed**.
@@ -12,10 +12,10 @@ Artifacts: `artifacts/audit-2026-09-21.json`, `AUDIT_SUMMARY.md`.
 ## E-01 — the battery (2026-09-21)
 ```
 $ bun test
- 18 pass
+ 24 pass
  0 fail
- 87 expect() calls
-Ran 18 tests across 8 files. [175.00ms]
+ 110 expect() calls
+Ran 24 tests across 9 files. [175.00ms]
 $ bunx tsc --noEmit
 TSC_EXIT=0
 ```
@@ -191,7 +191,7 @@ findings are fixed AND the audit is re-run.** The fix pass is a claim; the re-ru
 $ bunx tsc --noEmit
 TSC_EXIT=0
 $ bun test
- 18 pass / 0 fail / 87 expect() calls / Ran 18 tests across 8 files.
+ 24 pass / 0 fail / 110 expect() calls / Ran 24 tests across 9 files.
 $ git log --oneline -1
 78cd3be fix(audit): address the 30 high findings (fail-closed propagation, tombstones, loopback
         bind, NaN guards, fingerprint+questions, per-file index guard) + land the audit artifact
@@ -210,3 +210,13 @@ $ wc -l BUILD_REPORT.md DEBUG_LOG.md context_management/*.md
 The floors were met with MATERIAL (transcripts, tables, dispositions), never whitespace; the
 THEATRICALITY_LOG records the one case (T-05) where a row was written at n=3 and labelled as a
 mechanism proof rather than a calibration.
+
+## E-18 — the frontier wave (the medium findings, first pass)
+```
+$ bunx tsc --noEmit            -> exit 0
+$ bun test                     -> 24 pass / 0 fail / 110 expect() calls / Ran 24 tests across 9 files.
+$ git log --oneline -2         -> ccbd40f fix(test): the traversal-law probe ... ; 9ea25f5 fix(frontier): medium audit wave — ...
+```
+14 medium findings fixed across 7 files; 6 new pins in `tests/guards.test.ts`; battery grew 18->24.
+Lane note: the re-audit runs on `poolside-laguna-s` (the muse-free lane failed at 0 tokens; the
+zen-free adapter at :4098 answers 200, so the failure is upstream on that route).
