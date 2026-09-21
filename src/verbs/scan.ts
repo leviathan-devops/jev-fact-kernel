@@ -12,11 +12,22 @@ export interface ScanOpts {
   candidateLimit?: number;   // rows pulled from the index before the regex gate (default 10x limit)
 }
 
+/** How much text surrounds a regex hit in the excerpt. */
+const EXCERPT_BEFORE = 60;
+const EXCERPT_AFTER = 140;
+/** The excerpt length when no regex gate ran (there is no hit to centre on). */
+const EXCERPT_HEAD = 140;
+
 export interface Candidate {
   path: string;
   size: number;
   state: string;
-  score: number;             // BM25 rank-derived (higher = better); 0 for non-fts scans
+  /** The ORDERING key the scan actually sorts on: the regex hit count when a gate ran, else 1.
+   *  This is NOT a relevance score — an audit found the old comment claimed "BM25 rank-derived",
+   *  which was never true. The real BM25 value is `rank` when the scan used an FTS seed. */
+  score: number;
+  /** SQLite bm25() for an FTS-seeded scan (LOWER = better), absent for a --where-only scan. */
+  rank?: number;
   hits: number;              // regex hit count over the row text
   excerpt: string;           // the first hit's context, so a human sees WHY it matched
 }
@@ -61,12 +72,12 @@ export function scanIndex(db: Database, opts: ScanOpts = {}): ScanResult {
       if (!matches || matches.length === 0) continue;
       hits = matches.length;
       const at = doc.text.search(re);
-      excerpt = doc.text.slice(Math.max(0, at - 60), at + 140).replace(/\s+/g, " ").trim();
+      excerpt = doc.text.slice(Math.max(0, at - EXCERPT_BEFORE), at + EXCERPT_AFTER).replace(/\s+/g, " ").trim();
     } else {
       const doc = textStmt.get(r.path) as { text: string } | null;
-      excerpt = doc ? doc.text.slice(0, 140).replace(/\s+/g, " ").trim() : "";
+      excerpt = doc ? doc.text.slice(0, EXCERPT_HEAD).replace(/\s+/g, " ").trim() : "";
     }
-    candidates.push({ path: r.path, size: r.size, state: r.state, score: hits || 1, hits, excerpt });
+    candidates.push({ path: r.path, size: r.size, state: r.state, score: hits || 1, rank: r.rank, hits, excerpt });
   }
 
   candidates.sort((a, b) => (b.hits - a.hits) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));   // deterministic order

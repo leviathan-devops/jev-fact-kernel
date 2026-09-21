@@ -97,8 +97,12 @@ non-defect into a real one.
 | A10-1 | `cache.ts` `INSERT OR REPLACE` still resets `hits` | high | REFUTED (again) | the same claim as A4-2, re-probed: hits preserved |
 | A10-2 | `spend()` increments before the cap check = "inconsistent state" | high | REFUTED | no caller catches the throw; the post-refusal state stays CLOSED (roomLeft false, retry refused) — rollback would re-open the budget |
 | A10-3 | `report.ts` imports `dirname`/`join`/`readdirSync` unused | low | CONFIRMED -> fixed | three dead imports removed |
+| A12-1 | `roomLeft()` ignores the USD cap | high | REFUTED | it checks it on its own line; the excerpt cut before it |
+| A13-1 | `scan.score` claims BM25 but is `hits \|\| 1` | critical | CONFIRMED -> fixed | the comment was false AND the real bm25 was discarded; now `rank` carries it |
+| A13-2 | excerpt constants 60/140 are magic numbers | medium | CONFIRMED -> fixed | named `EXCERPT_BEFORE`/`AFTER`/`HEAD` |
+| A13-3 | `verbatimModuleSyntax: false` under `module: ESNext` | medium | CONFIRMED -> fixed | flipped to `true`, tsc 0, battery green |
 
-**TALLY: 11 confirmed + fixed, 10 refuted by probe, 0 open.**
+**TALLY: 14 confirmed + fixed, 11 refuted by probe, 0 open.**
 
 ---
 

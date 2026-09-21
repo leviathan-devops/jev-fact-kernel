@@ -28,7 +28,12 @@ function parseWhere(expr: string): { sql: string; params: Bind[] } {
   return { sql: clauses.join(" AND "), params };
 }
 
-export interface QueryRow { path: string; size: number; mtime: number; kind: string | null; state: string; sha256: string | null; }
+export interface QueryRow {
+  path: string; size: number; mtime: number; kind: string | null; state: string; sha256: string | null;
+  /** BM25 relevance for an FTS query (LOWER = better in SQLite's bm25(); absent for a non-FTS
+   *  query, which is ordered by size). Surfaced so callers do not have to re-derive a rank. */
+  rank?: number;
+}
 
 export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   const rawLimit = opts.limit ?? 50;
@@ -36,7 +41,7 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   const params: Bind[] = [];
   let sql: string;
   if (opts.fts) {
-    sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256
+    sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256, bm25(docs_fts) AS rank
              FROM docs_fts x JOIN files f ON f.path = x.path
             WHERE docs_fts MATCH ? AND f.state != 'gone'`;
     params.push(opts.fts);

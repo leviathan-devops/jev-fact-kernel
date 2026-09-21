@@ -859,3 +859,23 @@ was written first and then executed. That is the point of the exercise: a doc cl
 - **LESSON:** two operators in one file can be correct while being different — the question is
   where each sits relative to the mutation. An audit that "matches" them is matching the letters,
   not the jobs.
+
+## EN-037 — the scan's `score` was a lie, and three smaller audit items
+- **D-022 (the comment claimed what the code never did): `Candidate.score` was documented as
+  "BM25 rank-derived (higher = better)" and was in fact `hits || 1`.** An audit called it a
+  critical contradiction. Adjudicated: the ORDERING is correct (a regex gate's hit count), but the
+  FIELD and its comment were false, and the FTS branch's real BM25 value was thrown away by
+  `queryIndex` before the scan could use it. FIX: `queryIndex` now returns `bm25(docs_fts) AS rank`
+  on the FTS branch, the scan carries it as `rank` (LOWER = better, as SQLite defines it), and
+  `score`'s comment now states exactly what it is. VERIFIED: tsc 0, battery 93/0.
+- **Magic numbers named:** the excerpt window is now `EXCERPT_BEFORE=60` / `EXCERPT_AFTER=140`,
+  and the no-regex excerpt is `EXCERPT_HEAD=140` — three unnamed literals that an audit flagged.
+- **`verbatimModuleSyntax: false` -> `true`:** the audit's recommendation was TESTED rather than
+  argued: the flag flipped, `tsc` exit 0, battery 93/0, kept. It makes a type-only import that
+  would break at runtime a compile-time error.
+- **REFUTED (A12-1):** "`roomLeft()` does not validate against the USD cap" — it does, on its own
+  line; the auditor's excerpt cut before it. Already pinned by the usd arm of
+  `test_budget_roomLeft_predicts_the_refusal`.
+- **FLAKE OBSERVED ONCE, NOT REPRODUCED:** one battery run reported 1 fail immediately after an
+  edit; four consecutive re-runs are 93/0. Recorded rather than dismissed — the likely cause is a
+  spawned-CLI suite racing the parallel runner for CPU. It is on the frontier, not closed.
