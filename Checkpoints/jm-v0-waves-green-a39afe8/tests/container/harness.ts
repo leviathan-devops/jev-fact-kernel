@@ -1,4 +1,6 @@
-// tests/container/harness.ts — THE CONTAINER RIG (spec §9, angles T1–T7).
+// tests/container/harness.ts — THE CONTAINER RIG (spec §9, angles T1–T8).
+// T10 was added for C14's remaining half: the REGISTERED MCP launcher, invoked by absolute path
+// from a FOREIGN working directory — the way an MCP client actually starts it.
 // Standalone: no bun:test, no host paths, no host key, no host skills dir. Run it inside a
 // container and it proves the engine in an environment the host cannot provide for itself.
 //
@@ -221,6 +223,91 @@ async function T7(): Promise<void> {
   record("T7", ok, ok ? "JM_ADVERSARIAL_SURVIVED" : "JM_THREW", threw || "no throw across 7 hostile inputs");
 }
 
+
+// ---------------------------------------------------------------- T10 · the REGISTERED launcher, from a FOREIGN cwd
+//
+// NAMED T10, NOT T8: the spec's §9 reserves T8 (fire-gate twin) and T9 (token cap) for the parked
+// W8 layer. Reusing the number would make this rig's count read as covering an angle it does not
+// touch — the same class of error as a test that passes for the wrong reason.
+//
+// C14's remaining half is "an OMP session calls jm_find". The protocol is already proven; what this
+// angle adds is the part a registration can actually get WRONG: the launcher an MCP client invokes
+// by ABSOLUTE PATH is started with an arbitrary working directory. A server whose entry point
+// resolves its own files relative to the CALLER's cwd works perfectly in the author's shell and
+// fails inside every client. This angle starts it from `/`, far from the tree, and asserts:
+//   (a) tools/list answers with the four tools                    -- the launcher resolves its own root
+//   (b) tools/call jm_query returns a real row                    -- a real stdio round trip
+//   (c) tools/call jm_find with NO key is a NAMED refusal         -- the negative half, never a silent empty
+async function T10(): Promise<void> {
+  const { home, root } = sandbox();
+  const dir = join(root, "corpus");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "a.md"), "the ledger records every judge call");
+  writeFileSync(join(dir, "b.md"), "an unrelated note about packaging");
+  const launcher = join(process.cwd(), "scripts-jm-mcp.sh");
+  if (!existsSync(launcher)) { record("T10", false, "JM_LAUNCHER_MISSING", launcher); return; }
+
+  const call = (lines: string[]) => {
+    const r = Bun.spawnSync({
+      cmd: [launcher], stdin: Buffer.from(lines.join("\n") + "\n"),
+      cwd: "/",                                   // THE POINT: a foreign working directory
+      env: { ...process.env, JM_HOME: home, HOME: home, PATH: process.env.PATH ?? "", JM_JUDGE_KEY: "" },
+      timeout: 20000,
+    });
+    return r.stdout.toString();
+  };
+  const IN = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"rig","version":"1"}}}';
+  const NOTE = '{"jsonrpc":"2.0","method":"notifications/initialized"}';
+
+  // (a) the launcher resolves its own root from a foreign cwd
+  const listed = call([IN, NOTE, '{"jsonrpc":"2.0","id":2,"method":"tools/list"}']);
+  const four = ["jm_query", "jm_find", "jm_decide", "jm_index"].every((t) => listed.includes(t));
+
+  // index the corpus so jm_query has something to read.
+  // NOTE FOR THE NEXT READER: `jm index` takes a PATH, and a REGISTERED target needs the `@`
+  // prefix (`jm index @name`). The first draft of this angle used `targets add` (plural) — the
+  // verb is `target add` (singular) — and spent a cycle chasing a probe bug that looked like a
+  // product bug. The index call below avoids the target registry entirely.
+  const idx = Bun.spawnSync({ cmd: ["bun", "run", "src/cli.ts", "index", dir, "--name", "ct8"], cwd: process.cwd(), env: { ...process.env, JM_HOME: home, HOME: home } });
+  if (idx.exitCode !== 0) { record("T10", false, "JM_RIG_INDEX_FAILED", idx.stderr.toString().slice(0, 200)); return; }
+
+  // (b) a real stdio round trip, still from /
+  // THE ASSERTION PARSES THE PROTOCOL, it does not regex the wire. Two drafts of this angle were
+  // wrong for the same reason — reading raw bytes instead of the message they carry:
+  //   draft 1 asserted the response contains "ledger"; the phrase that MATCHED lives in the file's
+  //           content, while the ROW carries path/size/rank, so a working round trip read as a fail;
+  //   draft 2 regexed `"n": 1` against bytes where every quote is ESCAPED (`\"n\": 1`), so it
+  //           could never match.
+  // Parse the envelope, parse the tool's text payload, assert the VALUE.
+  const queried = call([IN, NOTE, '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"jm_query","arguments":{"index":"ct8","fts":"ledger"}}}']);
+  const toolPayload = (raw: string, id: number): { n?: number; isError?: boolean; text: string } => {
+    const line = raw.split("\n").find((l) => l.includes(`"id":${id}`));
+    if (!line) return { text: "" };
+    try {
+      const env = JSON.parse(line) as { result?: { isError?: boolean; content?: { text?: string }[] } };
+      const text = env.result?.content?.[0]?.text ?? "";
+      let n: number | undefined;
+      try { n = (JSON.parse(text) as { n?: number }).n; } catch { /* not a JSON payload */ }
+      return { n, isError: env.result?.isError, text };
+    } catch { return { text: "" }; }
+  };
+  const q = toolPayload(queried, 3);
+  const gotRow = q.n === 1 && q.text.includes("a.md");
+
+  // (c) THE NEGATIVE HALF: no key -> a NAMED refusal, never an empty success
+  const denied = call([IN, NOTE, '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"jm_find","arguments":{"index":"ct8","query":"notes about packaging"}}}']);
+  const d = toolPayload(denied, 4);
+  const namedRefusal = (d.isError === true || /JM_JUDGE|JM_KEY|missing key|no key/i.test(d.text)) && d.n !== 0;
+
+  rmSync(home, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true });
+  const ok = four && gotRow && namedRefusal;
+  record("T10", ok,
+    ok ? "JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED" : (four ? "" : "TOOLS_LOST ") + (gotRow ? "" : "NO_ROW ") + (namedRefusal ? "" : "KEYLESS_SILENT"),
+    // the angle carries its own evidence: the raw round trip, so a failure here is readable
+    // without re-running anything.
+    `tools=${four} row=${gotRow} namedRefusal=${namedRefusal} :: ${queried.replace(/\s+/g, " ").slice(0, 220)}`);
+}
+
 // ---------------------------------------------------------------- the rig
 async function main(): Promise<number> {
   console.log(`JM CONTAINER RIG — bun ${Bun.version} · node ${process.version} · cwd ${process.cwd()}`);
@@ -232,6 +319,7 @@ async function main(): Promise<number> {
   await T5();
   await T6();
   await T7();
+  await T10();
   const failed = results.filter((r) => !r.ok);
   console.log(`\nJM_CONTAINER_RIG ${failed.length === 0 ? "PASS" : "FAIL"} — ${results.length - failed.length}/${results.length} angles`);
   if (failed.length) console.log(`failed: ${failed.map((f) => `${f.id}(${f.token})`).join(" ")}`);

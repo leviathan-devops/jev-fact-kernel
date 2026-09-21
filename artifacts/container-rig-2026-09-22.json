@@ -1,0 +1,26 @@
+{
+  "rig": "jm-container-rig",
+  "angles": "T1-T8",
+  "date": "2026-09-22",
+  "host": {
+    "bun": "1.4.2",
+    "result": "PASS 8/8"
+  },
+  "container": {
+    "name": "jm-ct-rig",
+    "bun": "1.4.2",
+    "node": "v26.3.0",
+    "result": "PASS 8/8"
+  },
+  "tokens": {
+    "T1": "JM_INDEX_OK files=500",
+    "T2": "JM_INDEX_DELTA=3",
+    "T3": "JM_CACHE_HITS=100 JM_JUDGE_CALLS=0",
+    "T4": "JM_EXIT=2 JM_DECISIONS_WRITTEN=0",
+    "T5": "JM_RESUME_OK dup=0 (SIGKILLed with 8 orphaned) -> done=400 distinct=400",
+    "T6": "JM_BUDGET_STOPPED calls=5",
+    "T7": "JM_ADVERSARIAL_SURVIVED (7 hostile inputs)",
+    "T10": "JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED"
+  },
+  "T10_note": "the registered launcher invoked by ABSOLUTE PATH from cwd=/ \u2014 tools/list answers 4 tools, a real tools/call jm_query returns n=1, and a keyless jm_find is a NAMED isError refusal rather than an empty success. This angle (named T10, NOT the spec's reserved T8) found D-047."
+}

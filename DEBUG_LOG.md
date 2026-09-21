@@ -1600,3 +1600,25 @@ ONE SURFACE AND NOT ON ANOTHER.
   reason — and my ad-hoc command did not.
 - **FIX:** the pin corrected; and the verification command for commits now reads the COUNTS
   explicitly (`bun test 2>&1 | grep -E "^ *[0-9]+ (pass|fail)"`), the same way the gate runner does.
+
+## EN-065 — D-047: the registered launcher's bun resolution depended on $HOME (found by T8)
+- **SYMPTOM:** the new T10 angle (the registered MCP launcher, invoked by ABSOLUTE PATH from a
+  foreign cwd) failed its first three sub-checks at once.
+- **ROOT CAUSE (the product half):** the launcher resolved its interpreter as
+  `"${JM_BUN:-$HOME/.bun/bin/bun}"`. The MCP REGISTRY entry (`~/.omp/agent/mcp.json`) passes a
+  `PATH` that contains `.bun/bin` — the environment actually provided — while the launcher's only
+  fallback was the HOME-derived path. Any environment with a different HOME (a service manager, a
+  container, a sandboxed test) fails to start the server, and the failure is a launcher that exits
+  before the protocol begins.
+- **WHY IT MATTERED:** this is a REGISTERED launcher. It is invoked by absolute path, in an
+  environment its author does not control, and "works in my shell" is the exact shape of the bug.
+- **FIX:** a resolution LADDER — `JM_BUN` (explicit override) -> `command -v bun` (what the registry
+  actually provides) -> `$HOME/.bun/bin/bun` (last resort) — with an explicit exit 127 and a message
+  naming all three rungs when none resolves.
+- **THE PROBE HALF, recorded because three of the angle's four defects were MINE:** the first draft used
+  `targets add` (the verb is `target add`); the second asserted the response contains the SEARCHED
+  phrase, when an FTS row carries path/size/rank and the phrase lives in the file's content; the
+  third regexed `"n": 1` against wire bytes where every quote is ESCAPED. T10 now PARSES the
+  JSON-RPC envelope and the tool's payload and asserts the VALUE.
+- **PROVEN:** 8/8 angles on the host AND in the container (`jm-ct-rig`, bun 1.4.2) —
+  `JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED`.

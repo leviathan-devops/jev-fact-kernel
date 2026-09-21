@@ -214,24 +214,49 @@ directory so the server starts from ANY cwd:
 Proven from a foreign cwd — `cd /tmp && … scripts-jm-mcp.sh` answered `tools/list` with
 `['jm_query', 'jm_find', 'jm_decide', 'jm_index']`.
 
+**THE LAUNCHER IS NOW PROVEN THE WAY A CLIENT ACTUALLY STARTS IT — angle T10.** The registration
+could hide one failure mode that no in-repo test would catch: an MCP client invokes the launcher by
+ABSOLUTE PATH with an ARBITRARY working directory, so a server that resolves its own files relative
+to the caller's cwd works in the author's shell and fails in every client. T10 starts it from `/`
+and asserts three things:
+
+```
+PASS  T10  JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED
+  (a) tools/list from cwd=/ answers with all four tools
+  (b) a real tools/call jm_query returns n=1 with the row payload
+  (c) a keyless tools/call jm_find is a NAMED isError refusal, never an empty success
+```
+Run on the host AND in a fresh container (`jm-ct-rig`, bun 1.4.2) — `artifacts/container-rig-2026-09-22.json`.
+
+**IT FOUND D-047, a real defect in the launcher.** The interpreter was resolved as
+`"${JM_BUN:-$HOME/.bun/bin/bun}"`, while the registry entry passes a `PATH` containing `.bun/bin`.
+Any environment with a redirected HOME — a service manager, a container, a sandboxed test — fails
+to start the server before the protocol begins. Fixed with a ladder (`JM_BUN` → `command -v bun` →
+`$HOME/.bun/bin/bun`) and an explicit exit 127 naming all three rungs.
+
+**THE ANGLE IS NAMED T10, NOT T8.** The spec's §9 reserves **T8 (fire-gate twin)** and **T9 (token
+cap)** for the parked W8 layer. Reusing the number would have made the rig's count read as covering
+an angle it does not touch.
+
 **What is still owed, and why it cannot be closed from inside this session:** an MCP server mounts
-at session START. A running session cannot restart itself, and this host's gate refuses headless
-smoke probes (`[STTGF ESCALATE] HEADLESS — running container test is MANDATORY`), so the
-session-live half needs either a fresh interactive session or the sanctioned container rig. The
-verification for whoever starts one is exactly:
+at session START, so the OMP-SESSION half — an agent's own tool surface calling `jm_find` — needs a
+fresh interactive session. This host's gate refuses headless smoke probes
+(`[STTGF ESCALATE] HEADLESS — running container test is MANDATORY`), which is why the sanctioned
+container rig was used instead. The verification for whoever starts one is exactly:
 
 ```
 # in a NEW omp session
 call jm_find with {"phrase": "<a known phrase>", "index": "<an index that exists>"}
 # expect: rows back, not a "tool not found"
 ```
-Until that runs, this line says host-live + registered, and NOT session-live.
+Until that runs, this line says host-live + registered + launcher-proven-from-a-foreign-cwd, and
+NOT session-live.
 
 ### C15–C18 — the fire-gate criteria — **NOT APPLICABLE**
 
 `src/firegate/` does not exist and `jef` is not installed. W8 is parked on two operator-owned
 rulings (F1: the embedding question; F6: the pi wrap points). No token for C15–C18 is claimed, and
-the T8/T9 container angles are excluded from the rig's 7/7 for the same reason.
+the spec's T8/T9 container angles are excluded from the rig's 8/8 (T1–T7 + the additive T10) for the same reason.
 
 ### C19 — adversarial inputs — **MET**
 

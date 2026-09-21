@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `e8097b887c2dd0fd33e900660f85b784` (git 50857cc)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `59a00768718ddf8ee4a41ffff58b63b6` (git a18a880)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -98,7 +99,7 @@ sealed copy does not belong here.
 | `tests/calibrate-unknown.test.ts` | 66 |
 | `tests/cli-contract.test.ts` | 147 |
 | `tests/concurrency.test.ts` | 95 |
-| `tests/container/harness.ts` | 241 |
+| `tests/container/harness.ts` | 329 |
 | `tests/decide.test.ts` | 209 |
 | `tests/decision.test.ts` | 112 |
 | `tests/find-excerpt.test.ts` | 91 |

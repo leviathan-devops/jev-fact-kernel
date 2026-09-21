@@ -199,3 +199,7 @@ belong here.
 
 - **CURRENT:** git 2a641ab — the canon logs landed where the contract reads them, closing the
   filing half of C20; the floor half is now met in all three logs by material, not by padding.
+
+- **THE RIG IS NOW 8 ANGLES:** T1–T7 (spec §9) + **T10** (the additive registered-launcher angle,
+  named T10 because the spec reserves T8/T9 for the parked fire gate). PASS 8/8 on the host and in
+  `jm-ct-rig`; artifact `artifacts/container-rig-2026-09-22.json`.

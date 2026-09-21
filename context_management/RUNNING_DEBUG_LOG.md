@@ -205,3 +205,23 @@ suite, and none would have been found by reading the code.
 that the system is defect-free; it is a claim that this instrument, on this instance, has nothing
 left unexperienced. The residual is NAMED: W8's fire gate (parked on the operator's rulings) and
 the source chunk of the independent audit.
+
+## [2026-09-22] D-047 + T10 — the registered launcher, proven the way a client starts it
+
+- **THE ANGLE:** an MCP client invokes a registered server by ABSOLUTE PATH with an ARBITRARY cwd.
+  Nothing in the repo tested that, because every in-repo test ran from the repo. T10 starts the
+  launcher from `/` and asserts the full protocol: `tools/list` (4 tools), a real `tools/call
+  jm_query` (n=1 with the row payload), and a keyless `jm_find` as a NAMED `isError` refusal.
+- **THE DEFECT IT FOUND (D-047):** the launcher resolved bun as `"${JM_BUN:-$HOME/.bun/bin/bun}"`
+  while the registry passes `PATH` containing `.bun/bin`. A redirected HOME — service manager,
+  container, sandbox — means the server never starts. Fixed with a ladder and an exit 127 naming
+  every rung.
+- **THREE OF THE ANGLE'S FOUR FAILURES WERE THE PROBE, NOT THE PRODUCT** — `targets add` for
+  `target add`; asserting the response contains the SEARCHED phrase when an FTS row carries
+  path/size/rank and the phrase lives in the file's content; and regexing `"n": 1` against wire
+  bytes where every quote is escaped. The angle now PARSES the envelope and the payload and asserts
+  the VALUE.
+- **THE NAMING CATCH:** the angle was first called T8 — a number the spec's §9 reserves for the
+  fire-gate twin. A rig reporting "8/8" with a reused number reads as covering an angle it does not
+  touch. Renamed T10.
+- **PROVEN:** host 8/8 and container 8/8 (`jm-ct-rig`, bun 1.4.2).
