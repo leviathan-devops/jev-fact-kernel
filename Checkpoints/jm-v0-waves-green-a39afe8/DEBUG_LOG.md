@@ -1119,3 +1119,31 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **FRONTIER:** `scan` also builds a head excerpt for its no-regex path, but that path only DISPLAYS
   (its regex gate reads the full text), so there is nothing to fix — recorded so the same probe is
   not run against it again.
+
+## EN-048 — D-033: one seed monopolised the candidate set (the stage was not shown the phrase)
+- **FOUND BY:** continuing the D-031/D-032 lens — "what evidence is each deciding stage shown?" —
+  into the SEED stage rather than the excerpt stage.
+- **THE MEASUREMENT (real corpus):**
+  ```
+  phrase "theatrical enforcement claim" -> seeds: theatrical, enforcement, claim
+  hits per seed: {"theatrical":345,"enforcement":361,"claim":486}
+  the 100 candidates came from: {"theatrical":100}
+  ```
+  The candidate set was built SEED BY SEED and then truncated, so the first seed's 100 hits filled
+  it completely and two seeds with 361 and 486 available hits contributed NOTHING. The chain then
+  judged one token's hits and published patterns for the whole phrase — a false statement about
+  what had been searched.
+- **FIX:** a ROUND-ROBIN fetch (rank 0 of every seed, then rank 1 of every seed, ...) with the same
+  dedupe and cap, plus a final sweep so a short list still contributes. Measured after:
+  `{"theatrical":42,"enforcement":21,"claim":37}`.
+- **A SECOND, SMALLER DEFECT FOUND WHILE FIXING IT:** the trend's first number was `seen.size`,
+  which the round-robin caps at `limit` — so the run began reporting `100 -> 100` and lost the
+  "how many rows were reachable" fact. The union of the per-seed fetches is now counted separately:
+  `209 -> 100 -> 9 -> 1`.
+- **VERIFICATION:** pinned by `test_D033_no_single_seed_monopolises_the_candidates`, which builds
+  three seeds in three path-token clusters and asserts **3 patterns with n = [10, 10, 10]** — one
+  per seed. Under the old fetch that test yields ONE pattern of n=30 (all from the first seed),
+  which is exactly the shape the defect produced.
+- **THE CLASS, THIRD INSTANCE:** D-031 (the excerpt), D-032 (the same in filter), D-033 (the seed
+  set). All three are the same failure: **a stage decided about X while being shown evidence for a
+  subset of X.** All three produced plausible-looking, non-erroring, wrong output.

@@ -112,4 +112,46 @@ describe("W4 find", () => {
       db.close();
     } finally { delete process.env.JM_MOCK_DIR; rmSync(mock, { recursive: true, force: true }); sb.cleanup(); }
   });
+
+  test("test_D033_no_single_seed_monopolises_the_candidates", async () => {
+    // The candidate set was built SEED BY SEED and then truncated, so a first seed with >= limit
+    // hits starved every other seed. Measured on the real corpus: "theatrical enforcement claim"
+    // (seeds theatrical=345, enforcement=361, claim=486 hits) produced 100 candidates, ALL from
+    // `theatrical` — the chain judged one token's hits and reported patterns for the whole phrase.
+    // The fix is a round-robin fetch; this pin asserts every seed is REPRESENTED.
+    const sb = makeSandbox();
+    try {
+      // three seeds, each with many distinct hits, so a seed-by-seed slice would starve two
+      const files: Record<string, string> = {};
+      for (let i = 0; i < 40; i++) files[`c/alpha-${i}.md`] = `alpha marker ${i}`;
+      for (let i = 0; i < 40; i++) files[`c/beta-${i}.md`] = `beta marker ${i}`;
+      for (let i = 0; i < 40; i++) files[`c/gamma-${i}.md`] = `gamma marker ${i}`;
+      fill(sb.root, files);
+      process.env.JM_HOME = sb.home;
+      saveTargets([{ name: "c", kind: "fs", root: join(sb.root, "c") }]);
+      const db = openDb(indexPathFor("all"));
+      await ingestAll(db, "all");
+
+      const mock = mockNoul(Array.from({ length: 40 }, () => 0.95));
+      process.env.JM_MOCK_DIR = mock;
+      try {
+        const res = await find(db, { phrase: "alpha beta gamma", common: 2, limit: 30 });
+        const [reachable, candidates] = res.trend.split(" → ").map(Number);
+        expect(candidates).toBe(30);                       // the limit is honored
+        expect(reachable).toBe(90);                        // 3 seeds x the per-seed fetch cap (30)
+        // THE PROOF OF BALANCE: the three seeds live in three path-token clusters, so a
+        // round-robin across seeds yields ONE PATTERN PER SEED, each with n=10. A seed-by-seed
+        // fetch would have produced ONE cluster of 30 (all from `alpha`) and starved the rest.
+        expect(res.patterns.length).toBe(3);
+        const ns = res.patterns.map((x) => x.n).sort((a, b) => a - b);
+        expect(ns).toEqual([10, 10, 10]);
+        // and each pattern's exemplars come from its OWN seed
+        for (const pat of res.patterns) {
+          const names = new Set(pat.exemplars.map((e) => e.path.match(/c\/([a-z]+)-/)?.[1]));
+          expect(names.size).toBe(1);                      // one seed per cluster, never mixed
+        }
+      } finally { delete process.env.JM_MOCK_DIR; rmSync(mock, { recursive: true, force: true }); }
+      db.close();
+    } finally { sb.cleanup(); }
+  });
 });

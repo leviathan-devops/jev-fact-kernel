@@ -547,3 +547,16 @@ AFTER   6/6 candidates have their match INSIDE the excerpt
 FRONTIER scan's no-regex head excerpt only DISPLAYS (its gate reads the full text) — nothing to fix
 battery 130 pass / 0 fail / 629 expects / 24 files · tsc exit 0
 ```
+
+### D-033 — THE THIRD INSTANCE OF THE JUDGE-EVIDENCE CLASS
+```
+PROBE   "does find's candidate set represent EVERY seed of the phrase?"
+FOUND   the set was built seed-by-seed then truncated: {"theatrical":100} for a phrase whose other
+        two seeds had 361 and 486 hits available — they contributed NOTHING to what was searched
+FIX     a round-robin fetch across seeds (rank 0 of each, then rank 1 of each, ...) ; measured
+        after: {"theatrical":42,"enforcement":21,"claim":37}
+ALSO    the trend's first number was `seen.size`, which the round-robin caps — the union is now
+        counted separately, so it reads `209 -> 100 -> 9 -> 1` and keeps its meaning
+PIN     3 seeds in 3 clusters -> 3 patterns with n=[10,10,10] (the old fetch: ONE pattern of n=30)
+battery 131 pass / 0 fail / 667 expects / 24 files · tsc exit 0
+```
