@@ -4,6 +4,7 @@ import type { Database } from "bun:sqlite";
 import { Judge } from "../judge/client.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
+import { excerptAround, seedsOf } from "./excerpt.ts";
 import { queryIndex } from "./query.ts";
 
 export interface FilterOpts {
@@ -17,6 +18,7 @@ export interface FilterResult { candidates: number; judged: number; kept: number
 
 export async function filterIndex(db: Database, opts: FilterOpts): Promise<FilterResult> {
   const candidates = queryIndex(db, { fts: opts.fts, where: opts.where, limit: opts.limit ?? 200 });
+  const seeds = opts.fts ? seedsOf(opts.fts) : [];
   const judge = new Judge(db, {});
   const budget = new Budget({ calls: opts.budgetCalls });
   const minP = opts.minP ?? 0.8;
@@ -28,7 +30,12 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
     if (budgetStopped) return null;
     if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
-    const excerpt = (doc?.text ?? "").slice(0, cap);
+    // THE EXCERPT MUST CONTAIN THE MATCH (D-032): the head slice sent the judge text that did not
+    // contain the phrase that matched the row — measured on the real corpus, 4 of 6 candidates had
+    // their hit OUTSIDE a 1500-char head slice, one of them at char 58,842. The seeds are the
+    // phrase's tokens when the candidates came from --fts; a --where-only run has none, and the
+    // helper falls back to the head, which is the best available answer for that case.
+    const excerpt = excerptAround(doc?.text ?? "", seeds, cap);
     const res = await judge.ask({ candidate: { path: c.path, size: c.size, excerpt } },
       { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
     const p = (res.answers.match as { noul?: number })?.noul ?? 0;

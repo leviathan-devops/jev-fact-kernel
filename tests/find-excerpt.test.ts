@@ -5,7 +5,12 @@
 // instance of X?" while being shown text that did not contain X — so it answered no, correctly,
 // and the chain silently dropped every true positive.
 import { test, expect, describe } from "bun:test";
-import { excerptAround, quoteAround } from "../src/verbs/find.ts";
+import { excerptAround, quoteAround, seedsOf } from "../src/verbs/excerpt.ts";
+import { join } from "node:path";
+import { makeSandbox, fill } from "./helpers.ts";
+import { openDb, indexPathFor, saveTargets } from "../src/store/db.ts";
+import { ingestAll } from "../src/targets.ts";
+import { queryIndex } from "../src/verbs/query.ts";
 
 /** A document that looks like the real corpus: JSON preamble, then the content far in. */
 function structuredDoc(prefixLen: number, needle: string, tailLen = 400): string {
@@ -56,5 +61,31 @@ describe("D-031 the find excerpt", () => {
     const ex = excerptAround(text, ["zulu", "alpha"], 1200);
     // "alpha" is earlier than "zulu", so the window is centred there — clamped to the start
     expect(ex.startsWith("alpha")).toBe(true);
+  });
+
+  test("test_D032_filter_judges_on_text_containing_the_match", async () => {
+    // The SAME class as D-031, in the filter verb: its candidates come from an FTS match, and it
+    // sent the judge a 1500-char HEAD slice. Measured on the real corpus: 4 of 6 candidates had
+    // their hit OUTSIDE that slice, one of them at char 58,842.
+    const sb = makeSandbox();
+    try {
+      // a document whose match sits far past any head slice, in the structured-corpus shape
+      const body = JSON.stringify({ file: "x", patch: "Index: x\n".repeat(400) }) + "\ntombstone-record-marker and then more text\n" + "z".repeat(500);
+      fill(sb.root, { "c/deep.json": body, "c/shallow.json": "tombstone up front" });
+      process.env.JM_HOME = sb.home;
+      saveTargets([{ name: "c", kind: "fs", root: join(sb.root, "c") }]);
+      const db = openDb(indexPathFor("f"));
+      await ingestAll(db, "all");
+      const sc = queryIndex(db, { fts: "tombstone", limit: 10 });
+      expect(sc.length).toBe(2);                       // both match by FTS
+      // what filter would send the judge, for each candidate
+      const seeds = seedsOf("tombstone");
+      for (const r of sc) {
+        const doc = db.query("SELECT text FROM docs WHERE path = ?").get(r.path) as { text: string } | null;
+        const ex = excerptAround(doc?.text ?? "", seeds, 1500);
+        expect({ path: r.path, hasMatch: ex.toLowerCase().includes("tombstone") }).toEqual({ path: r.path, hasMatch: true });
+      }
+      db.close();
+    } finally { sb.cleanup(); }
   });
 });

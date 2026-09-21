@@ -1089,3 +1089,33 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **LESSON:** a chain that returns zero can be "correctly finding nothing" or "structurally unable
   to see". The difference is not in the counts — it is in whether the stage that made the decision
   was SHOWN the evidence. Read the prompt, not the trend.
+
+## EN-047 — D-032: the SAME defect as D-031, in the filter verb (found by probing the class)
+- **HOW IT WAS FOUND:** D-031's lesson was not "the find excerpt is wrong" but "measure what text
+  a JUDGE is shown". Applying that lens to every judge-fed stage found exactly one more instance:
+  `filter.ts` built its excerpt as a 1,500-character HEAD slice.
+- **THE MEASUREMENT (real corpus, the same six candidates that D-031 used):**
+  ```
+  INSIDE   hit@  1267  cap=1500
+  INSIDE   hit@  1267  cap=1500
+  OUTSIDE  hit@  9224  cap=1500
+  OUTSIDE  hit@ 45892  cap=1500
+  OUTSIDE  hit@ 25403  cap=1500
+  OUTSIDE  hit@ 58842  cap=1500
+  4/6 candidates have their match OUTSIDE the excerpt filter sends
+  ```
+  One candidate was judged on text 58,842 characters away from the phrase that matched it.
+- **FIX:** the two helpers moved to `src/verbs/excerpt.ts` — ONE source for "what the judge sees"
+  and "what the human reads" — and filter now anchors its excerpt on the phrase's tokens
+  (`seedsOf(opts.fts)`), falling back to the head for a --where-only run, which has no seed to
+  centre on.
+- **VERIFICATION:** the same probe reads `6/6 candidates now have their match INSIDE the excerpt`;
+  pinned by `test_D032_filter_judges_on_text_containing_the_match`, which builds a
+  structured-corpus-shaped document (a JSON preamble, then the match far in) and asserts the
+  excerpt filter WOULD send contains the match for BOTH candidates.
+- **THE CLASS, STATED:** a stage that judges, classifies or decides is only as good as the evidence
+  it is SHOWN. A truncation that takes the head is a silent filter on the evidence, and it fails in
+  the direction that looks like correct behaviour — "found nothing" rather than "errored".
+- **FRONTIER:** `scan` also builds a head excerpt for its no-regex path, but that path only DISPLAYS
+  (its regex gate reads the full text), so there is nothing to fix — recorded so the same probe is
+  not run against it again.

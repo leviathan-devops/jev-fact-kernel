@@ -7,6 +7,7 @@ import { Judge } from "../judge/client.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 import { queryIndex, type QueryRow } from "./query.ts";
+import { excerptAround, quoteAround, seedsOf } from "./excerpt.ts";
 
 export interface FindOpts {
   phrase: string; common?: number; structure?: "md" | "json"; minP?: number;
@@ -28,36 +29,6 @@ export interface FindResult {
 
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where", "which", "have", "has", "was", "were", "are", "its", "its", "bug", "issue"]);
 
-/** The excerpt a judge is shown: centred on the FIRST seed occurrence, so the text that caused
- *  the match is IN the excerpt. Falls back to the head when no seed is found (a --where-only or
- *  phrase-level match), and never exceeds `max` characters. */
-export const EXCERPT_LINE_WIDTH = 6;   // kept for callers that want to align excerpts; unused here
-/** The QUOTE shown to a human: it must START at the match, not at the head of the centred window.
- *  Measured: after centring the judge's excerpt, the pattern's quotes still began ~600 chars
- *  before the hit, so a reader could not see WHY the row matched. */
-export function quoteAround(text: string, seeds: string[], len: number): string {
-  let at = -1;
-  for (const s of seeds) {
-    const i = text.toLowerCase().indexOf(s.toLowerCase());
-    if (i >= 0 && (at < 0 || i < at)) at = i;
-  }
-  return at >= 0 ? text.slice(at, at + len) : text.slice(0, len);
-}
-
-export function excerptAround(text: string, seeds: string[], max: number): string {
-  if (text.length <= max) return text;
-  let at = -1;
-  for (const s of seeds) {
-    const i = text.toLowerCase().indexOf(s.toLowerCase());
-    if (i >= 0 && (at < 0 || i < at)) at = i;
-  }
-  if (at < 0) return text.slice(0, max);
-  // centre the window on the hit, then clamp to the document
-  const half = Math.floor(max / 2);
-  const start = Math.max(0, Math.min(at - half, text.length - max));
-  return text.slice(start, start + max);
-}
-
 export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   const budget = new Budget({ calls: opts.budgetCalls });
   const judge = new Judge(db, {});
@@ -66,8 +37,7 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   let calls = 0, costUsd = 0, budgetStopped = false;
 
   // 2 SEEDS — deterministic tokenisation (no model)
-  const seeds = Array.from(new Set(opts.phrase.toLowerCase().split(/[^a-z0-9_]+/).filter((t) => t.length > 3 && !STOP.has(t))));
-  if (seeds.length === 0) seeds.push(opts.phrase.toLowerCase());
+  const seeds = seedsOf(opts.phrase);
 
   // 3 FETCH — BM25/FTS per seed, deduped by path
   const seen = new Map<string, QueryRow>();
