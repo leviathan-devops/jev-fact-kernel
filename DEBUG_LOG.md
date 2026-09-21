@@ -906,3 +906,22 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
 - **LESSON:** a test named in a contract but never written is a hole in the evidence, not a
   formality. Filling this one exposed a driver-error leak, a budget race, and a no-op flag — the
   three classes the rest of the suite could not see.
+
+## EN-039 — the CLI's discoverability and input-validation gaps (audit F-15, 6 findings adjudicated)
+- **FIXED (a): `calibrate` and `serve` were live verbs with NO usage line.** An operator reading
+  `jm` could not discover either. Both are now in the dump with their flags.
+- **FIXED (b): a non-numeric `--truth` produced `NaN`.** `Number("abc")` -> NaN, and SQLite
+  compares NaN as NULL, so a typo silently matched no row and reported "no such row" at exit 1. It
+  is now a named client error (`JM_ARGS: --truth <id> must be a non-negative integer`) at exit 2,
+  and a WELL-FORMED id that matches no row is `JM_TRUTH_MISSING` (also exit 2 — the caller named a
+  row that is not there).
+- **DOCUMENTED (c): `find`'s default structure differs by surface** — `md` on the CLI (a human
+  reads it) and `json` over MCP (an agent parses it). The audit called it an inconsistency; it is
+  deliberate, so it is now STATED in the MCP tool description rather than unified away. A default
+  that is explained is not a bug; a default that is invisible is.
+- **REFUTED (d, twice): "`--apply` is missing from VALUE_FLAGS".** `--apply` is a BOOLEAN flag read
+  with `has("apply")`, not `flag("apply")`. Putting it in VALUE_FLAGS would make the parser SWALLOW
+  the next argument — the "fix" would create the bug. The auditor's own text concedes boolean flags
+  do not need the entry.
+- **VERIFICATION:** the guards are pinned by `test_truth_and_usage_guards` (the CLI is spawned, the
+  exit codes and the usage text asserted); battery 97/0.

@@ -124,4 +124,24 @@ describe("recipe validation (D-020)", () => {
       expect(ok.out + ok.err).toMatch(/JM_DECISIONS|JEV_NO_KEY/);     // it ran, or it hit the key wall
     } finally { sb.cleanup(); }
   });
+
+  test("test_truth_and_usage_guards", async () => {
+    // D-026 (a): a non-numeric --truth produced NaN, which SQLite compares as NULL, so a typo
+    // silently matched nothing. (b): `calibrate` and `serve` were live verbs absent from the
+    // usage dump — undiscoverable by an operator reading `jm`.
+    const sb = await seeded();
+    try {
+      for (const bad of ["abc", "-1", "1.5"]) {
+        const r = await jm(["calibrate", "--truth", bad]);
+        expect({ truth: bad, code: r.code }).toEqual({ truth: bad, code: 2 });
+        expect(r.err).toMatch(/JM_ARGS: --truth/);
+      }
+      const missing = await jm(["calibrate", "--truth", "99999"]);
+      expect(missing.code).toBe(2);                                 // a row that is not there: a CLIENT error
+      expect(missing.err).toMatch(/JM_TRUTH_MISSING/);
+      const help = await jm([]);
+      expect(help.out).toContain("jm serve");
+      expect(help.out).toContain("jm calibrate");
+    } finally { sb.cleanup(); }
+  });
 });

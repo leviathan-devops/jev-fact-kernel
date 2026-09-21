@@ -39,7 +39,7 @@ export const TOOLS: McpTool[] = [
       properties: {
         phrase: { type: "string", description: "the X to find" },
         common: { type: "number", description: "minimum support n for a pattern (default 2)" },
-        structure: { type: "string", enum: ["md", "json"], description: "output structure" },
+        structure: { type: "string", enum: ["md", "json"], description: "output structure (default json for an agent; the CLI defaults to md for a human)" },
         index: { type: "string", description: "index name (default 'all')" },
       },
       required: ["phrase"],

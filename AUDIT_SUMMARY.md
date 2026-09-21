@@ -101,8 +101,12 @@ non-defect into a real one.
 | A13-1 | `scan.score` claims BM25 but is `hits \|\| 1` | critical | CONFIRMED -> fixed | the comment was false AND the real bm25 was discarded; now `rank` carries it |
 | A13-2 | excerpt constants 60/140 are magic numbers | medium | CONFIRMED -> fixed | named `EXCERPT_BEFORE`/`AFTER`/`HEAD` |
 | A13-3 | `verbatimModuleSyntax: false` under `module: ESNext` | medium | CONFIRMED -> fixed | flipped to `true`, tsc 0, battery green |
+| A15-1 | `calibrate`/`serve` missing from the usage dump | medium | CONFIRMED -> fixed | two live verbs were undiscoverable |
+| A15-2 | a non-numeric `--truth` yields NaN (SQLite reads NaN as NULL) | low | CONFIRMED -> fixed | now `JM_ARGS` at exit 2; a valid-but-absent id is `JM_TRUTH_MISSING` |
+| A15-3 | `find`'s default structure differs CLI vs MCP | low | ADJUDICATED -> documented | `md` for a human, `json` for an agent; now stated in the tool description |
+| A15-4 | `--apply` is missing from VALUE_FLAGS | medium | REFUTED (x2) | it is a BOOLEAN flag; adding it would make the parser swallow the next arg |
 
-**TALLY: 17 confirmed + fixed, 11 refuted by probe, 0 open.**
+**TALLY: 19 confirmed + fixed, 12 refuted by probe, 0 open.**
 
 ---
 
