@@ -1356,3 +1356,33 @@ ONE SURFACE AND NOT ON ANOTHER.
   are reachable by construction.
 - **LESSON:** the polarity of a failure policy is only as good as the set of failures it recognises.
   This one recognised exactly one, and it was the one the tests exercised.
+
+## EN-055 — D-041: the D-040 class in TWO more verbs (filter and find returned empty on an outage)
+- **HOW FOUND:** applying D-040's lens to every site that decides what a judge failure MEANS —
+  `grep -rn JEV_NO_KEY src/verbs/` returned three, and only one had been fixed.
+- **THE PROBE (the controlled endpoint from D-040, pointed at the other two verbs):**
+  ```
+  filter + 500 -> NO THROW: kept=0 judged=0 candidates=6    "none of these is a problem"
+  find   + 500 -> NO THROW: patterns=0  trend=6 → 6 → 0 → 0  "the search completed, nothing found"
+  ```
+  Both are EMPTY RESULTS that are indistinguishable from considered answers — the same failure
+  shape D-040 had, in the two verbs whose entire output IS the judgement.
+- **ROOT CAUSE:** each verb carried its own copy of
+  `errors.find((e) => e.error.includes("JEV_NO_KEY"))`. Three copies of a policy is three chances
+  to get it wrong, and two of them had.
+- **FIX — ONE POLICY, IN ONE PLACE:** `fatalJudgeError(errors, { failOpen })` in `judge/policy.ts`:
+  ANY judge error is fatal unless the caller explicitly opts into degradation, and `JEV_NO_KEY` is
+  fatal even then (a missing key is a configuration failure, never a data-quality signal). All
+  three verbs now call it. `filter` and `find` gained the `failOpen` opt-in that decision-tree
+  already had.
+- **VERIFICATION:**
+  ```
+  filter + 500      -> THREW JM_JUDGE_HTTP_500        (was: kept=0, silently)
+  filter + failOpen -> no throw, and judged < candidates (the lapse is VISIBLE)
+  find   + 500      -> THREW JM_JUDGE_HTTP_500        (was: 0 patterns, silently)
+  healthy judge     -> filter keeps 4/4, find produces a pattern
+  ```
+  Pinned by `tests/judge-policy.test.ts` — the policy's own truth table plus both verbs, against a
+  controlled endpoint the suite runs itself.
+- **LESSON:** `grep` for the failure-handling idiom after fixing one instance of it. A policy
+  duplicated three times is a policy that will be fixed once and wrong twice.

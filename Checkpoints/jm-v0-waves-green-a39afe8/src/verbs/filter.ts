@@ -5,11 +5,13 @@ import { Judge } from "../judge/client.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 import { excerptAround, seedsOf } from "./excerpt.ts";
+import { fatalJudgeError } from "../judge/policy.ts";
 import { queryIndex } from "./query.ts";
 
 export interface FilterOpts {
   fts?: string; where?: string; limit?: number;
   question: string; minP?: number; concurrency?: number; budgetCalls?: number;
+  failOpen?: boolean;   // explicit opt-in: degrade with marked rows instead of refusing
   maxExcerpt?: number;
 }
 
@@ -46,8 +48,10 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
     return rows[rows.length - 1];
   }, { concurrency: opts.concurrency ?? 6 });
 
-  const noKey = errors.find((e) => e.error.includes("JEV_NO_KEY"));
-  if (noKey) throw new Error(noKey.error);          // FAIL-CLOSED: never a silent empty success
+  // FAIL-CLOSED FOR EVERY JUDGE FAILURE, not just a missing key (D-041): under a 500 this verb
+  // returned `kept=0 judged=0` — an empty result indistinguishable from a considered answer.
+  const fatal = fatalJudgeError(errors, { failOpen: opts.failOpen });
+  if (fatal) throw new Error(fatal);
   const kept = rows.filter((r) => r.keep).sort((a, b) => b.p - a.p);
   return { candidates: candidates.length, judged: rows.length, kept: kept.length, kept_rows: kept, calls, costUsd, budgetStopped };
 }

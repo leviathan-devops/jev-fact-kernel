@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `ea64fb484ed39966f14f643635d4232a` (git 8edcca1)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `1d0bd7b64e2f00bbefb7feb6982272f4` (git d86e91e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -50,7 +51,7 @@ sealed copy does not belong here.
 | `src/judge/cache.ts` | 55 |
 | `src/judge/client.ts` | 49 |
 | `src/judge/key.ts` | 26 |
-| `src/judge/policy.ts` | 41 |
+| `src/judge/policy.ts` | 61 |
 | `src/judge/transport.ts` | 66 |
 | `src/ledger.ts` | 64 |
 | `src/mcp.ts` | 185 |
@@ -65,8 +66,8 @@ sealed copy does not belong here.
 | `src/verbs/evaluate.ts` | 136 |
 | `src/verbs/excerpt.ts` | 54 |
 | `src/verbs/extract.ts` | 88 |
-| `src/verbs/filter.ts` | 53 |
-| `src/verbs/find.ts` | 157 |
+| `src/verbs/filter.ts` | 57 |
+| `src/verbs/find.ts` | 162 |
 | `src/verbs/index.ts` | 164 |
 | `src/verbs/query.ts` | 77 |
 | `src/verbs/report.ts` | 192 |
@@ -74,7 +75,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 29 files)
+## THE TEST INVENTORY (tests/, 30 files)
 
 | file | lines |
 |------|-------|
@@ -96,6 +97,7 @@ sealed copy does not belong here.
 | `tests/index.test.ts` | 57 |
 | `tests/job-report.test.ts` | 101 |
 | `tests/judge-outage.test.ts` | 76 |
+| `tests/judge-policy.test.ts` | 103 |
 | `tests/ladder-reason.test.ts` | 55 |
 | `tests/ledger.test.ts` | 26 |
 | `tests/mcp.test.ts` | 89 |

@@ -8,9 +8,11 @@ import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 import { queryIndex, type QueryRow } from "./query.ts";
 import { excerptAround, quoteAround, seedsOf } from "./excerpt.ts";
+import { fatalJudgeError } from "../judge/policy.ts";
 
 export interface FindOpts {
   phrase: string; common?: number; structure?: "md" | "json"; minP?: number;
+  failOpen?: boolean;   // explicit opt-in: degrade with marked rows instead of refusing
   limit?: number; concurrency?: number; budgetCalls?: number; outPath?: string; maxExcerpt?: number;
 }
 
@@ -94,8 +96,11 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     return null;
   }, { concurrency: opts.concurrency ?? 6 });
 
-  const noKey = poolErrors.find((e) => e.error.includes("JEV_NO_KEY"));
-  if (noKey) throw new Error(noKey.error);          // FAIL-CLOSED
+  // FAIL-CLOSED FOR EVERY JUDGE FAILURE, not just a missing key (D-041): under a 500 this verb
+  // returned `0 patterns` with a plausible trend — an empty search indistinguishable from a
+  // completed one.
+  const fatal = fatalJudgeError(poolErrors, { failOpen: opts.failOpen });
+  if (fatal) throw new Error(fatal);
   // 6 RERANK — by probability (code sorts; no model)
   judged.sort((a, b) => b.p - a.p);
 
