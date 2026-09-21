@@ -1289,3 +1289,32 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **LESSON:** an unbounded quantifier in a regex that runs on EVERY string is a denial-of-service
   vector against your own process — and it presents as a HANG, which is the least diagnosable
   failure shape there is. Measure the SCALING, not the single case.
+
+## EN-053 — D-038 and the rest of D-035: the concurrency fix took FOUR layers, and the test found them
+- **HOW:** after fixing D-035 (missing `busy_timeout`) the concurrency TEST still failed — 2 runs of
+  4 in one round. A single round had reported clean five times, which is exactly why the pin runs
+  EIGHT. The failures named themselves: `JM_ERROR: database is locked` and
+  `JM_ERROR: UNIQUE constraint failed: meta.key`.
+- **D-038 — the meta seed was CHECK-THEN-INSERT.** `openDb` read `schema_version` and inserted only
+  when absent: four processes all read "absent", all four inserted, three died on the UNIQUE
+  constraint. FIX: `INSERT OR IGNORE` — let the DATABASE arbitrate the race. Measured: 12 rounds ×
+  4 indexers, **0 failures** (was round 6 of 6).
+- **D-035c — `PRAGMA journal_mode = WAL` ran on EVERY open.** WAL is persistent, so the pragma is a
+  ONE-TIME migration — and the migration needs an exclusive lock that `busy_timeout` does not
+  reliably wait out. Four simultaneous opens on a FRESH database raced for it; measured under load:
+  rounds 5 and 7 of 8 lost a run EVEN WITH the timeout in force. FIX: read the current mode first
+  (only the first process converts) and tolerate losing the conversion (the winner's change
+  persists).
+- **THE FULL CHAIN, four layers, each found only because the previous one was fixed:**
+  1. no `busy_timeout` in the store while both other openers had it (D-035a)
+  2. the timeout was set AFTER the pragma that needed it (D-035b)
+  3. the schema seed was check-then-insert (D-038)
+  4. the WAL conversion ran per-open instead of once (D-035c)
+- **VERIFICATION:** the concurrency suite five consecutive times: **4 pass / 0 fail each** (was 2
+  failures per run); the full battery 141/0.
+- **AN INSTRUMENT FIX IN THE SAME PASS:** the pins asserted stderr was EMPTY — but the cost line
+  lives on stderr by design (D-017), so a CORRECT run failed the assertion. They now assert on the
+  exit code and on the presence of a real error, not on quietness.
+- **LESSON:** an intermittent failure needs a test that repeats. One round called a broken store
+  green five times; eight rounds found two distinct defects. And a fix can expose the next one —
+  four layers here, each invisible until the layer above was repaired.
