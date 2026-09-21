@@ -650,3 +650,19 @@ SIBLING  the loose phone pattern ran before the hex pattern, so a 32-char hash b
          `[phone]abcdef[phone]` — wrong marker AND 6 characters SURVIVED (a partial redaction of a
          secret is a leak). Patterns now run specific-first: `<32 hex>` -> `[hex]`, no survivor.
 battery 139 pass / 0 fail / 661 expects / 26 files · tsc exit 0
+
+### D-035 / D-038 — CONCURRENCY TOOK FOUR LAYERS (and one round called it green five times)
+```
+AFTER the first fix (busy_timeout) the test STILL failed: 2 of 4 runs in one round
+FAILURES NAMED THEMSELVES:  JM_ERROR: database is locked   and   UNIQUE constraint failed: meta.key
+
+D-038  the schema seed was CHECK-THEN-INSERT: four processes read "absent", all four inserted,
+       three died. FIX: INSERT OR IGNORE — the database arbitrates. 12 rounds x 4 -> 0 failures.
+D-035c `PRAGMA journal_mode = WAL` ran on EVERY open, but WAL is PERSISTENT — a one-time migration
+       whose exclusive lock `busy_timeout` does not reliably wait out. FIX: read the mode first;
+       tolerate losing the conversion. (Rounds 5 and 7 of 8 lost a run before this.)
+ALSO   the pins demanded EMPTY stderr, but the cost line lives on stderr by design (D-017), so a
+       CORRECT run failed. They now assert the exit code and the absence of a real error.
+AFTER  the concurrency suite, 5 consecutive runs: 4 pass / 0 fail each  (was 2 failures per run)
+battery 141 pass / 0 fail / 666 expects / 26 files · tsc exit 0
+```

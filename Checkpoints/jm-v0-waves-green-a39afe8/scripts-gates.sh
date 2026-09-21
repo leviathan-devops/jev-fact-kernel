@@ -112,14 +112,27 @@ CONC_HOME=/tmp/jm-gates-conc
 rm -rf "$CONC_HOME"; mkdir -p "$CONC_HOME" /tmp/jm-gates-conc-corpus
 for i in $(seq 1 40); do echo "concurrent body $i tombstone" > /tmp/jm-gates-conc-corpus/f$i.md; done
 JM_HOME="$CONC_HOME" $J target add conc fs /tmp/jm-gates-conc-corpus >/dev/null 2>&1
-for i in 1 2 3 4; do
-  ( JM_HOME="$CONC_HOME" $J index --in all --name race >"/tmp/jm-gates-conc-$i.out" 2>&1; echo $? > "/tmp/jm-gates-conc-$i.rc" ) &
+# EXPLICIT PIDS, NOT A BARE `wait`: a bare `wait` waits for EVERY background job the script has
+# started — including the HTTP server a section earlier — so the gate hung for 900s once the two
+# sections coexisted. (Found by timing the sections; the concurrency section runs in 1s alone.)
+# FOUR ROUNDS, because the meta-seed race (D-038) is INTERMITTENT — one round called it green five
+# times before losing a run on the sixth.
+CONC_FAILS=0
+for round in 1 2 3 4; do
+  rm -rf "$CONC_HOME/index"
+  CONC_PIDS=""
+  for i in 1 2 3 4; do
+    ( JM_HOME="$CONC_HOME" $J index --in all --name race >"/tmp/jm-gates-conc-$round-$i.out" 2>&1; echo $? > "/tmp/jm-gates-conc-$round-$i.rc" ) &
+    CONC_PIDS="$CONC_PIDS $!"
+  done
+  for pid in $CONC_PIDS; do wait "$pid" 2>/dev/null || true; done
+  BAD=$(cat /tmp/jm-gates-conc-$round-*.rc | grep -cv '^0$' || true)
+  [ "$BAD" -gt 0 ] && CONC_FAILS=$((CONC_FAILS + BAD))
 done
-wait
+FAILS=$(grep -lh "database is locked\|UNIQUE constraint" /tmp/jm-gates-conc-*.out 2>/dev/null | wc -l)
 FAILS=$(grep -l "database is locked" /tmp/jm-gates-conc-*.out 2>/dev/null | wc -l)
-NONZERO=$(cat /tmp/jm-gates-conc-*.rc | grep -cv '^0$' || true)
 tok "4 concurrent indexers, no lock errors" bash -c "[ \"$FAILS\" -eq 0 ]"
-tok "4 concurrent indexers all exit 0" bash -c "[ \"$NONZERO\" -eq 0 ]"
+tok "4 concurrent indexers all exit 0 (x4 rounds)" bash -c "[ \"$CONC_FAILS\" -eq 0 ]"
 # the row count is on the `files:` line — the first line's number is the index size in KB
 ROWS=$(JM_HOME="$CONC_HOME" $J report race 2>/dev/null | grep '^files:' | grep -oE '[0-9]+' | head -1)
 tok "the race left a complete index ($ROWS files)" bash -c "[ \"$ROWS\" -eq 40 ]"

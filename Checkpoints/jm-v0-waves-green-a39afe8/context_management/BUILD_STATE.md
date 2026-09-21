@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `940ae8319110132512e15c0b823779f3` (git dba0b28)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `79ddfefb794015f566ce9cc346cfddc2` (git acdf9bd)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -43,11 +44,11 @@ sealed copy does not belong here.
 | `src/job/queue.ts` | 83 |
 | `src/job/run.ts` | 71 |
 | `src/job/store.ts` | 38 |
-| `src/judge/cache.ts` | 44 |
+| `src/judge/cache.ts` | 55 |
 | `src/judge/client.ts` | 49 |
 | `src/judge/key.ts` | 26 |
 | `src/judge/policy.ts` | 41 |
-| `src/judge/transport.ts` | 38 |
+| `src/judge/transport.ts` | 59 |
 | `src/ledger.ts` | 64 |
 | `src/mcp.ts` | 185 |
 | `src/pools/budget.ts` | 60 |
@@ -70,7 +71,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 27 files)
+## THE TEST INVENTORY (tests/, 28 files)
 
 | file | lines |
 |------|-------|
@@ -95,6 +96,7 @@ sealed copy does not belong here.
 | `tests/ledger.test.ts` | 26 |
 | `tests/mcp.test.ts` | 89 |
 | `tests/query.test.ts` | 37 |
+| `tests/redact-perf.test.ts` | 58 |
 | `tests/regression.test.ts` | 54 |
 | `tests/resume.test.ts` | 100 |
 | `tests/retrieve.test.ts` | 192 |

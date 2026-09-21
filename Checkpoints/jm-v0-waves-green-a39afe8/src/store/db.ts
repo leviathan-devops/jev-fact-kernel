@@ -21,10 +21,25 @@ export function openDb(path: string): Database {
   // `database is locked`. (D-035; both other openers in this codebase have the timeout too, and
   // the STORE — the most contended file of the three — was the one missing it.)
   db.run("PRAGMA busy_timeout = 5000");
-  db.run("PRAGMA journal_mode = WAL");
+  // WAL IS PERSISTENT, SO SETTING IT IS A ONE-TIME MIGRATION — and the migration needs an EXCLUSIVE
+  // lock that `busy_timeout` does not reliably wait out. Setting it unconditionally made FOUR
+  // simultaneous opens on a FRESH database race for that lock: measured under load, rounds 5 and 7
+  // of 8 lost a run to `database is locked` even WITH the timeout in force. Reading the current
+  // mode first means only the first process converts; the others see "wal" and do nothing. The
+  // setter is wrapped because losing the race is not an error: the winner's conversion is
+  // persistent, so the loser simply proceeds against a database that is already in WAL.
+  const mode = (db.query("PRAGMA journal_mode").get() as { journal_mode?: string } | null)?.journal_mode;
+  if (mode !== "wal") {
+    try { db.run("PRAGMA journal_mode = WAL"); }
+    catch { /* another process won the conversion; WAL persists, so this is not a failure */ }
+  }
   db.run(SCHEMA_SQL);
-  const row = db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: string } | null;
-  if (!row) db.run("INSERT INTO meta(key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+  // ATOMIC, NOT CHECK-THEN-INSERT (D-038). Reading first and inserting only when absent is a
+  // TOCTOU race: four concurrent CLI runs all read "no row", all four inserted, and three died on
+  // `UNIQUE constraint failed: meta.key` at exit 1. Measured over six rounds of four simultaneous
+  // indexers: rounds 1-5 clean, round 6 lost a run. `INSERT OR IGNORE` is idempotent and lets the
+  // database arbitrate the race instead of the application.
+  db.run("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
   return db;
 }
 
