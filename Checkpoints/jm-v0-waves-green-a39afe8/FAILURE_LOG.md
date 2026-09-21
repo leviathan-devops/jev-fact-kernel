@@ -79,3 +79,14 @@
 - **Impact:** double-processing with possible data loss under process overlap — a real race.
 - **Disposition:** FIXED (conditional ack `AND state='running'` + a refused-ack error path) and
   PINNED (`test_queue_stale_ack_refused`); battery 29/0. The gate stays FAIL until a fourth audit.
+
+### F-10 — The third re-audit found 1 critical (refuted) + 2 highs (2026-09-22)
+- **What happened:** the fourth audit run returned 15 comments, 6 canonical (1 critical / 2 high /
+  2 medium / 1 low). The critical claims the schema DDL applies only the first statement; the
+  highs claim cached judge calls consume budget slots in `filter` and `find`.
+- **Found:** the machine review.
+- **Adjudication:** the critical is REFUTED — a live probe shows `db.run` applies every statement
+  (all 13 tables exist) and the suite exercises them. The 2 highs are CONFIRMED and fixed.
+- **Impact:** the gate stays FAIL — correctly: the fixes are claims until a fifth audit passes.
+- **Disposition:** FIXED (cached hits skip `spend`; same-class fix in `decision-tree`; route+reason
+  from one signal; tag split on first `=`; saveTargets import) and pinned; battery 29/0.

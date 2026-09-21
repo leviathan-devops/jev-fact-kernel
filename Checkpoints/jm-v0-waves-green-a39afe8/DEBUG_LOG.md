@@ -535,3 +535,23 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
   pending, result untouched); battery 29/0, tsc 0.
 - **LESSON:** an ack without a state guard is a hope, not a protocol. The queue's contract is now:
   claim (exclusive) -> work -> ack-if-still-mine, and anything else is refused loudly.
+
+## EN-018 — the cached-spend budget leak (the third re-audit's highs)
+- **SYMPTOM:** the machine wrote: "Budget.spend() always increments the internal call counter, so
+  cached judge.ask results (costUsd=0) still consume a slot of `budgetCalls`."
+- **ROOT CAUSE:** the spend call sat outside the `if (!res.cached)` branch in `filter` and `find`
+  (and, by the same class, was missing the room discipline in `decision-tree`).
+- **MECHANISM:** a cached hit costs $0 but consumed a budget unit — at 78% cache recurrence the
+  budget would exhaust on free calls.
+- **FIX:** spend only on non-cached calls (`if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }`).
+- **VERIFICATION:** battery 29/0, tsc 0; the fix commit `2b48a6b`.
+- **LESSON:** a budget must count what it spends, not what it sees. Free calls are not calls.
+
+## EN-019 — the critical that wasn't (adjudicated, refuted)
+- **SYMPTOM:** the machine claimed `db.run(sql)` applies only the first of 10 DDL statements.
+- **ROOT CAUSE OF THE CLAIM:** the documented `sqlite3_prepare_v2` behavior of some bindings —
+  but NOT this one: a live probe on this runtime (`bun:sqlite` 1.4.2) shows every statement applied.
+- **VERIFICATION:** `tables: cache,decisions,docs,docs_fts,…,files,meta,runs,tags` — all present;
+  the suite reads and writes every one of them; 18/18 tests exercise the tables.
+- **DISPOSITION:** REFUTED BY EVIDENCE. The claim stands as a reminder: adjudicate every probe
+  failure both ways — including the auditor's.

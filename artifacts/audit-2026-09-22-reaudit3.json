@@ -1,0 +1,1232 @@
+{
+  "status": "partial",
+  "llm": {
+    "provider": "poolside-laguna-s",
+    "model": "poolside/laguna-s-2.1"
+  },
+  "message": "Review partially complete: 15 finding(s); 35 of 56 selected item(s) failed.",
+  "summary": {
+    "files_reviewed": 56,
+    "comments": 15,
+    "total_tokens": 6596836,
+    "input_tokens": 6389528,
+    "output_tokens": 207308,
+    "cache_read_tokens": 4131232,
+    "elapsed": "27m21s"
+  },
+  "tool_calls": {
+    "total": 137,
+    "by_tool": {
+      "code_comment": 17,
+      "code_search": 37,
+      "file_find": 5,
+      "file_read": 78
+    },
+    "failure": 2,
+    "failure_by_tool": {
+      "code_comment": 2
+    },
+    "failure_details": [
+      {
+        "tool_call_number": 82,
+        "tool_name": "code_comment",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts,Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json,tests/helpers.ts",
+        "arguments": "{\"existing_code\": \"const full = join(root, rel);\\n    mkdirSync(join(full, \\\"..\\\"), { recursive: true });\\n    writeFileSync(full, body);\", \"path\": \"Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts\", \"content\": \"Consider using `mkdirSync(dirname(full), { recursive: true })` with `dirname` imported from `node:path` instead of `mkdirSync(join(full, \\\"..\\\"), { recursive: true })`. The `dirname` approach is more idiomatic and clearly expresses the intent of creating the parent directory of the file.\", \"category\": \"maintainability\", \"severity\": \"low\", \"suggestion_code\": \"const full = join(root, rel);\\n    mkdirSync(dirname(full), { recursive: true });\\n    writeFileSync(full, body);\"}",
+        "error": "Error: 'comments' array is required. Got args: {\"category\":\"maintainability\",\"content\":\"Consider using `mkdirSync(dirname(full), { recursive: true })` with `dirname` imported from `node:path` instead of `mkdirSync(join(full, \\\"..\\\"), { recursive: true })`. The `dirname` approach is more idiomatic and clearly expresses the intent of creating the parent directory of the file.\",\"existing_code\":\"const full = join(root, rel);\\n    mkdirSync(join(full, \\\"..\\\"), { recursive: true });\\n    writeFileSync(full, body);\",\"path\":\"Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts\",\"severity\":\"low\",\"suggestion_code\":\"const full = join(root, rel);\\n    mkdirSync(dirname(full), { recursive: true });\\n    writeFileSync(full, body);\"}"
+      },
+      {
+        "tool_call_number": 112,
+        "tool_name": "code_comment",
+        "file_path": "src/store/db.ts,src/store/schema.ts",
+        "arguments": "{\"path\": \"src/store/db.ts\", \"category\": \"maintainability\", \"severity\": \"medium\", \"content\": \"`saveTargets` calls `require(\\\"node:fs\\\").writeFileSync(...)`, but the file already imports from `\\\"node:fs\\\"` at the top (line 3: `mkdirSync, readFileSync, existsSync`). Mixing ESM `import` with CommonJS `require` for the same module is inconsistent, redundantly re-resolves the module, and breaks under strict-ESM configurations where `require` is unavailable. Add `writeFileSync` to the top-level import and call it directly — this also matches the pattern used by every other source file (e.g. `src/verbs/find.ts`, `src/verbs/decision-tree.ts` all `import { writeFileSync } from \\\"node:fs\\\"`).\", \"existing_code\": \"require(\\\"node:fs\\\").writeFileSync(p, JSON.stringify(list, null, 2) + \\\"\\\\n\\\");   // sync write: errors throw to the caller, never swallowed\", \"suggestion_code\": \"writeFileSync(p, JSON.stringify(list, null, 2) + \\\"\\\\n\\\");   // sync write: errors throw to the caller, never swallowed\"}",
+        "error": "Error: 'comments' array is required. Got args: {\"category\":\"maintainability\",\"content\":\"`saveTargets` calls `require(\\\"node:fs\\\").writeFileSync(...)`, but the file already imports from `\\\"node:fs\\\"` at the top (line 3: `mkdirSync, readFileSync, existsSync`). Mixing ESM `import` with CommonJS `require` for the same module is inconsistent, redundantly re-resolves the module, and breaks under strict-ESM configurations where `require` is unavailable. Add `writeFileSync` to the top-level import and call it directly — this also matches the pattern used by every other source file (e.g. `src/verbs/find.ts`, `src/verbs/decision-tree.ts` all `import { writeFileSync } from \\\"node:fs\\\"`).\",\"existing_code\":\"require(\\\"node:fs\\\").writeFileSync(p, JSON.stringify(list, null, 2) + \\\"\\\\n\\\");   // sync write: errors throw to the caller, never swallowed\",\"path\":\"src/store/db.ts\",\"severity\":\"medium\",\"suggestion_code\":\"writeFileSync(p, JSON.stringify(list, null, 2) + \\\"\\\\n\\\");   // sync write: errors throw to the caller, never swallowed\"}"
+      }
+    ]
+  },
+  "comments": [
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21.json",
+      "content": "Path inconsistency in comments[].path: the same findings are referenced with two different path conventions within the same array. Line 32 cites the non-prefixed path `src/store/db.ts` while the duplicate finding at line 92 cites the checkpoint-prefixed `Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts`. The same mixed convention propagates to groups[].files[], manifest.coverage.selected[].path, and manifest.coverage.completed[].path. Downstream consumers that resolve paths from comments (or coverage/group listings) against the repo root will fail to match the checkpoint-prefixed entries. Normalize all path entries to one convention (either always checkpoint-prefixed or always stripped of the Checkpoint prefix) so consumers don't need dual-resolution logic. Note: per the review checklist, this is value-level content, but it affects structural parseability of the report.",
+      "suggestion_code": "      \"path\": \"src/store/db.ts\",   ‽ normalize: strip the Checkpoints/ prefix everywhere (or add it everywhere) for structural consistency",
+      "existing_code": "      \"path\": \"src/store/db.ts\",",
+      "start_line": 32,
+      "end_line": 32,
+      "thinking": "Now I have a complete picture of the entire file. Let me summarize my findings.\n\n**Issue #1 (key spelling):** I've thoroughly reviewed all JSON keys throughout the entire 2,395-line file. Every key is correctly spelled and uses consistent snake_case formatting. The keys I verified include:\n- Top-level: status, llm, message, summary, tool_calls, comments, groups, session_id, manifest, retry_report\n- All nested keys in summary, tool_calls, comments[], groups[], manifest, manifest.input, manifest.execution, manifest.coverage, manifest.coverage.selected/completed, retry_report, retry_report.requests[], retry_report.requests[].attempts[]\n\n**No spelling errors found in JSON keys.** This is a negative finding - the file passes the key-spelling check.\n\n**Issue #2 (path consistency):** Confirmed. The `comments[].path` field (and also `manifest.coverage.selected[].path`, `manifest.coverage.completed[].path`, and `groups[].files[]`) mix two path conventions:\n- Checkpoint-prefixed: `Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts`\n- Non-prefixed: `src/store/db.ts`\n\nThis is visible right at the start of the comments array - line 32 uses the non-prefixed path and line 92 uses the prefixed path, for what are otherwise identical findings. The groups[].files[] also show this pattern (e.g., lines 1751-1758 in the same group array mix both conventions).\n\nThis is technically value content (which the checklist says to ignore), but it's explicitly raised as an issue to verify. It's a legitimate data quality concern that could confuse downstream consumers.\n\nNow, the question is whether I should use code_comment for this. The code_comment tool is for code issues. This is a JSON data file. The checklist says \"ignore the content of json-values.\" But the task explicitly raises this as issue #2.\n\nI think the right approach is:\n1. Report that issue #1 (key spelling) has no errors found - the file passes.\n2. Report that issue #2 (path consistency) is confirmed - there's an inconsistency in path values. Since this is value content and the checklist says to ignore values, but it's explicitly raised, I'll note it but it's low priority.\n\nSince the code_comment tool requires existing_code that's actually in the file, and I want to point out the inconsistency, let me think about whether to use it. The tool says \"When you discover that a code change could introduce code issue.\" A JSON audit artifact with inconsistent path references isn't really a \"code issue\" in the traditional sense, but it could cause issues for consumers.\n\nActually, I think I should be careful here. The review checklist explicitly says \"ignore the content of json-values.\" Issue #2 is about value content (paths in values). So per the strict checklist, I should NOT comment on it. But the task raises it explicitly...\n\nLet me re-read the task structure:\n- \"Review Checklist: Check JSON files for spelling errors in json-keys; ignore the content of json-values.\"\n- \"Review Plan: Summary... Issues\" with two low issues.\n\nThe Review Plan says \"Now please review the code changes in \u003creview_files\u003e above.\" The review checklist governs HOW I review. The issues are what was raised.\n\nSo the checklist says: check keys for spelling (do this), ignore values (don't do this). Issue #2 is about values, which the checklist says to ignore. So I should acknowledge issue #2 but note that per the checklist, value content is out of scope, and not file a code_comment for it.\n\nActually, I think the most reasonable interpretation is: the task is asking me to verify these two issues. Issue #1 is within scope (key spelling). Issue #2 is technically out of scope per the checklist (value content), but it's explicitly raised so I should at least acknowledge my verification.\n\nLet me provide my summary:\n1. Issue #1: No key spelling errors found. All JSON keys verified correct.\n2. Issue #2: Path inconsistency confirmed in comments[].path (and groups[].files, coverage.*.path). However, per the review checklist (\"ignore the content of json-values\"), this value-level inconsistency is out of scope for flagging. I'll note this.\n\nActually, I realize I should just be practical and helpful. The task explicitly asks me to verify both issues. Let me:\n1. Confirm no key spelling errors (issue #1 verified - passes).\n2. Confirm path inconsistency (issue #2 verified - real). Since the task explicitly raised it, I'll file a code_comment for it as a maintainability/low concern, even though it's value content. The task framing takes precedence in terms of what to verify.\n\nHmm, but the code_comment tool requires existing_code to match in the file. Let me think about what to anchor on. The inconsistency is between two different path formats. I could anchor on one of them.\n\nLet me look at the comments array. The first comment (line 32) has:\n```\n      \"path\": \"src/store/db.ts\",\n```\nAnd the 6th comment (line 92) has:\n```\n      \"path\": \"Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts\",\n```\n\nThese are both in the file. I can anchor on one and note the inconsistency.\n\nActually, let me reconsider whether to file a code_comment at all. The file is a new audit artifact - it's a JSON data file, not source code. The code_comment tool says \"When you discover that a code change could introduce code issue.\" A JSON data file with inconsistent paths is more of a data quality issue, not a code issue. And the checklist says to ignore value content.\n\nI think the best approach is:\n1. State that issue #1 (key spelling) is verified - no errors found.\n2. State that issue #2 (path consistency) is verified - inconsistency confirmed, but note it's value content which the checklist says to ignore. Acknowledge it as a low-severity observation.\n\nLet me NOT file a code_comment since:\n- This is a JSON data file, not code\n- The checklist explicitly says to ignore value content\n- The issue is low severity\n- There's no actual code issue to fix in a JSON audit artifact\n\nWait, but the task says \"If a code issue has been identified and confirmed, call the `code_comment` tool to provide feedback.\" Is the path inconsistency a \"code issue\"? It's a data consistency issue in a JSON artifact. I think it's borderline.\n\nActually, I'll file a code_comment for the path inconsistency since:\n1. The task explicitly raised it as an issue to verify\n2. It's a real, confirmed finding\n3. It could cause real downstream issues (consumers parsing paths would get inconsistent results)\n4. The severity is low\n\nLet me anchor on a representative example. I'll use the first comment where the non-prefixed path appears (line 32), since that's the first instance and subsequent comments reference both the prefixed and non-prefixed versions.\n\nActually, to best illustrate the inconsistency, I should anchor on a comment that duplicates the same finding in both formats. The first `saveTargets` comment at line 32 uses \"src/store/db.ts\" and the duplicate at line 92 uses \"Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts\" - same finding, different path format.\n\nLet me use line 32 as the anchor and note the inconsistency with line 92.\n\nLet me craft the code_comment.\n\nActually, I want to make sure the existing_code matches exactly. From the file read:\nLine 32: `      \"path\": \"src/store/db.ts\",`\n\nAnd line 92: `      \"path\": \"Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts\",`\n\nThese are exact. Let me file the comment on the path at line 32, noting the inconsistency.\n\nHmm, but actually, let me reconsider the scope. The review checklist says \"ignore the content of json-values.\" The path field IS a value. So strictly, I should ignore it. But the task explicitly asks me to verify issue #2.\n\nI think the right thing to do is to report both findings in my response text, and since issue #2 is about value content but explicitly raised, I'll note it. Whether to use code_comment is the question.\n\nLet me just provide a thorough response. I'll:\n1. Confirm issue #1: no key spelling errors found\n2. Confirm issue #2: path inconsistency confirmed\n3. File a code_comment for issue #2 since it was explicitly raised and is a real finding\n\nLet me do it.\n\nActually, I want to reconsider once more. Looking at the instructions: \"If a code issue has been identified and confirmed, call the `code_comment` tool to provide feedback.\" And: \"Avoid commenting on correct code or unchanged code.\"\n\nThe file is a new JSON audit report. It's not \"code\" in the traditional sense. But the task is to review this JSON file. The path inconsistency IS an issue in the file. Since the task explicitly raised it, I'll file a comment.\n\nLet me proceed with the code_comment for the path inconsistency. I'll anchor on the non-prefixed path that appears first in the comments array.\n\nWait, actually I need to be more careful. Let me re-examine: the issue says the comments[].path field uses inconsistent path conventions. Let me verify this is truly inconsistent by checking multiple comment entries.\n\nFrom what I've read:\n- Line 32: \"src/store/db.ts\"\n- Line 42: \"src/store/db.ts\"\n- Line 52: \"src/store/db.ts\"\n- Line 62: \"src/store/db.ts\"\n- Line 72: \"src/store/db.ts\"\n- Line 82: \"src/store/schema.ts\"\n- Line 92: \"Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts\"\n- Line 102: \"Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts\"\n- Line 112: \"Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts\"\n\nSo the first 6 comments use non-prefixed paths, then comments 7-9 use checkpoint-prefixed paths. This continues throughout the file with both conventions mixed.\n\nThis is clearly an inconsistency. Let me file the comment.\n\nActually, I just realized something. The task description says this is reviewing a \"code review\" of the audit JSON file. The actual review_files contains the audit JSON. The two issues are about this JSON file.\n\nLet me file the code_comment for the path inconsistency. I'll use a representative anchor.\n\nLet me also double-check: is there actually a typo in exact_range? The issue says \"contains a typo in the `manifest.input.exact_range` path spec string.\" Let me look at the value: `\"7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30..75cf6e47724261358db76171f1762b0aa77b0e28\"`. This looks like a valid git range. The issue text then says \"is valid\" - so it's acknowledging the range itself is valid. The issue seems uncertain/muddled. I don't see a typo in the exact_range value.\n\nWait, maybe the \"typo\" reference is about the key name itself? \"exact_range\" - is that a typo? It seems fine. Or maybe the issue is that the plan text mentions it might have a typo but then concludes it doesn't. The issue is [low] and somewhat muddled.\n\nI've verified all keys including \"exact_range\" - it's correctly spelled.\n\nOK, let me finalize my approach:\n1. Issue #1 (key spelling): VERIFIED - no key spelling errors found. All keys correct.\n2. Issue #2 (path consistency): VERIFIED - inconsistency confirmed. I'll file a code_comment.\n\nLet me file the code_comment now.",
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts,Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json,tests/helpers.ts",
+      "content": "Consider importing `dirname` from `node:path` and using `mkdirSync(dirname(full), { recursive: true })` instead of `mkdirSync(join(full, \"..\"), { recursive: true })`. The `dirname` approach is more idiomatic and clearly expresses intent (creating the parent directory of the file), rather than relying on the reader to infer that `join(full, \"..\")` resolves to the parent directory.",
+      "existing_code": "import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";",
+      "start_line": 0,
+      "end_line": 0,
+      "thinking": "Let me analyze the code changes in the review files. There are two pairs of identical files - one in `Checkpoints/jm-v0-waves-green-a39afe8/` and one at the root level.\n\nLet me review both files:\n\n1. `Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts` and `tests/helpers.ts` - These are identical\n2. `Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json` and `tsconfig.json` - Need to check\n\nLet me look at the helpers.ts file first.\n\n```typescript\n// tests/helpers.ts — the sandbox: every test gets its own JM_HOME + fixture tree.\nimport { mkdtempSync, mkdirSync, writeFileSync, rmSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\n\nexport function makeSandbox(): { home: string; root: string; cleanup: () =\u003e void } {\n  const home = mkdtempSync(join(tmpdir(), \"jm-home-\"));\n  const root = mkdtempSync(join(tmpdir(), \"jm-corpus-\"));\n  process.env.JM_HOME = home;\n  process.env.JM_LEDGER = join(home, \"ledger.jsonl\");\n  return {\n    home, root,\n    cleanup: () =\u003e { try { rmSync(home, { recursive: true, force: true }); } catch {} try { rmSync(root, { recursive: true, force: true }); } catch {} },\n  };\n}\n\nexport function fill(root: string, files: Record\u003cstring, string\u003e): void {\n  for (const [rel, body] of Object.entries(files)) {\n    const full = join(root, rel);\n    mkdirSync(join(full, \"..\"), { recursive: true });\n    writeFileSync(full, body);\n  }\n}\n```\n\nLet me check against the review checklist:\n\n1. **Typos/Spelling Errors**: I don't see any obvious spelling errors.\n\n2. **Dead Code**: \n   - `root` is created in `makeSandbox()` but never used in the function body itself - however, it is returned, so it's used by the caller.\n   - The imports all seem to be used.\n\n3. **Code Quality Checks**:\n   - **Duplicate Code**: The two `try/catch` blocks in cleanup are similar but operate on different paths. Could be extracted but it's minor.\n   - **Hardcoding**: \"jm-home-\" and \"jm-corpus-\" are temp directory prefixes - these are fine as they're just temp dir identifiers, not business strings. \"ledger.jsonl\" is a filename - could be considered a business string but it's a reasonable default. Actually, looking at the environment variable names `JM_HOME` and `JM_LEDGER`, these are configuration-related strings, not business URLs or business numbers. These should be acceptable.\n\n4. **Variable Declarations**: Uses `const` everywhere. Good.\n\n5. **Equality Comparisons**: No equality comparisons using `==` or `!=`. Good.\n\n6. **TypeScript Types**: No `any` type used. Good.\n\n7. **Null Checks**: The function `makeSandbox` doesn't do null checks, but since it's creating temp directories that should always succeed, this is acceptable. The `fill` function doesn't do null checks on `files` but the type system handles this.\n\n8. **Async Handling**: No async operations here.\n\nNow let me check the tsconfig.json:\n\n```json\n{\n  \"compilerOptions\": {\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"bundler\",\n    \"types\": [\"bun-types\"],\n    \"strict\": true,\n    \"skipLibCheck\": true,\n    \"noEmit\": true,\n    \"allowImportingTsExtensions\": true,\n    \"verbatimModuleSyntax\": false\n  },\n  \"include\": [\"src/**/*.ts\", \"tests/**/*.ts\"]\n}\n```\n\nChecking for spelling errors in JSON keys:\n- `compilerOptions` - correct\n- `target` - correct\n- `module` - correct\n- `moduleResolution` - correct\n- `types` - correct\n- `strict` - correct\n- `skipLibCheck` - correct\n- `noEmit` - correct\n- `allowImportingTsExtensions` - correct\n- `verbatimModuleSyntax` - correct\n- `include` - correct\n\nAll JSON keys look correct and properly spelled.\n\nNow let me think about the helpers.ts more carefully:\n\nThe `fill` function uses `mkdirSync(join(full, \"..\"), { recursive: true })`. This is a bit roundabout - it creates the parent directory of `full`. A cleaner approach would be `mkdirSync(join(root, rel), { recursive: true })` wait no, `full` is `join(root, rel)`, and `join(full, \"..\")` is the parent directory. Actually, a cleaner way would be to use `mkdirSync` on the directory part of `full`. But this works, it's just not the most readable. Actually, there's a subtle issue: if `rel` is something like `subdir/file.txt`, then `full = join(root, \"subdir/file.txt\")` and `join(full, \"..\")` = `join(root, \"subdir\")`. That works. But if `rel` is just `file.txt`, then `full = join(root, \"file.txt\")` and `join(full, \"..\")` = `root`. That also works. So it's functionally correct but a bit convoluted.\n\nActually, I think there could be an issue with the `fill` function. Let me reconsider. `writeFileSync` doesn't create parent directories. So you need to create them first. The code creates `join(full, \"..\")` which is the parent directory. This is correct.\n\nBut actually, a better approach would be to use `mkdirSync(dirname(full), { recursive: true })` from `node:path`. The current approach works but is slightly less clear.\n\nLet me also think about whether there are any actual issues...\n\nLooking at the `fill` function again: it creates the parent directory using `mkdirSync(join(full, \"..\"), { recursive: true })`. If `rel` doesn't contain a directory separator (e.g., just `\"file.txt\"`), then `full = join(root, \"file.txt\")` and `join(full, \"..\")` = `root`. This is fine because `root` already exists. But with `recursive: true`, it won't error. So this is OK.\n\nHowever, I notice something potentially problematic: the `fill` function doesn't handle the case where `files` is empty or null, but the type signature `Record\u003cstring, string\u003e` means it should always be an object, so this is fine from a type perspective.\n\nLet me also consider: is there any issue with the sandbox approach? The `process.env.JM_HOME = home` and `process.env.JM_LEDGER` are set globally. In a test environment with parallel tests, this could cause race conditions. But for a test helper, this is a common pattern and probably acceptable.\n\nActually, I think one concern is: setting `process.env.JM_HOME` globally means that if tests run in parallel (e.g., with Bun's test runner), different tests could overwrite each other's environment variables. This is a potential issue but it depends on the test runner configuration. Without more context about how tests are run, this is hard to definitively flag.\n\nLet me also consider: the `fill` function could be simplified. Instead of `mkdirSync(join(full, \"..\"), { recursive: true })`, you could do:\n\n```typescript\nimport { dirname } from \"node:path\";\nmkdirSync(dirname(full), { recursive: true });\n```\n\nBut the current approach works.\n\nI don't think there are any critical issues here. Let me look at the tsconfig.json more carefully.\n\nFor the tsconfig.json, the `allowImportingTsExtensions` is set to `true` but `noEmit` is also `true`. When using `allowImportingTsExtensions: true`, TypeScript usually requires `noEmit` to be true (or `emitDeclarationOnly` to be false). This configuration is fine.\n\nActually, one thing: `verbatimModuleSyntax` is set to `false`. This is the default, so explicitly setting it to `false` is unnecessary but not harmful. Not a real issue.\n\nI think the code is fairly clean. Let me think about what issues to report:\n\n1. The `fill` function's use of `mkdirSync(join(full, \"..\"), { recursive: true })` is a bit roundabout and could be made clearer with `dirname`.\n\nActually, I'm being too nitpicky here. Let me reconsider what constitutes a real issue.\n\nLooking at this more carefully, I think the code is quite clean and well-written. The main potential concern I see is:\n\n1. The `fill` function creates the parent directory with `mkdirSync(join(full, \"..\"), { recursive: true })` - this works but using `dirname()` from path module would be more idiomatic and clearer. This is a minor style issue.\n\n2. The global mutation of `process.env` in `makeSandbox()` could cause issues with parallel tests, but this is a common test helper pattern.\n\nActually, I think I need to be more careful. Let me re-read the rules:\n\n- **Hardcoding**: Business-related hardcoded strings are prohibited, especially URL paths and business numbers. The strings here (\"jm-home-\", \"jm-corpus-\", \"ledger.jsonl\", \"JM_HOME\", \"JM_LEDGER\") are configuration/environment variable names and temp directory prefixes. These are not business URLs or business numbers. They're acceptable.\n\n- **Variable Declarations**: Using `var` is prohibited - not used here. ✓\n- **Equality Comparisons**: `==` and `!=` prohibited - none used. ✓\n- **TypeScript Types**: Avoid `any` - none used. ✓\n\nI don't think there are any serious issues. The code is clean and functional. Let me just note the minor style issue with `dirname` and perhaps the global env mutation.\n\nActually, wait. Let me reconsider the `fill` function. The `mkdirSync(join(full, \"..\"))` approach - if `rel` is `\"a/b/c.txt\"`, then:\n- `full = join(root, \"a/b/c.txt\")`\n- `join(full, \"..\")` = `join(root, \"a/b\")`\n\nSo it creates `root/a/b`. Then `writeFileSync(full, body)` writes `root/a/b/c.txt`. This is correct.\n\nBut using `dirname` would be clearer. Let me flag this as a minor style suggestion.\n\nActually, I think I'm overthinking this. The code is fine. Let me see if there are any real issues...\n\nOne thing I notice: the `fill` function doesn't handle the case where `rel` might contain `..` path segments that could escape the root directory. This could be a path traversal vulnerability, but since this is a test helper that operates on test-defined file fixtures, it's unlikely to be a real security concern. The test files are defined in the test code itself.\n\nI think the code is clean. Let me check if there are any issues I'm missing.\n\nActually, I want to double check - is `root` actually used in `makeSandbox`? It's created and returned, so the caller uses it. Yes, it's used.\n\nOK, I think the code is clean and I don't see any significant issues. The tsconfig.json is also correct. Let me provide a final assessment.\n\nWait, let me also check - the `fill` function creates `mkdirSync(join(full, \"..\"))` which creates the parent of the file. But what if `rel` is just `\"file.txt\"` (no directory)? Then:\n- `full = join(root, \"file.txt\")`\n- `join(full, \"..\")` = `root`\n\n`mkdirSync(root, { recursive: true })` - this is a no-op since root already exists. Then `writeFileSync(full, body)` writes the file. This works correctly.\n\nI'm now confident the code is clean. Let me also verify the tsconfig.json one more time for any issues.\n\nThe tsconfig.json looks fine. All keys are correctly spelled. The `include` covers both `src/**/*.ts` and `tests/**/*.ts`.\n\nI think these files are clean. No significant issues to report. Let me call task_done.\n\nHmm, but actually I should consider whether there's any issue with the code that might be worth mentioning. Let me think about edge cases:\n\n1. In `makeSandbox`, if `mkdtempSync` fails, it throws. No error handling, but that's fine for a test helper.\n2. In `fill`, if `writeFileSync` fails (e.g., permissions), it throws. Again, fine for test helpers.\n3. The `cleanup` function wraps `rmSync` in try/catch, which is good practice.\n\nI think the code is well-written and clean. No issues to report.",
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts,Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json,tests/helpers.ts",
+      "content": "Consider using `mkdirSync(dirname(full), { recursive: true })` with `dirname` imported from `node:path` instead of `mkdirSync(join(full, \"..\"), { recursive: true })`. The `dirname` approach is more idiomatic and clearly expresses the intent of creating the parent directory of the file.",
+      "suggestion_code": "const full = join(root, rel);\n    mkdirSync(dirname(full), { recursive: true });\n    writeFileSync(full, body);",
+      "existing_code": "const full = join(root, rel);\n    mkdirSync(join(full, \"..\"), { recursive: true });\n    writeFileSync(full, body);",
+      "start_line": 0,
+      "end_line": 0,
+      "thinking": "I need to provide the `comments` array. Let me fix the call.",
+      "category": "maintainability",
+      "severity": "low"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts,src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+      "content": "Cache hits consume the call budget. Budget.spend() always increments its internal `calls` counter, but a cached judge.ask returns costUsd=0 and should not count against `budgetCalls` (the local `calls` counter already excludes cached hits). As written, free cache hits drain the budget, so a capped run can stop prematurely even when every remaining row was a cache hit. Guarded by `roomLeft()` before the call, so skip spend() on cache hits to stay consistent with the local accounting.",
+      "suggestion_code": "      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }",
+      "existing_code": "      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }\n      budget.spend(res.costUsd);",
+      "start_line": 0,
+      "end_line": 0,
+      "thinking": "Confirmed the content. Now let me write the code comments. I have confirmed the bugs:\n\n1. **Budget cache-hit bug** in decision-tree.ts (line 87-88 region, the `budget.spend(res.costUsd)` after the cached/else block), filter.ts (line 36), find.ts. Cache hits have `costUsd=0` but `Budget.spend` always increments `this.calls`, so cache hits consume the call budget — inconsistent with the local `calls` counter which only counts non-cached.\n\n2. **Unused `route` + reason/route mismatch** in decision-tree.ts.\n\n3. **Tag split** in query.ts.\n\nLet me confirm the exact lines once more for decision-tree. From the diff:\n```\n+      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }\n+      budget.spend(res.costUsd);\n```\nYes.\n\nLet me write the comments now. I'll batch them.",
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts,src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+      "content": "Cache hits consume the call budget. Budget.spend() always increments its internal `calls` counter, but a cached judge.ask returns costUsd=0 and should not count against `budgetCalls` (the local `calls` counter already excludes cached hits). As written, free cache hits drain the budget, so a capped run can stop prematurely even when every remaining row was a cache hit. Guarded by `roomLeft()` before the call, so skip spend() on cache hits to stay consistent with the local accounting.",
+      "suggestion_code": "      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }",
+      "existing_code": "      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }\n      budget.spend(res.costUsd);",
+      "start_line": 0,
+      "end_line": 0,
+      "thinking": "Now the src/ copy of decision-tree.ts — same bug.",
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/store/db.ts",
+      "content": "`saveTargets` calls `require(\"node:fs\").writeFileSync(...)`, but the file already imports from `\"node:fs\"` at the top (line 3: `mkdirSync, readFileSync, existsSync`). Mixing ESM `import` with CommonJS `require` for the same module is inconsistent, redundantly re-resolves the module, and breaks under strict-ESM configurations where `require` is unavailable. Add `writeFileSync` to the top-level import and call it directly — this also matches the pattern used by every other source file (e.g. `src/verbs/find.ts`, `src/verbs/decision-tree.ts` all `import { writeFileSync } from \"node:fs\"`).",
+      "suggestion_code": "writeFileSync(p, JSON.stringify(list, null, 2) + \"\\n\");   // sync write: errors throw to the caller, never swallowed",
+      "existing_code": "require(\"node:fs\").writeFileSync(p, JSON.stringify(list, null, 2) + \"\\n\");   // sync write: errors throw to the caller, never swallowed",
+      "start_line": 43,
+      "end_line": 43,
+      "thinking": "The tool says `'comments' array is required`. Let me check the parameter format. The tool expects `comments` as an array of objects, but I passed the parameters as a flat object. Let me re-read the tool definition.\n\nLooking at the tool definition:\n```\n\"comments\": {\n  \"description\": \"A list of comments. Each item should contain 'content' and 'existing_code'.\",\n  \"items\": {\n    \"properties\": {\n      \"category\": {...},\n      \"content\": {...},\n      \"existing_code\": {...},\n      \"path\": {...},\n      \"severity\": {...},\n      \"suggestion_code\": {...}\n    },\n    \"required\": [\"content\", \"existing_code\"],\n    \"type\": \"object\"\n  },\n  \"type\": \"array\"\n}\n```\n\nWait, looking more carefully, the `path` parameter is at the top level of the tool's parameters, not inside the comments array. Let me re-read...\n\nActually, looking at the tool's parameters:\n```\n{\n  \"comments\": {\n    \"items\": {\n      \"properties\": {\n        \"category\": {...},\n        \"content\": {...},\n        \"existing_code\": {...},\n        \"path\": {...},\n        \"severity\": {...},\n        \"suggestion_code\": {...}\n      },\n      ...\n    },\n    \"type\": \"array\"\n  }\n}\n```\n\nWait, there IS a `path` property inside each comment item. And `content` and `existing_code` are required. Let me look at the tool definition again more carefully.\n\nThe tool has:\n- `comments` (array of comment objects)\n- `path` — \"The relative file path this comment applies to.\"\n\nHmm, looking at the JSON schema, `path` is listed as a property of each comment item in the `comments` array. But in the error, it seems like the tool is complaining that `comments` array is required but I passed a flat object instead.\n\nWait, the error says: \"Got args: {{\"category\":...,\"content\":...,\"existing_code\":...,\"path\":...,\"severity\":...,\"suggestion_code\":...}}\"\n\nSo it received a flat object instead of a `comments` array. I need to wrap my comment in a `comments` array. Let me restructure.\n\nActually, looking at the tool definition again:\n```json\n{\n  \"comments\": {\n    \"description\": \"A list of comments. Each item should contain 'content' and 'existing_code'.\",\n    \"items\": {\n      \"properties\": {\n        \"category\": {...},\n        \"content\": {...},\n        \"existing_code\": {...},\n        \"path\": {...},\n        \"severity\": {...},\n        \"suggestion_code\": {...}\n      },\n      \"required\": [\"content\", \"existing_code\"],\n      \"type\": \"object\"\n    },\n    \"type\": \"array\"\n  },\n  ...\n}\n```\n\nWait, but `path` appears both at the top level AND inside each comment item? Let me re-read the tool definition...\n\nActually, looking at the tool definition, the properties are:\n- `comments` — array of comment objects\n- Each comment object has: `category`, `content`, `existing_code`, `path`, `severity`, `suggestion_code`\n\nAnd `path` is described as \"The relative file path this comment applies to.\" — it's a property of each comment.\n\nSo the correct format should be:\n```json\n{\n  \"comments\": [\n    {\n      \"content\": \"...\",\n      \"existing_code\": \"...\",\n      \"path\": \"src/store/db.ts\",\n      \"category\": \"maintainability\",\n      \"severity\": \"medium\",\n      \"suggestion_code\": \"...\"\n    }\n  ]\n}\n```\n\nBut wait, looking at the error message: \"Got args: {{\"category\":...}}\" — it seems like my arguments were passed as a flat object, not wrapped in a `comments` array. Let me check — I see that the tool definition does NOT list `path` as a top-level property. So I should wrap everything in a `comments` array.\n\nActually, wait. Let me re-read the tool schema more carefully. The tool parameters are:\n\n```\n{\n  \"comments\": {\n    \"items\": {\n      \"properties\": {\n        \"category\": {...},\n        \"content\": {...},\n        \"existing_code\": {...},\n        \"path\": {...},\n        \"severity\": {...},\n        \"suggestion_code\": {...}\n      },\n      \"required\": [\"content\", \"existing_code\"],\n      \"type\": \"object\"\n    },\n    \"type\": \"array\"\n  }\n}\n```\n\nHmm, but the tool definition also says `\"path\": {\"description\": \"The relative file path this comment applies to.\", ...}` — is this at the top level or inside the comment object?\n\nLooking at the raw tool definition:\n```json\n{\n  \"comments\": {\n    \"description\": \"...\",\n    \"items\": {\n      \"properties\": {\n        \"category\": {...},\n        \"content\": {...},\n        \"existing_code\": {...},\n        \"path\": {...},\n        \"severity\": {...},\n        \"suggestion_code\": {...}\n      },\n      ...\n    },\n    \"type\": \"array\"\n  }\n}\n```\n\nIt seems like `path` is inside the comment items. But wait, the error says `'comments' array is required` — so the tool expects the `comments` key to contain an array. My call passed `category`, `content`, `existing_code`, `path`, `severity`, `suggestion_code` as direct parameters (not wrapped in a `comments` array). That's the problem.\n\nLet me re-call with the correct structure: `comments` as a list.\n\nWait, but looking at the tool definition more carefully, I see `path` described as a separate parameter too:\n```\n\"path\": {\"description\": \"The relative file path this comment applies to.\", \"type\": \"string\"}\n```\n\nThis is at the same level as `comments`. So the structure is:\n```\n{\n  \"path\": \"src/store/db.ts\",\n  \"comments\": [\n    {\n      \"content\": \"...\",\n      \"existing_code\": \"...\",\n      \"category\": \"maintainability\",\n      \"severity\": \"medium\",\n      \"suggestion_code\": \"...\"\n    }\n  ]\n}\n```\n\nHmm, but the error says the args I passed were `{category, content, existing_code, path, severity, suggestion_code}` — without a `comments` key. So the tool is expecting `comments` as an array.\n\nWait, I need to look at the tool schema definition more carefully. Let me re-read it:\n\n```json\n{\n  \"comments\": {\n    \"description\": \"A list of comments. Each item should contain 'content' and 'existing_code'.\",\n    \"items\": {\n      \"properties\": {\n        \"category\": {...},\n        \"content\": {...},\n        \"existing_code\": {...},\n        \"path\": {...},\n        \"severity\": {...},\n        \"suggestion_code\": {...}\n      },\n      \"required\": [\"content\", \"existing_code\"],\n      \"type\": \"object\"\n    },\n    \"type\": \"array\"\n  }\n}\n```\n\nOK so the tool has ONE parameter: `comments`, which is an array. Each item in the array is a comment object with properties: `category`, `content`, `existing_code`, `path`, `severity`, `suggestion_code`. And `content` and `existing_code` are required.\n\nBut in my function call, I passed the parameters as flat arguments instead of wrapping them in a `comments` array. I need to wrap them.\n\nLet me re-read the tool definition one more time... Actually, I see the tool also might have `path` at the top level. Let me look at the raw schema again:\n\nThe tool definition's properties include:\n- `comments` (array type)\n- `path` (string type) - described as \"The relative file path this comment applies to.\"\n\nWait, actually, looking at the raw tool definition, I see both `path` and `comments` as top-level properties. And `path` is also inside the `comments` items. That seems redundant, but it might be that `path` is a top-level convenience parameter.\n\nActually, I think the issue is that the tool expects `comments` to be an array, but I passed individual parameters. Let me wrap them properly.\n\nLet me re-call the tool with the correct structure. I'll pass `comments` as an array of comment objects, and include `path` at the top level.\n\nWait, actually, re-reading the error: \"Error: 'comments' array is required. Got args: {{\"category\":...,\"content\":...,\"existing_code\":...,\"path\":...,\"severity\":...,\"suggestion_code\":...}}\"\n\nThe error clearly shows that the tool received a flat object instead of a `comments` array. The fix is to wrap the comments in a `comments` array.\n\nLet me re-call:\n```json\n{\n  \"comments\": [\n    {\n      \"category\": \"maintainability\",\n      \"content\": \"...\",\n      \"existing_code\": \"...\",\n      \"path\": \"src/store/db.ts\",\n      \"severity\": \"medium\",\n      \"suggestion_code\": \"...\"\n    }\n  ]\n}\n```\n\nWait, but looking at the tool schema definition, I see `path` is listed separately from `comments`:\n\n```\n\"path\": {\"description\": \"The relative file path this comment applies to.\", \"type\": \"string\"},\n```\n\nHmm, but is this at the top level? Let me look at the schema again. The schema has:\n- `additionalProperties`: false\n- `properties`:\n  - `comments`: array\n  - `path`: string\n\nWait, no. Let me look at the raw schema more carefully. The properties section lists:\n- `comments` — array of comment objects\n\nBut wait, I also see `path` listed as a property. Let me check if `path` is inside the `comments` items or at the top level.\n\nLooking at the tool definition:\n```json\n{\n  \"comments\": {\n    \"description\": \"...\",\n    \"items\": {\n      \"properties\": {\n        \"category\": {...},\n        \"content\": {...},\n        \"existing_code\": {...},\n        \"path\": {...},\n        \"severity\": {...},\n        \"suggestion_code\": {...}\n      },\n      \"required\": [\"content\", \"existing_code\"],\n      \"type\": \"object\"\n    },\n    \"type\": \"array\"\n  }\n}\n```\n\nOK wait, I see that in the items' properties, `path` IS listed. So `path` is a property of each comment object, not a top-level parameter. But the tool schema might also have `path` at the top level...\n\nActually, I realize I'm overcomplicating this. The error is clear: the tool requires a `comments` array. My previous call passed flat parameters. Let me just wrap everything in a `comments` array.\n\nActually, hmm, let me re-read the tool definition one more time very carefully:\n\nThe tool has `properties`:\n1. `comments` — type: array, items: object with properties [category, content, existing_code, path, severity, suggestion_code], required: [content, existing_code]\n2. `path` — type: string, description: \"The relative file path this comment applies to.\"\n\nWait, is `path` actually a top-level property? Let me look at the raw JSON schema definition... Actually, I see now that the tool schema lists both `comments` and `path` as top-level parameters. But `path` is also inside each comment item. That's confusing. Let me just include `path` both at the top level and inside each comment to be safe.\n\nActually, I think the simplest approach is to just pass `comments` as an array where each item includes `path`. Let me try that.\n\nWait, actually, re-reading the error more carefully: \"Error: 'comments' array is required. Got args: {{\"category\":\"maintainability\",...,\"path\":\"src/store/db.ts\",...}}\"\n\nSo the tool received my flat args (which included `path` as a key) and is saying it needs a `comments` array. So I should structure it as:\n```\n{\n  \"comments\": [\n    {\n      \"category\": \"maintainability\",\n      \"content\": \"...\",\n      \"existing_code\": \"...\",\n      \"path\": \"src/store/db.ts\",\n      \"severity\": \"medium\",\n      \"suggestion_code\": \"...\"\n    }\n  ]\n}\n```\n\nLet me try this.",
+      "category": "maintainability",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+      "content": "The `route` from routeOf() is never used — `DecisionRow.route` is overwritten by the aggregate `agg`, and `reason` is built from routeOf's *first-answer* signal while `route` reflects the *aggregate* of all answers. For multi-question recipes these can disagree, producing self-contradictory rows (e.g. route='act' but reason starts with a sub-flag signal). Either drop the redundant routeOf call and derive reason from `agg` alone, or route consistently from one signal source.",
+      "suggestion_code": "      const value = answersToPolicyValue(res.answers as never);\n      const agg = value \u003e= policy.act ? \"act\" : value \u003e= policy.flag ? \"escalate\" : \"noop\";\n      const reason = `agg=${value.toFixed(2)} (${value \u003e= policy.act ? `signal=${value.toFixed(2)} \u003e= act=${policy.act}` : value \u003e= policy.flag ? `signal=${value.toFixed(2)} in [${policy.flag},${policy.act})` : `signal=${value.toFixed(2)} \u003c flag=${policy.flag}`})`;\n      const d: DecisionRow = { i, route: agg, reason, answers: res.answers, cached: res.cached, model: res.model };",
+      "existing_code": "      const value = answersToPolicyValue(res.answers as never);\n      const { route, reason } = routeOf(res.answers[Object.keys(opts.recipe.questions)[0]] as never, policy);\n      // recompute with the aggregate signal for multi-question recipes\n      const agg = value \u003e= policy.act ? \"act\" : value \u003e= policy.flag ? \"escalate\" : \"noop\";\n      const d: DecisionRow = { i, route: agg, reason: `${reason} | agg=${value.toFixed(2)}`, answers: res.answers, cached: res.cached, model: res.model };",
+      "start_line": 65,
+      "end_line": 69,
+      "thinking": "Now the routeOf unused `route` + reason/route mismatch in decision-tree.ts (both copies).",
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "src/verbs/decision-tree.ts",
+      "content": "The `route` from routeOf() is never used — `DecisionRow.route` is overwritten by the aggregate `agg`, and `reason` is built from routeOf's *first-answer* signal while `route` reflects the *aggregate* of all answers. For multi-question recipes these can disagree, producing self-contradictory rows (e.g. route='act' but reason starts with a sub-flag signal). Either drop the redundant routeOf call and derive reason from `agg` alone, or route consistently from one signal source.",
+      "suggestion_code": "      const value = answersToPolicyValue(res.answers as never);\n      const agg = value \u003e= policy.act ? \"act\" : value \u003e= policy.flag ? \"escalate\" : \"noop\";\n      const reason = `agg=${value.toFixed(2)} (${value \u003e= policy.act ? `signal=${value.toFixed(2)} \u003e= act=${policy.act}` : value \u003e= policy.flag ? `signal=${value.toFixed(2)} in [${policy.flag},${policy.act})` : `signal=${value.toFixed(2)} \u003c flag=${policy.flag}`})`;\n      const d: DecisionRow = { i, route: agg, reason, answers: res.answers, cached: res.cached, model: res.model };",
+      "existing_code": "      const value = answersToPolicyValue(res.answers as never);\n      const { route, reason } = routeOf(res.answers[Object.keys(opts.recipe.questions)[0]] as never, policy);\n      // recompute with the aggregate signal for multi-question recipes\n      const agg = value \u003e= policy.act ? \"act\" : value \u003e= policy.flag ? \"escalate\" : \"noop\";\n      const d: DecisionRow = { i, route: agg, reason: `${reason} | agg=${value.toFixed(2)}`, answers: res.answers, cached: res.cached, model: res.model };",
+      "start_line": 65,
+      "end_line": 69,
+      "category": "bug",
+      "severity": "medium"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+      "content": "Same cache-hit bug as decision-tree: Budget.spend() always increments the internal call counter, so cached judge.ask results (costUsd=0) still consume a slot of `budgetCalls`. The local `calls` counter correctly excludes cached hits, so skip spend() for cache hits to keep the two in sync.",
+      "suggestion_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }",
+      "existing_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; }\n    budget.spend(res.costUsd);",
+      "start_line": 35,
+      "end_line": 36,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/filter.ts",
+      "content": "Same cache-hit bug as decision-tree: Budget.spend() always increments the internal call counter, so cached judge.ask results (costUsd=0) still consume a slot of `budgetCalls`. The local `calls` counter correctly excludes cached hits, so skip spend() for cache hits to keep the two in sync.",
+      "suggestion_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }",
+      "existing_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; }\n    budget.spend(res.costUsd);",
+      "start_line": 35,
+      "end_line": 36,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+      "content": "Same cache-hit bug as decision-tree: Budget.spend() always increments the internal call counter, so cached judge.ask results (costUsd=0) still consume a slot of `budgetCalls`. The local `calls` counter correctly excludes cached hits, so skip spend() for cache hits to keep the two in sync.",
+      "suggestion_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }",
+      "existing_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; }\n    budget.spend(res.costUsd);",
+      "start_line": 57,
+      "end_line": 58,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "src/verbs/find.ts",
+      "content": "Same cache-hit bug as decision-tree: Budget.spend() always increments the internal call counter, so cached judge.ask results (costUsd=0) still consume a slot of `budgetCalls`. The local `calls` counter correctly excludes cached hits, so skip spend() for cache hits to keep the two in sync.",
+      "suggestion_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }",
+      "existing_code": "    if (!res.cached) { calls++; costUsd += res.costUsd; }\n    budget.spend(res.costUsd);",
+      "start_line": 57,
+      "end_line": 58,
+      "category": "bug",
+      "severity": "high"
+    },
+    {
+      "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+      "content": "`opts.tag.split(\"=\")` splits on every `=`, so a tag value that itself contains `=` (e.g. `name=a=b`) is truncated: `const [k, v]` grabs only the middle piece and drops the rest. Split on the first `=` only.",
+      "suggestion_code": "    const eq = opts.tag.indexOf(\"=\");\n    const k = opts.tag.slice(0, eq);\n    const v = opts.tag.slice(eq + 1);\n    sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;\n    params.push(k, v);",
+      "existing_code": "    const [k, v] = opts.tag.split(\"=\");\n    sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;\n    params.push(k, v);",
+      "start_line": 47,
+      "end_line": 49,
+      "thinking": "Now the query.ts tag split issue (both copies).",
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/verbs/query.ts",
+      "content": "`opts.tag.split(\"=\")` splits on every `=`, so a tag value that itself contains `=` (e.g. `name=a=b`) is truncated: `const [k, v]` grabs only the middle piece and drops the rest. Split on the first `=` only.",
+      "suggestion_code": "    const eq = opts.tag.indexOf(\"=\");\n    const k = opts.tag.slice(0, eq);\n    const v = opts.tag.slice(eq + 1);\n    sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;\n    params.push(k, v);",
+      "existing_code": "    const [k, v] = opts.tag.split(\"=\");\n    sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;\n    params.push(k, v);",
+      "start_line": 47,
+      "end_line": 49,
+      "category": "bug",
+      "severity": "low"
+    },
+    {
+      "path": "src/store/db.ts,src/store/schema.ts",
+      "content": "BUG: `SCHEMA_SQL` contains 10 SQL statements (CREATE TABLE meta, files, docs, docs_fts, tags, runs, decisions, cache + 2 indexes). In Bun's SQLite API, `db.run(sql)` is equivalent to `db.prepare(sql).run()`, and `prepare()` uses `sqlite3_prepare_v2` which only compiles the FIRST statement — the remaining 9 statements are silently ignored. This means only the `meta` table gets created, and all other tables/indexes are missing, causing 'no such table' errors at runtime whenever any verb tries to access them. Use `db.exec(SCHEMA_SQL)` instead, which uses `sqlite3_exec` and is designed for executing multiple statements.",
+      "suggestion_code": "  db.exec(SCHEMA_SQL);",
+      "start_line": 0,
+      "end_line": 0,
+      "thinking": "Confirmed. `SCHEMA_SQL` is a template literal containing multiple SQL statements separated by semicolons and newlines. Using `db.run(SCHEMA_SQL)` (which is `db.prepare(SCHEMA_SQL).run()`) would only execute the first statement.\n\nNow let me report this issue with a code comment.",
+      "category": "bug",
+      "severity": "critical"
+    }
+  ],
+  "groups": [
+    {
+      "label": "Checkpoint: audit artifacts (split: Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21-reaudit-BLOCKED.json)",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21-reaudit-BLOCKED.json"
+      ]
+    },
+    {
+      "label": "Checkpoint: audit artifacts (split: Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21.json)",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21.json"
+      ]
+    },
+    {
+      "label": "Checkpoint: audit artifacts (split: artifacts/audit-2026-09-21-reaudit-BLOCKED.json)",
+      "files": [
+        "artifacts/audit-2026-09-21-reaudit-BLOCKED.json"
+      ]
+    },
+    {
+      "label": "Checkpoint: audit artifacts (split: artifacts/audit-2026-09-21.json)",
+      "files": [
+        "artifacts/audit-2026-09-21.json"
+      ]
+    },
+    {
+      "label": "Checkpoint: audit artifacts (split: artifacts/audit-2026-09-22-reaudit.json)",
+      "files": [
+        "artifacts/audit-2026-09-22-reaudit.json"
+      ]
+    },
+    {
+      "label": "Checkpoint: source - calibration and CLI",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+        "package.json",
+        "src/calibrate.ts",
+        "src/cli.ts",
+        "tsconfig.json"
+      ]
+    },
+    {
+      "label": "Checkpoint: source - job module",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+        "src/job/indexJob.ts",
+        "src/job/queue.ts",
+        "src/job/run.ts",
+        "src/job/store.ts"
+      ]
+    },
+    {
+      "label": "Checkpoint: source - judge module",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+        "src/judge/cache.ts",
+        "src/judge/client.ts",
+        "src/judge/key.ts",
+        "src/judge/policy.ts",
+        "src/judge/transport.ts"
+      ]
+    },
+    {
+      "label": "Checkpoint: source - pools and store",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+        "src/ledger.ts",
+        "src/pools/budget.ts",
+        "src/pools/pool.ts",
+        "src/serve.ts"
+      ]
+    },
+    {
+      "label": "Checkpoint: source - pools and store",
+      "files": [
+        "src/store/db.ts",
+        "src/store/schema.ts"
+      ]
+    },
+    {
+      "label": "Checkpoint: source - verbs module",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+        "src/verbs/decision-tree.ts",
+        "src/verbs/filter.ts",
+        "src/verbs/find.ts",
+        "src/verbs/index.ts",
+        "src/verbs/query.ts"
+      ]
+    },
+    {
+      "label": "Checkpoint: tests and config",
+      "files": [
+        "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+        "Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json",
+        "tests/helpers.ts"
+      ]
+    },
+    {
+      "label": "bunfig.toml",
+      "files": [
+        "bunfig.toml"
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "file": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts,Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json,tests/helpers.ts",
+      "message": "comments arrived as a serialized string instead of an array; repaired 4 unescaped character(s)",
+      "type": "comment_args_repaired"
+    },
+    {
+      "file": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts,src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+      "message": "round 2: LLM completion error: context deadline exceeded",
+      "type": "review_round_failed"
+    }
+  ],
+  "session_id": "2ad55c04-c6d1-4216-8fc5-f079b59a56e7",
+  "manifest": {
+    "schema_version": "ocr.run-manifest/v1",
+    "run_id": "2ad55c04-c6d1-4216-8fc5-f079b59a56e7",
+    "operation": "review",
+    "terminal_state": "partial",
+    "repository": {},
+    "input": {
+      "mode": "range",
+      "requested_from": "7b7f7eb",
+      "requested_head": "HEAD",
+      "resolved_base": "7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30",
+      "resolved_head": "4fb16621dcb135f33e3f7be6382d6a1b4eb1cc32",
+      "exact_range": "7b7f7ebfe9645365de236a0a8fc7ca8cc31cea30..4fb16621dcb135f33e3f7be6382d6a1b4eb1cc32",
+      "source_artifact_sha256": "8600fb419ccf47f48e60c9af7b6b4004bfc0c1d9eeb39cc8f85dcb2dc572c818"
+    },
+    "execution": {
+      "ocr_version": "v1.12.8",
+      "provider": "poolside-laguna-s",
+      "model": "poolside/laguna-s-2.1",
+      "configured_concurrency": 8,
+      "rule_config_sha256": "9f33647a25a002db1b7770ce092ffab8b77ef98379e262871a243afd75f798d9",
+      "runtime_config_sha256": "b241d81bce2e7ec9a95a32670a386dd9ec1b61dbfcdd0d7d071543586dc03b18"
+    },
+    "coverage": {
+      "selected": [
+        {
+          "item_id": "024a332d31c1fae5defe2cf9abec4c82c47414b036b79ba863d6d8da0999fa9e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+          "fingerprint": "8393f2a3f773c29571f11c204ec2dc1c8d51f78f51a608524297300cf4153e66"
+        },
+        {
+          "item_id": "050e86de75a1b9a29e6e6aed15543248ca123586b260ff590d00521b36384a09",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+          "fingerprint": "7fb8435818006fbdde17a73cd9226a20db629cc908e2cab014372937be69634c"
+        },
+        {
+          "item_id": "065594c1950a8bdf32e6147a515d8abd91c29419826131f0431d986a8e6e9c49",
+          "path": "src/calibrate.ts",
+          "fingerprint": "11796bee5509c2b9a134ebb89fc4225f54f41a950c1e2e359b067c97f1a76cbd"
+        },
+        {
+          "item_id": "0ae9cd62b58ee0e0221c35fd8787042335b665bb6a45a882bc04cc397b0a6223",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+          "fingerprint": "45e834384754b535e0250bb6f503364df445433f3e9f7ebd73c65ca90de2d130"
+        },
+        {
+          "item_id": "0d9b950998672ebfa581b7b087ef7dcc267b693c5fcb513e9ec03817c4d9eaf9",
+          "path": "src/store/schema.ts",
+          "fingerprint": "ad8874feabefdf30fcbc0333e5eeb67572f2dac7e3eb688ecb26cfe7f47c8785"
+        },
+        {
+          "item_id": "0dcaf7cd11e9b958fd502192979a0116734d94cdc5899e93db46e8dc9c8ec1e6",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+          "fingerprint": "827aae7bb3e69aec609977d330599055709f1533b42d0fd1242c00f51bc7a108"
+        },
+        {
+          "item_id": "11d0b21345178fb348558fc97da43b7044f43e91fd189edf33640c1b913eb13e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+          "fingerprint": "33eaed741a72fbed36edcaa0c9a470b37b511cc2d2f7d2dd8b262bdd299fb0fd"
+        },
+        {
+          "item_id": "1ee185ab04e75dbde35b7cf0c96f51a58aa8231777b2ddca346f9de670920912",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+          "fingerprint": "d1a4ebfe89fb2704bb649b83782af18277109d20206660d2d4c29de90d19295e"
+        },
+        {
+          "item_id": "3c362f6fff072f62281a068ec5f680a1c5ee071d630e71e99c2b6954a13a06ce",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+          "fingerprint": "bc4762fd1eb256156258d7c9090aa0ce81a7bc019cd10a6fd5f3308767a3ee45"
+        },
+        {
+          "item_id": "4b9826fb05a6de11882f81f75dae37693925a4c759b235482020d972b63e317d",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+          "fingerprint": "1430297ad1e24d6feb936ce6c2ef63283f8d67f6c2b392cabeab566c031dbd61"
+        },
+        {
+          "item_id": "4c524888cfa5c67b21e93d2109d6ce4e610691183b82052f13f2fa2569ffe9a4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21-reaudit-BLOCKED.json",
+          "fingerprint": "9e45b0194f3a45b4e11122f8413a380e8fd1e42860abf5739d3c7c9a492ccbfd"
+        },
+        {
+          "item_id": "5234ca7e446e17cb8112e2c11af2615280c3d0120abbd2ec46caf7df9e46ea5d",
+          "path": "src/pools/pool.ts",
+          "fingerprint": "d8487d4e20879c96d8f30108a28ad1e799e9ca7b7e794f0c2a0c531c9c1bcd0d"
+        },
+        {
+          "item_id": "58307f6222c3362281a387ea4e97e270b25a3fa71ec608c8e29b6b179848eb6d",
+          "path": "artifacts/audit-2026-09-22-reaudit.json",
+          "fingerprint": "57c3a7e3f432f36fc1b70f8d1088e5d770815b0b2632f52c1a46f8b3c42ed444"
+        },
+        {
+          "item_id": "5e486b0a007da76e72b012c526632435d7de259258e14a082aabd913a63e6d38",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+          "fingerprint": "a85638c21f9c6d7f259f15624eade06a248c037f2b58867f512517032bc0c278"
+        },
+        {
+          "item_id": "6520967e32b60453eadaeaa8fcf50615dace9e084dd871aa318eefd53d2f5e40",
+          "path": "tsconfig.json",
+          "fingerprint": "807dd6ca6eedd8d37b13cbba8f1fc9386d2793668f8f15dc9ddc2ccc581c3a6c"
+        },
+        {
+          "item_id": "681560116a929d9a7c964e770d239c36337f983a2483c7be6ad876cc3b395a89",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+          "fingerprint": "b10a464289d613c9c2aa354a4eb0d1bc7fbd4974e474a96a5b2f01d3e8187ec7"
+        },
+        {
+          "item_id": "6892a493d2b92dcacf2efa6077a05a0e61271481b84289927c9bb519617ab6ff",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+          "fingerprint": "f2ce8b917b65a751e1128e4c1b89532f28fa87bf6a7d768d85cefcb9671332f9"
+        },
+        {
+          "item_id": "6b791da7b7478a46901d54abef1f5b4cbb48090b327e3e4ef2751d627e17f953",
+          "path": "src/serve.ts",
+          "fingerprint": "c218bcad9823013f804d9caeb11df8e139813fd3763ac1c38c1d3b0103904c98"
+        },
+        {
+          "item_id": "6e8c157364555b804b8ea0f4619a38243d3691aae858d5f24c1fdd104a77d4c2",
+          "path": "src/job/queue.ts",
+          "fingerprint": "1ad44ff288e897da76581f333864643bf3040028437669e1d45627fcb834e681"
+        },
+        {
+          "item_id": "7425ccdca5f15ecd673a85900569714d14614e54120f8dfaa1642fd26d8fb851",
+          "path": "src/judge/policy.ts",
+          "fingerprint": "46e71524133ebfdf47dda783774dfc55b53aa32208dcaa59aa06737089e512b1"
+        },
+        {
+          "item_id": "77ff7a7492d74b6a581353c2c8bdf7d59a977fcdca52d8b02f05550f7e8620db",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+          "fingerprint": "c0c300645bb0438b46a2a3c16f15d9f6f8af704cd22334eb04912e1dad0e0beb"
+        },
+        {
+          "item_id": "787c6b86bbe25a2dbee2e7252006299a932fd77258c46ef70b4b51fb653452c4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21.json",
+          "fingerprint": "f556980c5a2a2dbd7d3d965da2efb7dfb1ddf7547f521fdb69d3992b01ee8219"
+        },
+        {
+          "item_id": "7e845fd1c43125d18b1bb3576f69445ce1a437fa8b59c1150a37a8ff596d57fc",
+          "path": "src/verbs/index.ts",
+          "fingerprint": "5b0006ea98135448707cf6a4444af9594ad39d49ed66e6bf38caed55a663141f"
+        },
+        {
+          "item_id": "80e472a2558e25b599a468c6767aa0ded5d498bcf66cc6ab27e0411c2e6b0c5c",
+          "path": "src/verbs/decision-tree.ts",
+          "fingerprint": "946e4be8f597de40ed043e0ea6dc9eeec9240fe6abfaf49dc5f3f77f247cf653"
+        },
+        {
+          "item_id": "8b04ea08e94a68479700ef6eff076fb18487eea2066e9a53ca2884afe5069db2",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+          "fingerprint": "07170fab7bf109f9c929b1eb45921e510b43dfce634f5d3842e763f9879ce6b1"
+        },
+        {
+          "item_id": "8fa2b8790dd48444cd5c653fbcd71cff6d14c633a9800b8a212ea4c94842e040",
+          "path": "src/judge/transport.ts",
+          "fingerprint": "983f2319c105f2e17de8373f68e33111e6ff635ddc4c5c61887e746cccaf2b85"
+        },
+        {
+          "item_id": "918e040119e9529b67832c799b28542a07788eefc5d3879937ff38f7201f77fb",
+          "path": "src/cli.ts",
+          "fingerprint": "fd052cd327c6c9dafb247ff760777c8233387f18011fc42bbaa53eb548a03946"
+        },
+        {
+          "item_id": "94eeadc2b54f8c8538b14d4f4acc2346d92940718d561bd683840133bd0eb67a",
+          "path": "artifacts/audit-2026-09-21-reaudit-BLOCKED.json",
+          "fingerprint": "22f8338d7c5b2c2e7109016d107c8d99af61dbd0107fef71fa456fdf5e087961"
+        },
+        {
+          "item_id": "995297467243b829067e71819c0a1184826a8bcef9a8431ed4eacdb1b64ced9b",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+          "fingerprint": "9e993ca2357cc7f89b8bff8f2b5446e11998106a653fef4534558027000d5186"
+        },
+        {
+          "item_id": "a70ead38b1b622582f317f90dc5b8f735d182568e3a730eaad0abbdf6854b6f1",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+          "fingerprint": "f6957b4b3c8156f52526ad9323c8c1e057e36537cf17621ddd5bfe62ea86ab57"
+        },
+        {
+          "item_id": "a7ebf8583a59c7079ee6de4b36570a452d46bb9fc24ad55bb6188bc434c15340",
+          "path": "src/verbs/find.ts",
+          "fingerprint": "7c75007b2d7754479e9ae5b7e4656ea65cfd99430b9be4b945c9d3389b8110a6"
+        },
+        {
+          "item_id": "b182cb172bf223bcd9004bb2248ad3a401fc818d9026d0de8971e20b28e8f499",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+          "fingerprint": "6e0c0736b49508d94710a9c0f33d576bf545cda29f9303bee1d5fb91e50d6ee9"
+        },
+        {
+          "item_id": "b26782a9fbdc5fabb88ecd7b308b0346518b06bfaf23fe34481e7b3f4c461bc7",
+          "path": "src/verbs/query.ts",
+          "fingerprint": "0b92949f473c47f11e41a856b017db6544b308750f6118f29cc8532ce76c58fa"
+        },
+        {
+          "item_id": "b41cb619274b758b43048f726adad534c094537c6cbd449a26f7293186df8b66",
+          "path": "src/job/store.ts",
+          "fingerprint": "4ea395a754906d78818b4e508ebb21fc076e81dbe2707663c72616a67b18c116"
+        },
+        {
+          "item_id": "b564fa968089c6ed56d757f8af4b799ff14ae734c2f062d7395ea973f457ba1b",
+          "path": "src/job/run.ts",
+          "fingerprint": "fb0e539aadf7e73f5fd721ada7ede9a34cc84b57ff720c93610bd8248b673eca"
+        },
+        {
+          "item_id": "b5a39787567647ca271bdef926479fdbcbe9617ac9abbce1f4549b1dcba59904",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+          "fingerprint": "c0089346c1a897af398829b13272aa51ac8e9f4c0139a13d17827ab258453da7"
+        },
+        {
+          "item_id": "b7ddd2a768e771d252d9f772d17847c32b6fa7961bdcb49f3415bff84affa68b",
+          "path": "tests/helpers.ts",
+          "fingerprint": "178d5c602117c97004766754c9023ef4d50d405db9522e2ec316a0b2886a336b"
+        },
+        {
+          "item_id": "ba60fef7d0e8615b07e774284f4c4dac75f4f32099f4c966d0d8c3d53b37cc5a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+          "fingerprint": "feecff23ea698c24e9747b51912f35d8481b0471b89257f0c34255102ecdae76"
+        },
+        {
+          "item_id": "ba974e72e2acbe6eec406e8ee68ba046f3078d24783613e614447f985e11bfba",
+          "path": "src/judge/key.ts",
+          "fingerprint": "858f4c0857adab5e7c8495ca7848f4be1ea3929517874c6abbd1c8e59e154cb8"
+        },
+        {
+          "item_id": "ba9c76b0ec8e06972a5dd0a688621ee773ec3af604dee96d945b9dbaf1a2c97c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json",
+          "fingerprint": "589ccac8948a43740609504e66863ad033ec92fda38afc2d245774fc80b81d88"
+        },
+        {
+          "item_id": "c968da88e037cee2f80b20a94d74b5e90d5f4f891e928724567d0d429efdbbd0",
+          "path": "src/ledger.ts",
+          "fingerprint": "1aa92ffeed7fba2c9e2aeddee2c3cb1d74b23826e7176c8271f0da2b13ce4e35"
+        },
+        {
+          "item_id": "cd8b5119aa0f585c339c4969f3701107fbb1d5de7818d29b2988bcf328bf5e19",
+          "path": "src/verbs/filter.ts",
+          "fingerprint": "85056c925aa33b370c32d1905efd30a9f27181e175029a8eee16d0497820668c"
+        },
+        {
+          "item_id": "cefcf7b362ef9668818a797d289d2cfcebe6a19768dfc8965188f834ce8e80ca",
+          "path": "src/store/db.ts",
+          "fingerprint": "3a0195a65021c94a3130be26849353a8a8c3b1f03b5cb78b06a0760672ddcbfd"
+        },
+        {
+          "item_id": "d5051a2abc448bd6d546e85110a480f61b3db90095139cbf086258b05f965141",
+          "path": "src/pools/budget.ts",
+          "fingerprint": "43f3b182d8bddbde52038eace92fa21b38df941ef00586aee18bce49742e9ffb"
+        },
+        {
+          "item_id": "e3c7cbe310881d0348390239b00c219aa81fd9d09b83da3f90f33ba209ea7b6a",
+          "path": "package.json",
+          "fingerprint": "47a1ce1ba4cd6d8af958ec3fec7369778ebe64b3c7e639ca390348816a58a7e1"
+        },
+        {
+          "item_id": "e4f1b94b3db39e616b452aa14d093bbdb8ae089f092bf99700ccbf2c39b14118",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+          "fingerprint": "0f9ff6ada91f0dbc1e435356590c3baefcab4250b016137be6f1927d25c9581c"
+        },
+        {
+          "item_id": "e616bc38cd7c85aaeecee1ac3569545ca3bec6d39010cda5a0ae94847f7fe033",
+          "path": "artifacts/audit-2026-09-21.json",
+          "fingerprint": "4000d8236f740aba1e8d646f5703ced123cb8aa90894fdd2ac0ddd43bb0fb2ef"
+        },
+        {
+          "item_id": "e6461545e52e4aa4e44ed4a662ac07440f6746d721a74770915dc1390b82976f",
+          "path": "src/job/indexJob.ts",
+          "fingerprint": "cbf08fd6bbb43bbee172bbb64788787a088dc7a81823d42f7ca18781c1eb547c"
+        },
+        {
+          "item_id": "e943154e3292eea47673886a5701cae63ad3222ce38d5a26f432335832f9c529",
+          "path": "src/judge/cache.ts",
+          "fingerprint": "2a2823c5f1f68aec3ec983dbc03efa20ba1897e7cd79bf182af472c81b534928"
+        },
+        {
+          "item_id": "eb685bb66dc94e700fec5dbb85ef9a1ad0bc97f8b68159182ebbd5ba46227b5d",
+          "path": "src/judge/client.ts",
+          "fingerprint": "35e2291b1d8080828759eee5a96c06e0ef49f68439c0763efd9ef8ff6fd11404"
+        },
+        {
+          "item_id": "ec13db4dc537b309ae96030df10086d1c2d524aba3d0b7144cdbf6952fa732e4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+          "fingerprint": "65e7c784931b5131f2e76eb2cf7c37fac171c76835511269d8e0eb935a83c10e"
+        },
+        {
+          "item_id": "f6119b64c64e9e604558c355e53026d9900c006b8f9fb648204f245119237f55",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+          "fingerprint": "99af0579a0d430d887fa911702919f895aabbfe6f6dd43cb811842d36f8da3df"
+        },
+        {
+          "item_id": "f8ba4a7c027cf9b406ac9a2aa2ac0ab67fc3a0dda8c793e9122c5c6daf835b0c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+          "fingerprint": "4e1533af2f8320196e95fa4511369ee8012485dd50b7332868e185e5f3a427e1"
+        },
+        {
+          "item_id": "f8f7dd659b7c48da3dac8a4e06e66774e9a83405ea22a4742a54580795f4b6f3",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+          "fingerprint": "5c2ce6234a5f2a728647a56308235d750b8cf6b3390f0e64454fcc7e01b6e135"
+        },
+        {
+          "item_id": "f9063417aca0cd0b2c0e004a11ac7a050207978d6c6ac513eb10d16dd3ee1454",
+          "path": "bunfig.toml",
+          "fingerprint": "e8fc24f8844194a43e3c81db9b8ed1c0295dc7108c51de09dc2c2c42c962e448"
+        },
+        {
+          "item_id": "fe60b82e2c5ea48d8fbc9216ab8b62d1550eb3e69c80ee393e1f503530e2b97a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+          "fingerprint": "b2ed5fea6664a4dfc476406aabeaac3b18dae3a29b80c777b1553f27fa250a98"
+        }
+      ],
+      "completed": [
+        {
+          "item_id": "0d9b950998672ebfa581b7b087ef7dcc267b693c5fcb513e9ec03817c4d9eaf9",
+          "path": "src/store/schema.ts",
+          "fingerprint": "ad8874feabefdf30fcbc0333e5eeb67572f2dac7e3eb688ecb26cfe7f47c8785"
+        },
+        {
+          "item_id": "4b9826fb05a6de11882f81f75dae37693925a4c759b235482020d972b63e317d",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts",
+          "fingerprint": "1430297ad1e24d6feb936ce6c2ef63283f8d67f6c2b392cabeab566c031dbd61"
+        },
+        {
+          "item_id": "4c524888cfa5c67b21e93d2109d6ce4e610691183b82052f13f2fa2569ffe9a4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21-reaudit-BLOCKED.json",
+          "fingerprint": "9e45b0194f3a45b4e11122f8413a380e8fd1e42860abf5739d3c7c9a492ccbfd"
+        },
+        {
+          "item_id": "58307f6222c3362281a387ea4e97e270b25a3fa71ec608c8e29b6b179848eb6d",
+          "path": "artifacts/audit-2026-09-22-reaudit.json",
+          "fingerprint": "57c3a7e3f432f36fc1b70f8d1088e5d770815b0b2632f52c1a46f8b3c42ed444"
+        },
+        {
+          "item_id": "681560116a929d9a7c964e770d239c36337f983a2483c7be6ad876cc3b395a89",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts",
+          "fingerprint": "b10a464289d613c9c2aa354a4eb0d1bc7fbd4974e474a96a5b2f01d3e8187ec7"
+        },
+        {
+          "item_id": "787c6b86bbe25a2dbee2e7252006299a932fd77258c46ef70b4b51fb653452c4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21.json",
+          "fingerprint": "f556980c5a2a2dbd7d3d965da2efb7dfb1ddf7547f521fdb69d3992b01ee8219"
+        },
+        {
+          "item_id": "7e845fd1c43125d18b1bb3576f69445ce1a437fa8b59c1150a37a8ff596d57fc",
+          "path": "src/verbs/index.ts",
+          "fingerprint": "5b0006ea98135448707cf6a4444af9594ad39d49ed66e6bf38caed55a663141f"
+        },
+        {
+          "item_id": "80e472a2558e25b599a468c6767aa0ded5d498bcf66cc6ab27e0411c2e6b0c5c",
+          "path": "src/verbs/decision-tree.ts",
+          "fingerprint": "946e4be8f597de40ed043e0ea6dc9eeec9240fe6abfaf49dc5f3f77f247cf653"
+        },
+        {
+          "item_id": "8b04ea08e94a68479700ef6eff076fb18487eea2066e9a53ca2884afe5069db2",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts",
+          "fingerprint": "07170fab7bf109f9c929b1eb45921e510b43dfce634f5d3842e763f9879ce6b1"
+        },
+        {
+          "item_id": "94eeadc2b54f8c8538b14d4f4acc2346d92940718d561bd683840133bd0eb67a",
+          "path": "artifacts/audit-2026-09-21-reaudit-BLOCKED.json",
+          "fingerprint": "22f8338d7c5b2c2e7109016d107c8d99af61dbd0107fef71fa456fdf5e087961"
+        },
+        {
+          "item_id": "995297467243b829067e71819c0a1184826a8bcef9a8431ed4eacdb1b64ced9b",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tests/helpers.ts",
+          "fingerprint": "9e993ca2357cc7f89b8bff8f2b5446e11998106a653fef4534558027000d5186"
+        },
+        {
+          "item_id": "a7ebf8583a59c7079ee6de4b36570a452d46bb9fc24ad55bb6188bc434c15340",
+          "path": "src/verbs/find.ts",
+          "fingerprint": "7c75007b2d7754479e9ae5b7e4656ea65cfd99430b9be4b945c9d3389b8110a6"
+        },
+        {
+          "item_id": "b182cb172bf223bcd9004bb2248ad3a401fc818d9026d0de8971e20b28e8f499",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts",
+          "fingerprint": "6e0c0736b49508d94710a9c0f33d576bf545cda29f9303bee1d5fb91e50d6ee9"
+        },
+        {
+          "item_id": "b26782a9fbdc5fabb88ecd7b308b0346518b06bfaf23fe34481e7b3f4c461bc7",
+          "path": "src/verbs/query.ts",
+          "fingerprint": "0b92949f473c47f11e41a856b017db6544b308750f6118f29cc8532ce76c58fa"
+        },
+        {
+          "item_id": "b7ddd2a768e771d252d9f772d17847c32b6fa7961bdcb49f3415bff84affa68b",
+          "path": "tests/helpers.ts",
+          "fingerprint": "178d5c602117c97004766754c9023ef4d50d405db9522e2ec316a0b2886a336b"
+        },
+        {
+          "item_id": "ba9c76b0ec8e06972a5dd0a688621ee773ec3af604dee96d945b9dbaf1a2c97c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/tsconfig.json",
+          "fingerprint": "589ccac8948a43740609504e66863ad033ec92fda38afc2d245774fc80b81d88"
+        },
+        {
+          "item_id": "cd8b5119aa0f585c339c4969f3701107fbb1d5de7818d29b2988bcf328bf5e19",
+          "path": "src/verbs/filter.ts",
+          "fingerprint": "85056c925aa33b370c32d1905efd30a9f27181e175029a8eee16d0497820668c"
+        },
+        {
+          "item_id": "cefcf7b362ef9668818a797d289d2cfcebe6a19768dfc8965188f834ce8e80ca",
+          "path": "src/store/db.ts",
+          "fingerprint": "3a0195a65021c94a3130be26849353a8a8c3b1f03b5cb78b06a0760672ddcbfd"
+        },
+        {
+          "item_id": "e616bc38cd7c85aaeecee1ac3569545ca3bec6d39010cda5a0ae94847f7fe033",
+          "path": "artifacts/audit-2026-09-21.json",
+          "fingerprint": "4000d8236f740aba1e8d646f5703ced123cb8aa90894fdd2ac0ddd43bb0fb2ef"
+        },
+        {
+          "item_id": "f6119b64c64e9e604558c355e53026d9900c006b8f9fb648204f245119237f55",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts",
+          "fingerprint": "99af0579a0d430d887fa911702919f895aabbfe6f6dd43cb811842d36f8da3df"
+        },
+        {
+          "item_id": "f9063417aca0cd0b2c0e004a11ac7a050207978d6c6ac513eb10d16dd3ee1454",
+          "path": "bunfig.toml",
+          "fingerprint": "e8fc24f8844194a43e3c81db9b8ed1c0295dc7108c51de09dc2c2c42c962e448"
+        }
+      ],
+      "reused": [],
+      "failed": [
+        {
+          "item_id": "024a332d31c1fae5defe2cf9abec4c82c47414b036b79ba863d6d8da0999fa9e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts",
+          "fingerprint": "8393f2a3f773c29571f11c204ec2dc1c8d51f78f51a608524297300cf4153e66",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "050e86de75a1b9a29e6e6aed15543248ca123586b260ff590d00521b36384a09",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts",
+          "fingerprint": "7fb8435818006fbdde17a73cd9226a20db629cc908e2cab014372937be69634c",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "065594c1950a8bdf32e6147a515d8abd91c29419826131f0431d986a8e6e9c49",
+          "path": "src/calibrate.ts",
+          "fingerprint": "11796bee5509c2b9a134ebb89fc4225f54f41a950c1e2e359b067c97f1a76cbd",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "0ae9cd62b58ee0e0221c35fd8787042335b665bb6a45a882bc04cc397b0a6223",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts",
+          "fingerprint": "45e834384754b535e0250bb6f503364df445433f3e9f7ebd73c65ca90de2d130",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "0dcaf7cd11e9b958fd502192979a0116734d94cdc5899e93db46e8dc9c8ec1e6",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts",
+          "fingerprint": "827aae7bb3e69aec609977d330599055709f1533b42d0fd1242c00f51bc7a108",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "11d0b21345178fb348558fc97da43b7044f43e91fd189edf33640c1b913eb13e",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/package.json",
+          "fingerprint": "33eaed741a72fbed36edcaa0c9a470b37b511cc2d2f7d2dd8b262bdd299fb0fd",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "1ee185ab04e75dbde35b7cf0c96f51a58aa8231777b2ddca346f9de670920912",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts",
+          "fingerprint": "d1a4ebfe89fb2704bb649b83782af18277109d20206660d2d4c29de90d19295e",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "3c362f6fff072f62281a068ec5f680a1c5ee071d630e71e99c2b6954a13a06ce",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts",
+          "fingerprint": "bc4762fd1eb256156258d7c9090aa0ce81a7bc019cd10a6fd5f3308767a3ee45",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "5234ca7e446e17cb8112e2c11af2615280c3d0120abbd2ec46caf7df9e46ea5d",
+          "path": "src/pools/pool.ts",
+          "fingerprint": "d8487d4e20879c96d8f30108a28ad1e799e9ca7b7e794f0c2a0c531c9c1bcd0d",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "5e486b0a007da76e72b012c526632435d7de259258e14a082aabd913a63e6d38",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts",
+          "fingerprint": "a85638c21f9c6d7f259f15624eade06a248c037f2b58867f512517032bc0c278",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "6520967e32b60453eadaeaa8fcf50615dace9e084dd871aa318eefd53d2f5e40",
+          "path": "tsconfig.json",
+          "fingerprint": "807dd6ca6eedd8d37b13cbba8f1fc9386d2793668f8f15dc9ddc2ccc581c3a6c",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "6892a493d2b92dcacf2efa6077a05a0e61271481b84289927c9bb519617ab6ff",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts",
+          "fingerprint": "f2ce8b917b65a751e1128e4c1b89532f28fa87bf6a7d768d85cefcb9671332f9",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "6b791da7b7478a46901d54abef1f5b4cbb48090b327e3e4ef2751d627e17f953",
+          "path": "src/serve.ts",
+          "fingerprint": "c218bcad9823013f804d9caeb11df8e139813fd3763ac1c38c1d3b0103904c98",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "6e8c157364555b804b8ea0f4619a38243d3691aae858d5f24c1fdd104a77d4c2",
+          "path": "src/job/queue.ts",
+          "fingerprint": "1ad44ff288e897da76581f333864643bf3040028437669e1d45627fcb834e681",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "7425ccdca5f15ecd673a85900569714d14614e54120f8dfaa1642fd26d8fb851",
+          "path": "src/judge/policy.ts",
+          "fingerprint": "46e71524133ebfdf47dda783774dfc55b53aa32208dcaa59aa06737089e512b1",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "77ff7a7492d74b6a581353c2c8bdf7d59a977fcdca52d8b02f05550f7e8620db",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts",
+          "fingerprint": "c0c300645bb0438b46a2a3c16f15d9f6f8af704cd22334eb04912e1dad0e0beb",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "8fa2b8790dd48444cd5c653fbcd71cff6d14c633a9800b8a212ea4c94842e040",
+          "path": "src/judge/transport.ts",
+          "fingerprint": "983f2319c105f2e17de8373f68e33111e6ff635ddc4c5c61887e746cccaf2b85",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "918e040119e9529b67832c799b28542a07788eefc5d3879937ff38f7201f77fb",
+          "path": "src/cli.ts",
+          "fingerprint": "fd052cd327c6c9dafb247ff760777c8233387f18011fc42bbaa53eb548a03946",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "a70ead38b1b622582f317f90dc5b8f735d182568e3a730eaad0abbdf6854b6f1",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts",
+          "fingerprint": "f6957b4b3c8156f52526ad9323c8c1e057e36537cf17621ddd5bfe62ea86ab57",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "b41cb619274b758b43048f726adad534c094537c6cbd449a26f7293186df8b66",
+          "path": "src/job/store.ts",
+          "fingerprint": "4ea395a754906d78818b4e508ebb21fc076e81dbe2707663c72616a67b18c116",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "b564fa968089c6ed56d757f8af4b799ff14ae734c2f062d7395ea973f457ba1b",
+          "path": "src/job/run.ts",
+          "fingerprint": "fb0e539aadf7e73f5fd721ada7ede9a34cc84b57ff720c93610bd8248b673eca",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "b5a39787567647ca271bdef926479fdbcbe9617ac9abbce1f4549b1dcba59904",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts",
+          "fingerprint": "c0089346c1a897af398829b13272aa51ac8e9f4c0139a13d17827ab258453da7",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "ba60fef7d0e8615b07e774284f4c4dac75f4f32099f4c966d0d8c3d53b37cc5a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts",
+          "fingerprint": "feecff23ea698c24e9747b51912f35d8481b0471b89257f0c34255102ecdae76",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "ba974e72e2acbe6eec406e8ee68ba046f3078d24783613e614447f985e11bfba",
+          "path": "src/judge/key.ts",
+          "fingerprint": "858f4c0857adab5e7c8495ca7848f4be1ea3929517874c6abbd1c8e59e154cb8",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "c968da88e037cee2f80b20a94d74b5e90d5f4f891e928724567d0d429efdbbd0",
+          "path": "src/ledger.ts",
+          "fingerprint": "1aa92ffeed7fba2c9e2aeddee2c3cb1d74b23826e7176c8271f0da2b13ce4e35",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "d5051a2abc448bd6d546e85110a480f61b3db90095139cbf086258b05f965141",
+          "path": "src/pools/budget.ts",
+          "fingerprint": "43f3b182d8bddbde52038eace92fa21b38df941ef00586aee18bce49742e9ffb",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "e3c7cbe310881d0348390239b00c219aa81fd9d09b83da3f90f33ba209ea7b6a",
+          "path": "package.json",
+          "fingerprint": "47a1ce1ba4cd6d8af958ec3fec7369778ebe64b3c7e639ca390348816a58a7e1",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "e4f1b94b3db39e616b452aa14d093bbdb8ae089f092bf99700ccbf2c39b14118",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts",
+          "fingerprint": "0f9ff6ada91f0dbc1e435356590c3baefcab4250b016137be6f1927d25c9581c",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "e6461545e52e4aa4e44ed4a662ac07440f6746d721a74770915dc1390b82976f",
+          "path": "src/job/indexJob.ts",
+          "fingerprint": "cbf08fd6bbb43bbee172bbb64788787a088dc7a81823d42f7ca18781c1eb547c",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "e943154e3292eea47673886a5701cae63ad3222ce38d5a26f432335832f9c529",
+          "path": "src/judge/cache.ts",
+          "fingerprint": "2a2823c5f1f68aec3ec983dbc03efa20ba1897e7cd79bf182af472c81b534928",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "eb685bb66dc94e700fec5dbb85ef9a1ad0bc97f8b68159182ebbd5ba46227b5d",
+          "path": "src/judge/client.ts",
+          "fingerprint": "35e2291b1d8080828759eee5a96c06e0ef49f68439c0763efd9ef8ff6fd11404",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "ec13db4dc537b309ae96030df10086d1c2d524aba3d0b7144cdbf6952fa732e4",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts",
+          "fingerprint": "65e7c784931b5131f2e76eb2cf7c37fac171c76835511269d8e0eb935a83c10e",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "f8ba4a7c027cf9b406ac9a2aa2ac0ab67fc3a0dda8c793e9122c5c6daf835b0c",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts",
+          "fingerprint": "4e1533af2f8320196e95fa4511369ee8012485dd50b7332868e185e5f3a427e1",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "f8f7dd659b7c48da3dac8a4e06e66774e9a83405ea22a4742a54580795f4b6f3",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts",
+          "fingerprint": "5c2ce6234a5f2a728647a56308235d750b8cf6b3390f0e64454fcc7e01b6e135",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        },
+        {
+          "item_id": "fe60b82e2c5ea48d8fbc9216ab8b62d1550eb3e69c80ee393e1f503530e2b97a",
+          "path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts",
+          "fingerprint": "b2ed5fea6664a4dfc476406aabeaac3b18dae3a29b80c777b1553f27fa250a98",
+          "classification": "timeout",
+          "reason": "file review exceeded its time limit"
+        }
+      ],
+      "waived": []
+    },
+    "elapsed_ms": 1640592
+  },
+  "retry_report": {
+    "schema_version": "ocr.llm-retry-report/v1",
+    "total_requests": 124,
+    "retried_requests": 1,
+    "total_retries": 2,
+    "recovered_requests": 1,
+    "failed_requests": 10,
+    "cancelled_requests": 0,
+    "requests": [
+      {
+        "logical_request_id": "240830e494cbab6ca399a5b9097e2464f2573426cb6ee239e8cdb5a0a46d2200",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "src/store/db.ts,src/store/schema.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300002
+          }
+        ]
+      },
+      {
+        "logical_request_id": "6887d3810561eeee364e083c1719ed275e82f83e4ac39b2a5e23d455b615a74d",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts,src/ledger.ts,src/pools/budget.ts,src/pools/pool.ts,src/serve.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300005
+          }
+        ]
+      },
+      {
+        "logical_request_id": "8d1103dc646773c1b754d67a890680a0b799d694e92721c621eab0458e9f1976",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/ledger.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/pools/budget.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/pools/pool.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/serve.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/store/db.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/store/schema.ts,src/ledger.ts,src/pools/budget.ts,src/pools/pool.ts,src/serve.ts",
+        "task_type": "main_task",
+        "request_no": 4,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300047
+          }
+        ]
+      },
+      {
+        "logical_request_id": "8e06fb66f434e967dd23319bef718fc8ab37b4e732bc245c48c1051ba40fd23b",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "artifacts/audit-2026-09-21.json",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300001
+          }
+        ]
+      },
+      {
+        "logical_request_id": "913a2c3bc5739956abb460d45759e728d8eff8c9e7c435863f2caf257311a0f0",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/package.json,Checkpoints/jm-v0-waves-green-a39afe8/src/calibrate.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/cli.ts,package.json,src/calibrate.ts,src/cli.ts,tsconfig.json",
+        "task_type": "main_task",
+        "request_no": 11,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300010
+          }
+        ]
+      },
+      {
+        "logical_request_id": "94d6276304567b88a3d7ece317c29e0f03215bc09cb945c5fd57d3e6e09c020c",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts,src/job/indexJob.ts,src/job/queue.ts,src/job/run.ts,src/job/store.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300000
+          }
+        ]
+      },
+      {
+        "logical_request_id": "bdd97cf5245fa6d1404893b2205692c472f845ccfa1fbcb81b3463844f9e4d8d",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts,src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+        "task_type": "plan_task",
+        "request_no": 1,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300013
+          }
+        ]
+      },
+      {
+        "logical_request_id": "c3696780daae21c638ad43c4e43ea901447a0e902722a9ebbc0f758bcfe281c4",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/judge/cache.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/judge/client.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/judge/key.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/judge/policy.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/judge/transport.ts,src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts",
+        "task_type": "main_task",
+        "request_no": 7,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300020
+          }
+        ]
+      },
+      {
+        "logical_request_id": "cba8532553beb43f41d9020a3fbb8d3deb2e72fb6f551a8919772f1f86bab16c",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/job/indexJob.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/queue.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/run.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/job/store.ts,src/job/indexJob.ts,src/job/queue.ts,src/job/run.ts,src/job/store.ts",
+        "task_type": "main_task",
+        "request_no": 2,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300012
+          }
+        ]
+      },
+      {
+        "logical_request_id": "e9718bf117b1dc13fc9facfd5e296ae3d360c5c6889dd336ab61a0441e0a7c7e",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/artifacts/audit-2026-09-21-reaudit-BLOCKED.json",
+        "task_type": "main_task",
+        "request_no": 8,
+        "outcome": "recovered",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "provider",
+            "failure_phase": "http",
+            "status_code": 500,
+            "duration_to_headers_ms": 17987
+          },
+          {
+            "attempt": 2,
+            "outcome": "error",
+            "error_class": "overloaded",
+            "failure_phase": "http",
+            "status_code": 529,
+            "observed_backoff_ms": 486,
+            "duration_to_headers_ms": 16074
+          },
+          {
+            "attempt": 3,
+            "outcome": "success",
+            "status_code": 200,
+            "observed_backoff_ms": 888,
+            "duration_to_headers_ms": 7331
+          }
+        ]
+      },
+      {
+        "logical_request_id": "efbc6339239685b695d5e9bd1080e29704f849cfe692fa1bfeb62899c4128c98",
+        "provider": "poolside-laguna-s",
+        "model": "poolside/laguna-s-2.1",
+        "file_path": "Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/decision-tree.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/filter.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/find.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/index.ts,Checkpoints/jm-v0-waves-green-a39afe8/src/verbs/query.ts,src/verbs/decision-tree.ts,src/verbs/filter.ts,src/verbs/find.ts,src/verbs/index.ts,src/verbs/query.ts",
+        "task_type": "main_task",
+        "request_no": 16,
+        "outcome": "failed",
+        "attempts": [
+          {
+            "attempt": 1,
+            "outcome": "error",
+            "error_class": "timeout",
+            "failure_phase": "context",
+            "duration_to_headers_ms": 300033
+          }
+        ]
+      }
+    ]
+  }
+}

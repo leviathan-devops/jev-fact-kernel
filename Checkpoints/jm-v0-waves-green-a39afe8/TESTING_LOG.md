@@ -99,5 +99,17 @@ summary: files_reviewed 56 · comments 131 · elapsed 1h37m20s
 canonical (src+tests): 52 — high 1 / medium 24 / low 27
 artifact: artifacts/audit-2026-09-22-reaudit2.json
 ```
-**AUDIT GATE: FAIL (0 critical, 1 high)** — the stale-ack race (fixed + pinned) is the only
+**AUDIT GATE: FAIL (0 critical, 1 high)** — fourth run: `6 canonical` (1 critical / 2 high / 2 medium / 1 low) on `poolside-laguna-s`. The 1 critical is REFUTED BY EVIDENCE (schema applies; all tables exist). The 1 high (cached spend) + the medium frontier were fixed this session. **A FIFTH audit is owed to close the gate.** Artifact: `artifacts/audit-2026-09-22-reaudit3.json`.
 high; the 24 mediums join the frontier queue. The gate closes only on a clean fourth run.
+
+### THE THIRD RE-AUDIT (2026-09-22, poolside-laguna-s lane)
+```
+status: partial
+llm: poolside-laguna-s / poolside/laguna-s-2.1
+message: "Review partially complete: 15 finding(s); 35 of 56 selected item(s) failed."
+canonical (src+tests): 6 — critical 1 / high 2 / medium 2 / low 1
+```
+**AUDIT GATE: FAIL (0 critical, 1 high)** — the critical is refuted by a live probe (all 13
+tables exist; `db.run` applies every statement); the 2 highs (cached spend in filter/find —
+plus the same class found and fixed in decision-tree) and the 2 mediums are fixed and pinned.
+The gate closes only on a clean fifth run.
