@@ -1,12 +1,12 @@
 // tests/watch.test.ts — W6: the daemon surface (S19). A tick is idempotent, journaled, and
 // the journal is REAL JSONL (a defect found by running: the separators were literal "\n" bytes).
 import { test, expect, describe } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { makeSandbox, fill } from "./helpers.ts";
 import { saveTargets } from "../src/store/db.ts";
-import { tick, readJournal, journalPath } from "../src/watch.ts";
+import { tick, readJournal, journalPath, statePath } from "../src/watch.ts";
 
 function seed(home: string, root: string): string {
   process.env.JM_HOME = home;
@@ -77,6 +77,31 @@ describe("W6 watch daemon", () => {
       expect(r.targets).toBe(1);
       expect(r.actions.length).toBe(1);
       expect(r.actions[0].target).toBe("files");
+    } finally { sb.cleanup(); }
+  });
+
+  test("test_watch_records_a_state_file_failure", async () => {
+    // An audit flagged the state-file catch as a silent swallow. The fix records the failure ON
+    // the tick (and therefore in the journal) — and the first version of that fix was itself
+    // wrong: it wrote the journal BEFORE the state attempt, so the two records disagreed, and it
+    // pushed into `errors` and `res.errors` (the SAME array), duplicating the entry.
+    const sb = makeSandbox();
+    try {
+      seed(sb.home, sb.root);
+      await tick();                                         // a clean tick writes a clean record
+      const clean = readJournal(1)[0];
+      expect(clean.errors).toEqual([]);
+
+      // make the state pointer unwritable: a DIRECTORY at the state path
+      rmSync(statePath(), { force: true, recursive: true });
+      mkdirSync(statePath(), { recursive: true });
+      const r = await tick();
+      expect(r.errors.length).toBe(1);                      // exactly once, not duplicated
+      expect(r.errors[0]).toMatch(/state_file/);
+      const last = readJournal(1)[0];
+      expect(last.errors.length).toBe(1);                   // and the JOURNAL carries it too
+      expect(last.errors[0]).toMatch(/state_file/);
+      rmSync(statePath(), { force: true, recursive: true });
     } finally { sb.cleanup(); }
   });
 });

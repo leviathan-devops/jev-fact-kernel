@@ -65,6 +65,8 @@ function usage(): void {
   jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
   jm watch [--once] [--interval MS] [--in a,b]     the reconcile daemon (journal per tick)
   jm journal [--limit N] [--json]                  the watch journal
+  jm serve [--port N] [--name I]                   the HTTP surface (POST /decide, /find)
+  jm calibrate [--name I] [--truth ID --truth-value V]   band counts + an operator truth
 `);
 }
 
@@ -450,10 +452,15 @@ async function main(): Promise<number> {
   if (verb === "calibrate") {
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     if (has("truth")) {
-      const [id, val] = [Number(flag("truth")), flag("truth-value") ?? "operator_confirmed"];
+      const rawId = flag("truth") ?? "";
+      const id = Number(rawId);
+      // NaN reaching SQLite compares as NULL, so a typo'd id silently matched nothing. Refuse it.
+      if (!Number.isInteger(id) || id < 0) { console.error(`JM_ARGS: --truth <id> must be a non-negative integer (got "${rawId}")`); return 2; }
+      const val = flag("truth-value") ?? "operator_confirmed";
       const ok = recordTruth(db, id, val);
-      console.log(`JM_TRUTH id=${id} -> ${val} (${ok ? "recorded" : "no such row"})`);
-      db.close(); return ok ? 0 : 1;
+      if (!ok) { console.error(`JM_TRUTH_MISSING: no decision row with id=${id}`); db.close(); return 2; }   // the caller named a row that is not there: a CLIENT error
+      console.log(`JM_TRUTH id=${id} -> ${val} (recorded)`);
+      db.close(); return 0;
     }
     const rep = calibrate(db);
     if (has("apply")) {

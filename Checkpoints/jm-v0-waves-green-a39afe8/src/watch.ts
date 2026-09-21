@@ -29,28 +29,45 @@ export async function tick(opts: { index?: string; in?: string } = {}): Promise<
   const errors: string[] = [];
   let rows = 0, changed = 0, targets = 0;
 
+  // The scope set is computed ONCE: rebuilding it inside the filter callback allocated a new array
+  // per element of the registry (an audit flagged it, and it is the kind of waste that hides in a
+  // daemon that ticks forever).
+  const scope = opts.in && opts.in !== "all"
+    ? new Set(opts.in.split(",").map((x) => x.trim()).filter(Boolean))
+    : null;
   const db = openDb(indexPathFor(indexName));
   try {
     const list = loadTargets();
-    targets = opts.in && opts.in !== "all"
-      ? list.filter((t) => opts.in!.split(",").map((s) => s.trim()).includes(t.name)).length
-      : list.length;
+    targets = scope ? list.filter((t) => scope.has(t.name)).length : list.length;
     const stats = await ingestAll(db, opts.in ?? "all");
     for (const s of stats) {
       rows += s.rows; changed += s.changed;
       actions.push({ target: s.target, kind: s.kind, changed: s.changed, rows: s.rows });
     }
   } catch (err) {
-    errors.push(String(err).slice(0, 200));       // a bad registry/target is journaled, not fatal
+    // A bad registry/target is JOURNALED, never fatal: a daemon that dies on a bad config cannot
+    // reconcile anything. The message is bounded but keeps head AND tail, so a stack's origin and
+    // its final cause both survive (a plain slice(0,200) cut the tail off).
+    const m = String(err);
+    errors.push(m.length <= 500 ? m : `${m.slice(0, 350)} … [${m.length - 450} chars elided] … ${m.slice(-100)}`);
   } finally { db.close(); }
 
   const res: TickResult = { at, targets, rows, changed, ms: Date.now() - t0, actions, errors };
   mkdirSync(watchDir(), { recursive: true });
-  appendFileSync(journalPath(), JSON.stringify(res) + "\n");
+
+  // The state pointer is written FIRST, then the journal. The other order made the two records
+  // disagree: the CLI's summary counted a state failure the journal row (written earlier) could
+  // not contain. `errors` IS `res.errors` (one array), so pushing to both duplicated the entry.
   const state = { last_tick: at, rows, changed, ms: res.ms, errors: errors.length };
   const tmp = `${statePath()}.tmp-${process.pid}`;
   try { writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n"); renameSync(tmp, statePath()); }
-  catch { /* best-effort state pointer; the journal is the durable record */ }
+  catch (err) {
+    // Best-effort, but NOT SILENT: the failure goes on the tick's own record, and therefore into
+    // the journal, so a stale state file is visible rather than mysterious.
+    errors.push(`state_file: ${String(err).slice(0, 160)}`);
+    state.errors = errors.length;
+  }
+  appendFileSync(journalPath(), JSON.stringify(res) + "\n");
   return res;
 }
 

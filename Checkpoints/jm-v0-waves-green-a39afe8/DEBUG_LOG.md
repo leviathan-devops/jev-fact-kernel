@@ -906,3 +906,41 @@ not exist at all** — so the find chain had no C5 pin. Writing it found three d
 - **LESSON:** a test named in a contract but never written is a hole in the evidence, not a
   formality. Filling this one exposed a driver-error leak, a budget race, and a no-op flag — the
   three classes the rest of the suite could not see.
+
+## EN-039 — the CLI's discoverability and input-validation gaps (audit F-15, 6 findings adjudicated)
+- **FIXED (a): `calibrate` and `serve` were live verbs with NO usage line.** An operator reading
+  `jm` could not discover either. Both are now in the dump with their flags.
+- **FIXED (b): a non-numeric `--truth` produced `NaN`.** `Number("abc")` -> NaN, and SQLite
+  compares NaN as NULL, so a typo silently matched no row and reported "no such row" at exit 1. It
+  is now a named client error (`JM_ARGS: --truth <id> must be a non-negative integer`) at exit 2,
+  and a WELL-FORMED id that matches no row is `JM_TRUTH_MISSING` (also exit 2 — the caller named a
+  row that is not there).
+- **DOCUMENTED (c): `find`'s default structure differs by surface** — `md` on the CLI (a human
+  reads it) and `json` over MCP (an agent parses it). The audit called it an inconsistency; it is
+  deliberate, so it is now STATED in the MCP tool description rather than unified away. A default
+  that is explained is not a bug; a default that is invisible is.
+- **REFUTED (d, twice): "`--apply` is missing from VALUE_FLAGS".** `--apply` is a BOOLEAN flag read
+  with `has("apply")`, not `flag("apply")`. Putting it in VALUE_FLAGS would make the parser SWALLOW
+  the next argument — the "fix" would create the bug. The auditor's own text concedes boolean flags
+  do not need the entry.
+- **VERIFICATION:** the guards are pinned by `test_truth_and_usage_guards` (the CLI is spawned, the
+  exit codes and the usage text asserted); battery 97/0.
+
+## EN-040 — the watch daemon's silent paths (audit F-15/16), and a bug in my own fix
+- **FIXED (a): the scope set was rebuilt per element.** `list.filter((t) => opts.in!.split(",").map(…)…)`
+  allocated a new array for EVERY registry entry, in a daemon that ticks forever. Now computed once
+  into a `Set` before the loop.
+- **FIXED (b): a 200-char error truncation cut off the tail.** A stack's origin AND its final cause
+  both matter, so the message is bounded at 500 with the middle elided and head+tail kept.
+- **FIXED (c): the state-file catch swallowed everything.** It now records the failure on the tick,
+  and therefore in the journal, so a stale state file is visible rather than mysterious.
+  **AND THE FIRST VERSION OF THIS FIX WAS ITSELF WRONG** — worth recording, because it is the exact
+  class this file exists to catch:
+  1. the journal was appended BEFORE the state attempt, so the CLI's summary counted an error the
+     journal row could not contain (measured: `errors=2` on stdout, `errors: []` in the journal);
+  2. `errors` IS `res.errors` — the same array — so pushing to both duplicated the entry.
+  Both were visible only by RUNNING the failure path (a directory planted at `state.json`), which is
+  why the pin does exactly that. VERIFIED after the fix: stdout `errors=1`, journal
+  `["state_file: Error: EISDIR…"]`, and the happy path still journals `errors: []`.
+- **LESSON:** an error path that was never executed is not a fixed error path. The audit named the
+  swallow; only running the failure showed that the repair had two defects of its own.
