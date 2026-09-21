@@ -666,3 +666,18 @@ ALSO   the pins demanded EMPTY stderr, but the cost line lives on stderr by desi
 AFTER  the concurrency suite, 5 consecutive runs: 4 pass / 0 fail each  (was 2 failures per run)
 battery 141 pass / 0 fail / 666 expects / 26 files · tsc exit 0
 ```
+
+### THE SERVICE-MANAGER BOUNDARY — CLOSED (systemd --user, restart-on-crash observed)
+```
+OP-19  the unit + an `exec`-ing launcher      -> active, MainPID IS bun (no wrapper to orphan)
+OP-20  the first ticks                        -> targets=3 rows=11901 changed=1   (@shadow indexed)
+OP-21  THE BREAK                              -> targets=0 rows=0, NO journal anywhere
+OP-22  the cause: PrivateTmp                  -> pointing JM_HOME at a real path fixed it
+       PrivateTmp gives the service its OWN /tmp, so a TARGET ROOT under /tmp is INVISIBLE —
+       the daemon reports JM_INDEX_MISSING for a directory that plainly exists. The law is now
+       written in the unit beside the directive.
+OP-23  kill -9                                -> systemd RESTARTED it (new pid, NRestarts=1, ticking
+                                                 again in under 8s)
+       systemctl --user stop                  -> inactive, NO orphan, counter not incremented
+INSTALLED, LEFT STOPPED (a continuously-writing daemon is the operator's call).
+```
