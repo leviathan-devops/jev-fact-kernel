@@ -703,3 +703,30 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
 - **VERIFICATION:** battery 71/0; `jm report f6` and `--json` both live off the surviving handler.
 - **LESSON:** an insert-above-the-old-handler refactor leaves a corpse that a diff will not show.
   A grep for the verb name across the file would have caught it; the audit caught it instead.
+
+## EN-030 — the ADV-2 sweep found two more real defects (both fixed, both pinned)
+The first adversarial sweep predated W2/W3/W5/W6, so the NEW surfaces had NO probes. The second
+sweep (13 probes: targets/adapters · scan/cluster/extract · route/evaluate · mcp/watch/report)
+found two confirmed defects on its first run.
+
+- **D-015 — a target NAME was used as a path fragment.** A target registered as `../../evil`
+  prefixed every stored row key with `../`, so its namespace collided with a sibling target's and
+  the row path was a lie about where the data lives. FIX: `safeTargetName()` — a name is a
+  NAMESPACE KEY, never a path fragment (separators and `..` runs collapse; a leading dot run is
+  neutralised; bounded to 64 chars). VERIFIED: the same target now stores `_evil/a.md`.
+  The store key is not a filesystem path, but a key that LOOKS like a traversal will collide,
+  which is the same class as D-008.
+- **D-016 — `route` emitted an injection for a capability OUTSIDE the catalogue.** With the judge
+  answering `skill:NOT-IN-MENU` at p=0.99 the ladder said act, and the engine produced
+  `[JM ROUTE] Use skill:NOT-IN-MENU` — an instruction to use something that does not exist, which
+  a model would then hallucinate around. FIX: the menu is the contract — an out-of-menu winner
+  cannot act (it escalates, and the reason names the mismatch). VERIFIED by the probe.
+- **PROBES THAT PASSED (the negative half, recorded so silence is not read as proof):**
+  catastrophic-regex hang (bounded), regex metacharacters as literal input (the table survives),
+  extract with no capture group (no `"undefined"` values), signature on empty/giant input, cluster
+  on an empty candidate set, probabilities that do not sum to 1 (finite p, defined route), MCP
+  hostile frames (missing name, missing params, wrong arg types, null id), a symlink loop in a
+  watched tree (no hang), report on an empty store, a sqlite DB with zero tables, a malformed JSONL
+  line kept and marked.
+- **LESSON:** a probe plan must be regenerated whenever the SURFACE MAP grows. The first sweep was
+  green on the surface it knew; the new verbs were unprobed until now — and two of them were wrong.
