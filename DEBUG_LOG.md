@@ -1055,3 +1055,37 @@ ONE SURFACE AND NOT ON ANOTHER.
   the reason is DERIVED from the answer rather than part of its fingerprint.
 - **LESSON:** an exit status and a band count can both be right while the explanation beside them
   is wrong. Read the field a human will read.
+
+## EN-046 — D-031: the find chain showed the judge text that did not contain the match
+- **FOUND BY:** running the R2 chain (`find`) against the REAL index (11,832 shadow files + 2,309
+  DB rows) and disbelieving the result. Every phrase returned `N -> 100 -> 0 -> 0` — including
+  `--min-p 0.3` on a phrase the corpus demonstrably contained.
+- **THE THREE-STAGE PROOF:**
+  1. A direct judge call with a hand-written excerpt returned `{"is_instance":{"noul":0.93}}` — so
+     the question shape and the answer KEY were both fine. (My first hypothesis, a key mismatch,
+     was WRONG; the mock in the test suite answers `is_instance`, and so does the live model.)
+  2. The FTS stage found real documents containing the phrase — so the seeds were fine.
+  3. Then the measurement that settled it: the excerpt find sends is the document's first 1,200
+     characters, and the phrase sat at char **1267, 1267 and 9224** in the three seeded documents.
+     **The judge was asked "is this an instance of X?" while being shown text that did not contain
+     X.** It answered `no`, correctly, and the chain dropped a true positive every time.
+- **WHY THIS CORPUS MAKES IT WORST:** the seeded documents are opencode session JSON, whose first
+  1,200 characters are a `{file, patch, additions}` preamble — metadata, not content. The corpus R2
+  targets is precisely the corpus where a head-slice is least representative.
+- **FIX (two parts, both measured):**
+  - `excerptAround(text, seeds, max)` centres the window on the FIRST seed occurrence (clamped to
+    the document), falling back to the head when no seed is present.
+  - `quoteAround(text, seeds, len)` makes the QUOTE start AT the match, because the first fix was
+    necessary but not sufficient: the excerpt was centred correctly while the pattern's quotes
+    still began ~600 characters BEFORE the hit, so a reader could not see why the row matched.
+- **VERIFICATION (the same three phrases, same budgets):**
+  ```
+  before   tombstone 12 -> 12 -> 0 -> 0        after  12 -> 12 -> 12 -> 1  (n=12, quotes start "tombstone ...")
+  before   theatrical 209 -> 100 -> 0 -> 0     after  209 -> 100 -> 3 -> 1
+  before   session-collision 302 -> 100 -> 0 -> 0   after  302 -> 100 -> 0 -> 0  (10 judged of 100
+                                                    candidates under a 10-call budget — a COVERAGE
+                                                    limit, not a defect; stated rather than fixed)
+  ```
+- **LESSON:** a chain that returns zero can be "correctly finding nothing" or "structurally unable
+  to see". The difference is not in the counts — it is in whether the stage that made the decision
+  was SHOWN the evidence. Read the prompt, not the trend.

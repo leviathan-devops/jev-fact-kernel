@@ -518,3 +518,20 @@ REAL-CORPUS RIG: PASS
 3. The four source databases are byte-for-byte untouched, verified by size+mtime before and after.
    This is the only evidence that means anything for a claim about not writing to someone's
    database, and it is now checked mechanically instead of asserted.
+
+### W4 / R2 — THE FIND CHAIN ON THE REAL CORPUS (and the defect that hid it)
+```
+BEFORE the fix (the real index: 11,832 files + 2,309 DB rows, 157 MB)
+  find "tombstone"          -> 12  -> 12  -> 0 -> 0
+  find "theatrical ..."     -> 209 -> 100 -> 0 -> 0
+  find "session id ..."     -> 302 -> 100 -> 0 -> 0      EVERY phrase, even at --min-p 0.3
+
+ROOT CAUSE (D-031): the excerpt sent to the judge was the document's first 1200 chars, and the
+phrases sat at char 1267 / 1267 / 9224 — OUTSIDE it. The judge was asked about X while shown text
+without X, so it correctly answered no and the chain dropped true positives.
+
+AFTER (`excerptAround` centres on the match; `quoteAround` starts the quote at the match)
+  find "tombstone"          -> 12  -> 12  -> 12 -> 1   n=12, every quote starts with "tombstone"
+  find "theatrical ..."     -> 209 -> 100 -> 3  -> 1   n=3, p=0.89 / 0.87 / 0.67
+battery 129 pass / 0 fail / 626 expects / 24 files · tsc exit 0
+```
