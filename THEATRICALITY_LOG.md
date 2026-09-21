@@ -81,3 +81,16 @@ No fabricated PASS, no unrun command presented as evidence, no gate skipped. The
 because the session's theatricality was caught in-flight — which is the point of the guard, not an
 absence of material. The metric to drive is OPERATOR-CAUGHT, and this session's operator-caught
 count is ZERO: every entry above was caught by the build's own instruments.
+
+### T-07 — a commit landed with L0 RED (CAUGHT by the next command, fixed immediately)
+The D-044 commit was made in a chain that used `;` between `bunx tsc --noEmit && echo TSC=0` and
+`git add -A && git commit`. tsc FAILED (a cast in the new pin needed an `unknown` hop), the
+`&&`-guarded echo was skipped — and the `;` let git run anyway. The commit landed on a tree whose
+type boundary was broken, while the BATTERY was green (Bun does not typecheck).
+
+- **CAUGHT BY:** the very next command reading `TSC_EXIT=$?` — one line later.
+- **FIXED:** the casts corrected, `tsc exit=0` re-verified, a fix commit recorded with the reason.
+- **THE CLASS:** L0 is a gate, and I treated it as a step. A chain that runs the commit even when
+  the gate fails is the same defect as an `|| true` on a test.
+- **THE RULE THIS SESSION NOW FOLLOWS:** `bunx tsc --noEmit && bun test && git commit` — one `&&`
+  chain, so a red type boundary cannot reach a commit.

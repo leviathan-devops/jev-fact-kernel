@@ -1,7 +1,7 @@
 // src/judge/client.ts — the shared judge: cache-first, one seam, cost computed at write time.
 import type { Database } from "bun:sqlite";
 import { resolveKey } from "./key.ts";
-import { callSystemOne, TYPESAFE_MODEL, type JudgeResponse } from "./transport.ts";
+import { callSystemOne, judgeUrl, TYPESAFE_MODEL, type JudgeResponse } from "./transport.ts";
 import { fingerprint, cacheGet, cachePut } from "./cache.ts";
 import { createHash } from "node:crypto";
 
@@ -36,7 +36,12 @@ export class Judge {
   async ask(state: unknown, questions: Record<string, unknown>, schemaVersion = "v1"): Promise<AskResult> {
     const model = this.model();
     const qHash = createHash("sha256").update(JSON.stringify(questions)).digest("hex").slice(0, 16);
-    const fp = fingerprint(model, `${schemaVersion}#${qHash}`, state);   // questions are part of the decision's identity
+    // THE ENDPOINT IS PART OF THE DECISION'S IDENTITY (D-044). It was not: the fingerprint held
+    // provider/model/schema/state, and `provider` is hard-coded "typesafe" — so now that the
+    // endpoint is configurable (JM_JUDGE_URL, D-040), a MIRROR serving the same model NAME would
+    // receive the PRIMARY's cached answers. Measured: two local endpoints answering 0.90 and 0.10
+    // for the same state — the second call returned 0.90 and reported `cached`.
+    const fp = fingerprint(model, `${schemaVersion}#${qHash}#${judgeUrl()}`, state);   // questions AND the endpoint are part of the identity
     const hit = cacheGet(this.db, fp);
     if (hit) return { answers: hit.answers as JudgeResponse["answers"], model: hit.model, cached: true, inputTokens: 0, costUsd: 0, fingerprint: fp };
 
