@@ -26,6 +26,9 @@ criterion resolves mechanically; "worked on" is a status, never a completion.
 | D10 | The second-operator drill, rounds 1 and 2 | a zero-context agent completes the steps | round 2: all 10 steps, 3 defects found and fixed, 1 false doc line corrected |
 | D11 | The adversarial loop (ADV-1/2/3) | a full pass with zero confirmed defects AND the frontier named | ADV-3: 12 probes, 1 defect (D-027), fixed; the unswept frontier is the parked W8 surface |
 | D12 | README §18 — the operating contract | every claim executed | 25/25 verified; the sweep itself found 3 defects |
+| D13 | C8 — `jm report --job <id\|last>` (a spec criterion recorded as an OPEN violation) | the invocation exists and reconciles the queue against the ledger | `reconciled: YES` exit 0 on a clean job; `NO` exit 3 on a leftover running row; a typo -> exit 2 with no phantom; `tests/job-report.test.ts` |
+| D14 | The escalation band's live row (N6) | a real scenario lands in the band | a 5-scenario live run: `act=1 escalate=1 noop=3`; the escalate row at p=0.590 |
+| D15 | D-030 — the reason/route contradiction | every reason states the comparison that fired | `reasonForSignal` in the ladder's own module; `tests/ladder-reason.test.ts` asserts route/reason agreement in all three bands AND against `routeOf` |
 
 ---
 
@@ -38,7 +41,7 @@ criterion resolves mechanically; "worked on" is a status, never a completion.
 | N3 | C14's session-live half | an OMP session calls a JM MCP tool and receives rows | needs a client registration + a session restart; the protocol path is already proven |
 | N4 | The 3 short append-only logs reach their floor | `wc -l` >= 200 on THEATRICALITY_LOG and the 2 running logs | appends only; padding is forbidden, so this closes by living |
 | N5 | `@ocws` (219G) walked | an index over it completes within a memory bound | the spec's "big corpora" scope; never attempted |
-| N6 | The escalation band gets a live row | a decision row in the escalate band from a REAL scenario | needs a scenario set; the band counts exist but no live row does |
+| ~~N6~~ | ~~The escalation band gets a live row~~ **CLOSED** | a decision row in the escalate band from a REAL scenario | DONE: a 5-scenario live run on the real judge gave `act=1 escalate=1 noop=3`, with the escalate row at p=0.590 (`agg=0.59 in [flag=0.5, act=0.8)`) — and reading its REASON found D-030 |
 
 ---
 

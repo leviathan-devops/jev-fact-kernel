@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { Judge } from "../judge/client.ts";
-import { DEFAULT_POLICY, type Policy } from "../judge/policy.ts";
+import { DEFAULT_POLICY, reasonForSignal, type Policy } from "../judge/policy.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 
@@ -92,9 +92,11 @@ export async function decisionTree(opts: {
         throw err;    // fail-closed (the default): propagate, never a silent success
       }
       const value = answersToPolicyValue(res.answers as never);
-      // ONE signal source: the aggregate over all answers drives BOTH route and reason.
-      const agg = value >= policy.act ? "act" : value >= policy.flag ? "escalate" : "noop";
-      const d: DecisionRow = { i, route: agg, reason: `agg=${value.toFixed(2)} >= act=${policy.act} / flag=${policy.flag}`, answers: res.answers, cached: res.cached, model: res.model };
+      // ONE signal source: the aggregate drives BOTH the route and the reason, and the reason now
+      // comes from the SAME ladder the route does (a fixed template here made every row claim
+      // ">= act", including the noops and the escalates — D-030).
+      const decided = reasonForSignal(value, policy);
+      const d: DecisionRow = { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model };
       budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
