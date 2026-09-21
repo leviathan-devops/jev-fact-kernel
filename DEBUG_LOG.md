@@ -1147,3 +1147,42 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **THE CLASS, THIRD INSTANCE:** D-031 (the excerpt), D-032 (the same in filter), D-033 (the seed
   set). All three are the same failure: **a stage decided about X while being shown evidence for a
   subset of X.** All three produced plausible-looking, non-erroring, wrong output.
+
+## EN-049 — D-034: the `route` verb had NEVER WORKED against the live judge, and its tests hid it
+- **FOUND BY:** continuing the judge-evidence lens into the QUESTION SHAPE — "what is each stage
+  ASKING, and does the API accept that shape?"
+- **THE MEASUREMENT (live api.typesafe.ai, one probe per question type):**
+  ```
+  noul    -> 200, a probability back        {"q":{"type":"noul","noul":0.45}}
+  choice  -> HTTP 400 "Invalid request."
+  mcq     -> HTTP 400 "Invalid request."
+  ```
+  `route` asked with `type: "mcq"`. **Every call it ever made returned 400.** The verb was
+  non-functional from the moment it was written, and every test passed — because every test used a
+  MOCK that answered the `choice` shape the code expected. The mock validated the code against
+  itself.
+- **THE COST OF THAT:** the second-operator drill's round 1 reported "`route` with the real host key
+  returned `JM_JUDGE_HTTP_400 … Invalid request.` — the `--task` contract is undocumented and the
+  obvious invocation does not work." That was this defect, seen from the outside five sessions
+  before it was diagnosed.
+- **FIX (the shape the API actually accepts, measured before it was written):** one `noul` per
+  CANDIDATE — "does capability X apply to this task?" — over a deterministic lexical SHORTLIST
+  (token overlap, ties on id), so a 456-entry catalogue costs 12 calls, not 456. Probed live before
+  implementing: on a find-a-phrase task the API rated `tool:jm_find` 0.77, `tool:jm_query` 0.68,
+  `skill:ascii-diagrams` 0.10 — real discrimination.
+- **VERIFIED LIVE (the first time this verb has ever worked):**
+  ```
+  $ jm route --task "find every place the theatrical enforcement claim was made in the session logs"
+  cost=$0.000168 calls=12 cached=0
+  route=act choice=skill:omp-session-forensics p=0.800 runner-up=skill:container-tui-session-log(0.780)
+  injection: [JM ROUTE] Use skill:omp-session-forensics (p=0.800). Runner-up: ...
+  ```
+  `omp-session-forensics` is the correct capability for that task.
+- **THE SECOND HALF — a validator that validated the wrong thing:** `validateRecipe` accepted
+  `noul | choice | mcq`, so a recipe using a type the API REJECTS passed validation and then failed
+  on every call. It now accepts `noul` only, with the measurement in the message.
+- **LESSON (the sharpest of this session):** a mock encodes the author's belief about the far side
+  of a boundary. When the belief is wrong, the tests are green and the feature is dead. **At least
+  one test per external boundary must cross it for real** — the engine's judge path had one
+  (`test_cache_zero_calls` uses a mock too; the live calls in the runtime seat are what caught
+  find's bugs), and this verb had none.

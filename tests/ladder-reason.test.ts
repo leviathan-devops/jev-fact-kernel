@@ -5,6 +5,7 @@
 // operator reads to justify the route.
 import { test, expect, describe } from "bun:test";
 import { reasonForSignal, routeOf, type Route, type Policy } from "../src/judge/policy.ts";
+import { validateRecipe } from "../src/verbs/decision-tree.ts";
 
 const P: Policy = { act: 0.8, flag: 0.5, fail: "closed" };
 
@@ -37,6 +38,18 @@ describe("the ladder's reason", () => {
       const raw = reasonForSignal(v, P);
       const viaAnswer = routeOf({ type: "noul", noul: v }, P);
       expect({ v, route: raw.route }).toEqual({ v, route: viaAnswer.route });
+    }
+  });
+
+  test("test_D034_only_noul_is_accepted_because_only_noul_WORKS", () => {
+    // The live Typesafe API accepts `noul` ONLY — measured: `choice` and `mcq` both return
+    // HTTP 400 "Invalid request." A recipe using either would fail on EVERY call, so the validator
+    // refuses them at load with the reason. This pin holds the contract; the measurement is in
+    // DEBUG_LOG EN-049.
+    expect(validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "noul" } } }).recipe).toBe("r");
+    for (const bad of ["choice", "mcq"]) {
+      expect(() => validateRecipe({ recipe: "r", version: 1, questions: { q: { type: bad } } }))
+        .toThrow(/accepts "noul" ONLY/);
     }
   });
 });

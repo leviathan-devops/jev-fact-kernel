@@ -10,14 +10,19 @@ import { route, buildCatalogue, type Catalogue } from "../src/verbs/route.ts";
 import { evaluate, replayDiff, type EvalCase } from "../src/verbs/evaluate.ts";
 import { report, renderReport } from "../src/verbs/report.ts";
 
-/** A canned transport that answers a `choice` question with the given probabilities. */
-function mockChoice(probs: Record<string, number>): string {
-  const dir = mkdtempSync(join(tmpdir(), "jm-mockc-"));
-  writeFileSync(join(dir, "call-0.json"), JSON.stringify({
+/** A canned transport for the ROUTE shape: the verb asks one `noul` per shortlisted candidate, in
+ *  shortlist order, so the mock supplies one answer per candidate KEYED BY ID. (D-034: the live
+ *  API accepts `noul` only — a `choice`/`mcq` mock would test a shape the API rejects, which is how
+ *  the verb stayed broken against the real judge for the whole build.) */
+function mockRoute(probs: Record<string, number>): string {
+  const dir = mkdtempSync(join(tmpdir(), "jm-mockr-"));
+  // the shortlist is deterministic (lexical overlap, ties on id), so the order is reproducible
+  const ids = Object.keys(probs);
+  ids.forEach((id, i) => writeFileSync(join(dir, `call-${i}.json`), JSON.stringify({
     model: "jev-1.13.0",
-    answers: { choice: { type: "choice", choice: Object.keys(probs)[0], probabilities: probs } },
+    answers: { applies: { type: "noul", noul: probs[id] } },
     usage: { input_tokens: 1000, output_tokens: 20 },
-  }));
+  })));
   return dir;
 }
 function mockNoul(vals: number[], key = "flag"): string {
@@ -37,7 +42,7 @@ const CAT: Catalogue = { sources: ["test"], entries: [
 describe("W5 route", () => {
   test("test_route_act_injects", async () => {
     const sb = makeSandbox();
-    const mock = mockChoice({ "skill:alpha": 0.91, "skill:beta": 0.05, "tool:jm_query": 0.04 });
+    const mock = mockRoute({ "skill:alpha": 0.91, "skill:beta": 0.05, "tool:jm_query": 0.04 });
     process.env.JM_MOCK_DIR = mock;
     try {
       const db = openDb(indexPathFor("route"));
@@ -48,13 +53,15 @@ describe("W5 route", () => {
       expect(r.injection).toContain("skill:alpha");                 // injected BEFORE the model sees the prompt
       expect(r.runnerUp?.id).toBe("skill:beta");                    // the near-miss is logged
       expect(r.runnerUp!.p).toBeLessThan(r.p);
+      expect(r.shortlist.length).toBeGreaterThan(0);                // what the judge was shown
+      expect(r.rated.length).toBe(r.shortlist.length);
       db.close();
     } finally { delete process.env.JM_MOCK_DIR; rmSync(mock, { recursive: true, force: true }); sb.cleanup(); }
   });
 
   test("test_route_escalates_below_the_cut", async () => {
     const sb = makeSandbox();
-    const mock = mockChoice({ "skill:beta": 0.60, "skill:alpha": 0.39, "tool:jm_query": 0.01 });
+    const mock = mockRoute({ "skill:beta": 0.60, "skill:alpha": 0.39, "tool:jm_query": 0.01 });
     process.env.JM_MOCK_DIR = mock;
     try {
       const db = openDb(indexPathFor("route"));
