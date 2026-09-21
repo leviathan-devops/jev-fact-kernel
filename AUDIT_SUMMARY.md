@@ -102,7 +102,7 @@ non-defect into a real one.
 | A13-2 | excerpt constants 60/140 are magic numbers | medium | CONFIRMED -> fixed | named `EXCERPT_BEFORE`/`AFTER`/`HEAD` |
 | A13-3 | `verbatimModuleSyntax: false` under `module: ESNext` | medium | CONFIRMED -> fixed | flipped to `true`, tsc 0, battery green |
 
-**TALLY: 14 confirmed + fixed, 11 refuted by probe, 0 open.**
+**TALLY: 17 confirmed + fixed, 11 refuted by probe, 0 open.**
 
 ---
 

@@ -22,6 +22,8 @@ export interface FindResult {
   phrase: string; seeds: string[]; fetched: number; narrowed: number; judged: number;
   kept: number; clusters: number; calls: number; costUsd: number; budgetStopped: boolean;
   patterns: Pattern[]; out?: string; trend: string;
+  /** Patterns dropped for having support below `common` (observable, never silent). */
+  belowCommon: number;
 }
 
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "what", "when", "where", "which", "have", "has", "was", "were", "are", "its", "its", "bug", "issue"]);
@@ -48,13 +50,14 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   const judged: { row: QueryRow; p: number; quote: string }[] = [];
   const { errors: poolErrors } = await runPool(candidates, async (c) => {
     if (budgetStopped) return null;
-    if (!budget.roomLeft()) { budgetStopped = true; return null; }
+    if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
     const excerpt = (doc?.text ?? "").slice(0, maxExcerpt);
     const res = await judge.ask({ target_phrase: opts.phrase, candidate: { path: c.path, excerpt } },
       { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } }, "find@v1");
     const p = (res.answers.is_instance as { noul?: number })?.noul ?? 0;
-    if (!res.cached) { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }   // cached hits consume no budget slot
+    budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
+    if (!res.cached) { calls++; costUsd += res.costUsd; }
     if (p >= minP) judged.push({ row: c, p, quote: excerpt.slice(0, 160) });
     return null;
   }, { concurrency: opts.concurrency ?? 6 });
@@ -86,6 +89,14 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
       signature: sig, tokens,
     });
   }
+  // 9 SUPPORT FILTER -- `--common N` (default 2) is the MINIMUM support a pattern needs. It was
+  // accepted in FindOpts and documented in the MCP schema, and the implementation IGNORED it, so
+  // a caller asking for n>=2 received n=1 patterns. (D-025, caught by the C5 pin.)
+  const common = opts.common ?? 2;
+  const dropped = patterns.filter((x) => x.n < common).length;
+  const supported = patterns.filter((x) => x.n >= common);
+  patterns.length = 0;
+  patterns.push(...supported);
   patterns.sort((a, b) => b.n - a.n);
 
   // 9 EMIT — the requested structure or an error (L10)
@@ -108,6 +119,7 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   return {
     phrase: opts.phrase, seeds, fetched: seen.size, narrowed: candidates.length, judged: judged.length,
     kept: judged.length, clusters: patterns.length, calls, costUsd, budgetStopped, patterns, out,
+    belowCommon: dropped,
     trend: `${seen.size} → ${candidates.length} → ${judged.length} → ${patterns.length}`,
   };
 }

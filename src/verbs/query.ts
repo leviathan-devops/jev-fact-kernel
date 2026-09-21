@@ -61,5 +61,17 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   }
   const order = opts.fts ? ` ORDER BY bm25(docs_fts)` : ` ORDER BY f.size DESC`;
   sql += order + ` LIMIT ?`; params.push(limit);   // bound, never interpolated   // FTS by relevance, scans by size
-  return db.query(sql).all(...params) as QueryRow[];
+  try {
+    return db.query(sql).all(...params) as QueryRow[];
+  } catch (err) {
+    // An FTS5 MATCH expression is a QUERY LANGUAGE and the phrase comes from the user. Malformed
+    // syntax ("split-brain", "x OR", "NEAR(", "table:col", "*") used to leak a raw SQLiteError at
+    // exit 1 - the wrong code for a client error, carrying driver internals. Name it and help.
+    // (D-023, found by the adversarial pass over the post-W1 surfaces.)
+    const m = String(err);
+    if (opts.fts && /fts5|MATCH|parse error|no such column|unterminated|syntax error/i.test(m)) {
+      throw new Error(`JM_FTS_INVALID: "${opts.fts}" is not a valid FTS5 expression - quote a literal phrase in double quotes (\"split-brain\") and use AND/OR/NEAR only between quoted terms [${m.slice(0, 80)}]`);
+    }
+    throw err;
+  }
 }

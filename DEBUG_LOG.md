@@ -879,3 +879,30 @@ was written first and then executed. That is the point of the exercise: a doc cl
 - **FLAKE OBSERVED ONCE, NOT REPRODUCED:** one battery run reported 1 fail immediately after an
   edit; four consecutive re-runs are 93/0. Recorded rather than dismissed — the likely cause is a
   spawned-CLI suite racing the parallel runner for CPU. It is on the frontier, not closed.
+
+## EN-038 — D-023/D-024/D-025: three real defects found by writing the MISSING named test
+The pin's proof contract names six selectable tests. Five existed; **`test_find_patterns` did
+not exist at all** — so the find chain had no C5 pin. Writing it found three defects.
+
+- **D-023 (a raw driver error leaked from user input).** An FTS5 MATCH phrase is a QUERY LANGUAGE
+  and it comes from the user. `jm query idx --fts "split-brain"` (also `x OR`, `NEAR(`, `table:col`,
+  `*`, `(`) exited **1 with a raw `SQLiteError: no such column: brain`** — the wrong exit code for a
+  client error, carrying driver internals. FIX: the FTS execution is wrapped; an FTS5 syntax error
+  becomes `JM_FTS_INVALID` (a client error, exit 2) that names the phrase and the fix. VERIFIED
+  across ten inputs: valid phrases accepted, six malformed ones refused with exit 2.
+- **D-024 (the budget overshoot, in the POOL verbs).** With `--budget-calls 1` and three
+  candidates, `find` made **3 calls**. `roomLeft()` is a check-then-AWAIT, so every concurrent lane
+  passed the check before any lane spent — the same race fixed in `run.ts` with `claimSlot()`, left
+  unfixed in find/filter/decision-tree. FIX: `Budget.claim()` (synchronous, counts in-flight
+  claims) and `Budget.settle(cost, cached)` (a cached call refunds; a real call converts). Wired
+  into all three pool verbs. VERIFIED: the capped chain now makes <=1 call.
+- **D-025 (a documented flag that did nothing).** `--common N` ("minimum support n for a pattern",
+  per the MCP tool schema) was accepted in `FindOpts` and **never read** — so a caller asking for
+  n>=2 received n=1 patterns. FIX: the support filter is applied and the drop count is returned as
+  `belowCommon`, so the filter is observable rather than silent. VERIFIED by the C5 pin, which also
+  taught its author something: three related files in three DIRECTORIES are three singleton
+  clusters (the signature is kind + the first two path tokens), so `common=2` correctly returned
+  zero patterns until the fixture shared a prefix.
+- **LESSON:** a test named in a contract but never written is a hole in the evidence, not a
+  formality. Filling this one exposed a driver-error leak, a budget race, and a no-op flag — the
+  three classes the rest of the suite could not see.

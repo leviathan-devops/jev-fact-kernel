@@ -81,7 +81,7 @@ export async function decisionTree(opts: {
 
   const results = await runPool(rows, async (row, i) => {
     if (budgetStopped) return null;
-    if (!budget.roomLeft()) { budgetStopped = true; return null; }   // HARD CAP: no room, no call
+    if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)   // HARD CAP: no room, no call
     const state = { row, criteria, context };
     try {
       let res;
@@ -95,7 +95,8 @@ export async function decisionTree(opts: {
       // ONE signal source: the aggregate over all answers drives BOTH route and reason.
       const agg = value >= policy.act ? "act" : value >= policy.flag ? "escalate" : "noop";
       const d: DecisionRow = { i, route: agg, reason: `agg=${value.toFixed(2)} >= act=${policy.act} / flag=${policy.flag}`, answers: res.answers, cached: res.cached, model: res.model };
-      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }   // cached hits consume no budget slot
+      budget.settle(res.costUsd, res.cached);   // cached hits refund the claim; a real call converts it
+      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
     } catch (err) {
       if (String(err).includes("JEV_NO_KEY")) throw err;    // fail-closed must propagate
