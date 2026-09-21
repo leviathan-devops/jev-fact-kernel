@@ -98,7 +98,7 @@ printf "  src: %s files (live %s)\n" "$(find "$CP/src" -name '*.ts' | wc -l)" "$
 printf "  tests: %s files (live %s)\n" "$(find "$CP/tests" -name '*.ts' | wc -l)" "$(find tests -name '*.ts' | wc -l)"
 # the canon is the 11 NAMEED docs; anything else is reported BY NAME rather than by count, so a
 # deliberate addition (RUNTIME_SEAT, the P4 seat doc) is distinguishable from a nested copy.
-CANON11="CURRENT_STATE NEXT_STEPS DECISION_CHAIN EVIDENCE_STATE BUILD_STATE COMPACTION_SURVIVAL POST_COMPACTION_PROMPT CHANGELOG TASK_QUEUE RUNNING_BUILD_LOG RUNNING_DEBUG_LOG"
+CANON11="CURRENT_STATE NEXT_STEPS DECISION_CHAIN EVIDENCE_STATE BUILD_STATE COMPACTION_SURVIVAL POST-COMPACTION_PROMPT CHANGELOG TASK_QUEUE RUNNING_BUILD_LOG RUNNING_DEBUG_LOG"
 missing=0; for n in $CANON11; do [ -f "$CP/context_management/$n.md" ] || { echo "  CANON MISSING: $n.md"; missing=1; }; done
 extras=$(find "$CP/context_management" -name '*.md' -printf '%f\n' | sed 's/\.md$//' | grep -vxF "$(echo $CANON11 | tr ' ' '\n')" | tr '\n' ' ')
 printf "  context_management: 11 canon %s%s\n" "$([ $missing -eq 0 ] && echo present || echo INCOMPLETE)" "$([ -n "$extras" ] && echo " + extras: $extras")"

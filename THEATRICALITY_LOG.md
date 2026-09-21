@@ -208,3 +208,27 @@ This log is only worth reading if its gaps are true gaps. What did NOT happen:
 **THE OPERATOR-CAUGHT COUNT IS THE METRIC TO DRIVE TO ZERO — and this session's is 1, for a
 convention rather than a defect. That is the honest reading, and it is not the same as "the
 operator found nothing wrong".**
+
+### T-11 — I REPRODUCED T-10 WHILE FIXING THE FILE THAT RECORDS IT (caught by the seal, recorded)
+While landing the T-10 entry and strengthening the seal's canon check, I ran this compound command:
+
+```
+./scripts-seal.sh > /tmp/seal3.txt; echo exit=$?; grep ...; git add -A && git commit -m "..."
+```
+
+The seal **exited 1** — my new canon check had a typo in its own name list (`POST_COMPACTION_PROMPT`
+vs the file's real name `POST-COMPACTION_PROMPT.md`). The `git commit` was joined to the chain by
+`;`, so it ran anyway and **a commit landed after a failed gate**.
+
+- **WHAT SAVED IT FROM BEING A FALSE RECORD:** the seal failed for a reason that was itself a bug in
+  the check, not a failing gate — the copy's battery read `0 fail` and the artifacts on disk were
+  correct. So no false claim entered the tree. That is luck in the outcome and not a defence of the
+  command: **had the seal failed for a real reason, the commit would have recorded a green state
+  that did not exist.**
+- **THE MECHANISM, STATED PLAINLY:** `;` after a gate is an `|| true` with extra steps. The gate
+  runs, reports, and is ignored.
+- **THE FIX:** the name corrected; and the standing rule from T-10 (ONE `&&` chain — gate, then
+  commit) is now applied to the seal as well: `./scripts-seal.sh && git commit`, never `;`.
+- **WHY THIS ENTRY EXISTS:** T-10 was written one hour before T-11, in this same session, about this
+  same command shape. Knowing the rule and writing the rule are not the same act as FOLLOWING it,
+  and a log that only records the first two is a log that flatters its author.
