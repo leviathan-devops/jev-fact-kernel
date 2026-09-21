@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `f69d3b32692efbe1de77deb4567b667b` (git a63804e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `940ae8319110132512e15c0b823779f3` (git dba0b28)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -51,7 +52,7 @@ sealed copy does not belong here.
 | `src/mcp.ts` | 185 |
 | `src/pools/budget.ts` | 60 |
 | `src/pools/pool.ts` | 27 |
-| `src/serve.ts` | 100 |
+| `src/serve.ts` | 136 |
 | `src/store/db.ts` | 80 |
 | `src/store/schema.ts` | 69 |
 | `src/targets.ts` | 180 |
@@ -99,7 +100,7 @@ sealed copy does not belong here.
 | `tests/retrieve.test.ts` | 192 |
 | `tests/store.test.ts` | 37 |
 | `tests/watch.test.ts` | 107 |
-| `tests/wave-gates.test.ts` | 170 |
+| `tests/wave-gates.test.ts` | 192 |
 
 ## WHAT EACH MODULE OWNS (one line each, so a reader knows where to look)
 

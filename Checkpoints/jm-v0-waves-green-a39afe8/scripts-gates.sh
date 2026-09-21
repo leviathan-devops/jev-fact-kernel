@@ -73,6 +73,21 @@ echo "═══ L4 — THE CONTAINER RIG (host parity half) ═══"
 tok "container rig T1-T7 (host)" bash -c "timeout 500 bun run tests/container/harness.ts 2>&1 | grep -q 'JM_CONTAINER_RIG PASS'"
 
 echo ""
+echo "═══ THE REDACTION PATH (D-037: a quadratic regex + a wrong-marker order) ═══"
+cat > /tmp/jm-gates-redact.ts <<'EOF'
+import { redact } from "JMDIR/src/judge/cache.ts";
+const t0 = Date.now();
+redact({ body: "y".repeat(4_000_000) });           // must be LINEAR now, not quadratic
+const ms = Date.now() - t0;
+const hex = String(redact("hash 0123456789abcdef0123456789abcdef here"));
+const ok = ms < 3000 && hex === "hash [hex] here";
+console.log(`  4MB redact=${ms}ms  hex -> ${JSON.stringify(hex)}`);
+process.exit(ok ? 0 : 1);
+EOF
+sed -i "s|JMDIR|$(pwd)|" /tmp/jm-gates-redact.ts
+tok "redaction is linear + hex has no survivor" bash -c "bun /tmp/jm-gates-redact.ts"
+
+echo ""
 echo "═══ THE HTTP SURFACE UNDER AN OVERSIZED BODY (D-036) ═══"
 # With no body cap, a 2 MB POST /decide BLOCKED THE WHOLE SURFACE — /health and /jobs stopped
 # answering while it was in flight, so a watchdog would judge the service dead. This check asserts

@@ -633,3 +633,20 @@ AFTER   2 MB -> 413 in 1.8ms · /health 200 in 0.9ms · /jobs 200 · a normal /d
         AND a chunked body with no content-length -> 413 (the stream cap bites)
 battery 135 pass / 0 fail / 651 expects / 25 files · GATES 40 passed / 0 failed
 ```
+
+### D-037 — A QUADRATIC REGEX INSIDE THE CACHE FINGERPRINT (a hang with no output)
+```
+SYMPTOM  a 4 MB decision row: exit 124 at 90s, EMPTY stdout AND stderr, the transport's 30s abort
+         never firing
+ISOLATED the judge API was healthy (938ms) · a transport cap did not stop it (the hang was BEFORE
+         the network) · the path before the network is fingerprint -> canonical -> redact
+MEASURED n=50,000 email=505ms · n=100,000 email=1986ms · n=200,000 email=7912ms   (4x per double)
+ROOT     `[\w.+-]+@` is GREEDY: it consumed the whole run, then backtracked one char at a time
+         hunting for `@`. 4 MB extrapolates to ~3,200 SECONDS. The redaction meant to keep secrets
+         OUT of the cache made the engine unusable on a large row.
+FIX      `[\w.+-]{1,64}@` — the RFC's local-part bound: matches every real address, linear
+AFTER    50k=2ms · 100k=4ms · 200k=6ms · 4MB=133ms · the 4 MB row now runs in 0s via the cap
+SIBLING  the loose phone pattern ran before the hex pattern, so a 32-char hash became
+         `[phone]abcdef[phone]` — wrong marker AND 6 characters SURVIVED (a partial redaction of a
+         secret is a leak). Patterns now run specific-first: `<32 hex>` -> `[hex]`, no survivor.
+battery 139 pass / 0 fail / 661 expects / 26 files · tsc exit 0
