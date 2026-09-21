@@ -681,3 +681,19 @@ OP-23  kill -9                                -> systemd RESTARTED it (new pid, 
        systemctl --user stop                  -> inactive, NO orphan, counter not incremented
 INSTALLED, LEFT STOPPED (a continuously-writing daemon is the operator's call).
 ```
+
+### D-040 — THE FAIL POLARITY, TESTED FOR THE FIRST TIME (a controlled endpoint)
+```
+FIRST: made the endpoint overridable (JM_JUDGE_URL) — with it hard-coded the outage paths were
+       UNREACHABLE, which is why this survived the whole build
+THE TRANSPORT IS CORRECT: slow -> AbortError at 30,003ms (the timeout fires) · 500/429 -> named
+       errors in ~1ms · ok -> answers
+THE DEFECT, one layer up: fail=closed + a 500 wrote 1 NOOP ROW and exited 0. The catch propagated
+       ONLY `JEV_NO_KEY`; every other outage became a decision row.
+TWO MORE LAYERS while fixing: the refusal exited 1 (the exit-code regex was [A-Z_]+ and the code
+       carries digits), and the decision-tree verb kept a hand-rolled ternary from before the policy.
+AFTER  err500/err429 + fail=closed -> exit 2, ZERO decisions · ok -> exit 0, calls=1, act
+       fail=open + err500 -> exit 0, a noop row MARKED `gate_unavailable`
+PINNED tests/judge-outage.test.ts runs its OWN controlled endpoint (3 tests)
+battery 144 pass / 0 fail / 678 expects / 27 files · tsc exit 0
+```

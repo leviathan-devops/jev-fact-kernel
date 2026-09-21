@@ -1318,3 +1318,41 @@ ONE SURFACE AND NOT ON ANOTHER.
 - **LESSON:** an intermittent failure needs a test that repeats. One round called a broken store
   green five times; eight rounds found two distinct defects. And a fix can expose the next one —
   four layers here, each invisible until the layer above was repaired.
+
+## EN-054 — D-040: `fail: "closed"` was fail-OPEN for every judge error except a missing key
+- **FOUND BY:** making the judge boundary TESTABLE. The endpoint was hard-coded, so the only way to
+  fail the judge was to send something oversized — which is what produced the D-037 false lead. A
+  `JM_JUDGE_URL` override let a CONTROLLED endpoint be put in front of the transport, and the
+  outage paths became reachable for the first time.
+- **THE PROBE (a local endpoint that 500s / 429s / never answers):**
+  ```
+  slow   -> THREW in 30003ms  AbortError: The operation was aborted.     (the timeout FIRES, 30s)
+  500    -> THREW in     1ms  JM_JUDGE_HTTP_500: {"detail":"boom"}
+  429    -> THREW in     0ms  JM_JUDGE_HTTP_429: {"detail":"slow down"}
+  ok     -> OK    in     1ms  {"m":{"type":"noul","noul":0.5}}
+  ```
+  The transport's error and timeout handling are CORRECT. (This also closes the D-037 question: the
+  abort works — that hang really was the fingerprint.)
+- **THE DEFECT, one layer up:** with `policy.fail = "closed"` (the DEFAULT) and a 500, the run wrote
+  **1 decision row** and exited **0**:
+  `route=noop reason=error: Error: JM_JUDGE_HTTP_500: {"detail":"boom"}`. The catch read
+  `if (String(err).includes("JEV_NO_KEY")) throw err;` — so a missing key propagated and EVERY
+  OTHER OUTAGE became a noop row. A run that could not reach the judge reported itself as having
+  decided, and the spec's own exit table calls that case "2 refused/fail-closed".
+- **A SECOND LAYER, found while fixing it:** the refusal exited **1**, not 2, because the
+  exit-code regex was `/JM_[A-Z_]+:/` — the class omits DIGITS, and the code is
+  `JM_JUDGE_HTTP_500`. And a third: the decision-tree verb still carried its own hand-rolled
+  `msg.includes("JEV_NO_KEY") ? 2 : 1` ternary from before the exit-code policy existed.
+- **THE FIX (three edits):** the catch now propagates when `noKey || policy.fail === "closed"`; the
+  exit-code regex accepts digits (`[A-Z0-9_]+`); the verb uses `exitCodeFor(err)` like every other.
+- **VERIFICATION (fresh states so the cache cannot absorb the calls):**
+  ```
+  err500 + fail=closed -> exit 2   JM_JUDGE_HTTP_500        ZERO decisions written
+  err429 + fail=closed -> exit 2   JM_JUDGE_HTTP_429        ZERO decisions written
+  ok     + fail=closed -> exit 0   calls=1  act=1 (p=0.9)   a REAL call was made
+  err500 + fail=open   -> exit 0   a noop row, reason `gate_unavailable: ...`
+  ```
+  Pinned by `tests/judge-outage.test.ts`, which runs its OWN controlled endpoint so the outage paths
+  are reachable by construction.
+- **LESSON:** the polarity of a failure policy is only as good as the set of failures it recognises.
+  This one recognised exactly one, and it was the one the tests exercised.

@@ -10,6 +10,13 @@ export interface JudgeResponse {
 }
 
 export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
+
+/** The endpoint, overridable so the boundary can be TESTED and a mirror can be used. The timeout
+ *  and error paths were unreachable with a hard-coded URL: the only way to make the judge fail was
+ *  to make the whole request oversized, which is what produced the D-037 false lead (the hang was
+ *  in the fingerprint, and the abort never fired on the oversized request). `JM_JUDGE_URL` lets a
+ *  controlled endpoint be put in front of the transport. */
+export const judgeUrl = (): string => process.env.JM_JUDGE_URL ?? TYPESAFE_URL;
 export const TYPESAFE_MODEL = "jev-latest";
 
 /** The OUTBOUND cap (D-037). A 4 MB decision row made the whole run HANG — exit 124 at a 90-second
@@ -47,7 +54,7 @@ export async function callSystemOne(key: string, body: unknown, timeoutMs = 30_0
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(TYPESAFE_URL, {
+    const res = await fetch(judgeUrl(), {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
