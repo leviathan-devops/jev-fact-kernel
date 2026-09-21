@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { Judge } from "../judge/client.ts";
-import { routeOf, DEFAULT_POLICY, type Policy } from "../judge/policy.ts";
+import { DEFAULT_POLICY, type Policy } from "../judge/policy.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 
@@ -63,12 +63,10 @@ export async function decisionTree(opts: {
         throw err;    // fail-closed (the default): propagate, never a silent success
       }
       const value = answersToPolicyValue(res.answers as never);
-      const { route, reason } = routeOf(res.answers[Object.keys(opts.recipe.questions)[0]] as never, policy);
-      // recompute with the aggregate signal for multi-question recipes
+      // ONE signal source: the aggregate over all answers drives BOTH route and reason.
       const agg = value >= policy.act ? "act" : value >= policy.flag ? "escalate" : "noop";
-      const d: DecisionRow = { i, route: agg, reason: `${reason} | agg=${value.toFixed(2)}`, answers: res.answers, cached: res.cached, model: res.model };
-      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
-      budget.spend(res.costUsd);
+      const d: DecisionRow = { i, route: agg, reason: `agg=${value.toFixed(2)} >= act=${policy.act} / flag=${policy.flag}`, answers: res.answers, cached: res.cached, model: res.model };
+      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; budget.spend(res.costUsd); }   // cached hits consume no budget slot
       return d;
     } catch (err) {
       if (String(err).includes("JEV_NO_KEY")) throw err;    // fail-closed must propagate
