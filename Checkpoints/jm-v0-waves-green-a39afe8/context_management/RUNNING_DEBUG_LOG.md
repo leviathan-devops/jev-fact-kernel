@@ -110,3 +110,98 @@ Updated at the MOMENT of the work (fresh-capture rule).
 - The through-line: EVERY silent defect this session was found by RUNNING or by executing a DOC,
   never by reading. The audit found 2 of the 14; the battery found 2; the drill found 6; the
   doc-execution sweep found 3; the container rig found 1.
+
+## [2026-09-21] THE SESSION THAT SWEPT THE JUDGE BOUNDARY — git 2a641ab
+
+The 2 high-frequency canon logs were being updated in the SHIP log (`DEBUG_LOG.md`) and NOT here,
+which is why the canon read as stale and why the C20 floor stayed unmet. The material existed; it
+was in the wrong file. This entry lands it where the contract requires it. Ship entries are
+EN-024..EN-064 there.
+
+- **EN-035..EN-041** — the audit's closing findings: an identity map that could interpolate
+  `undefined` into SQL (fixed), a "simplification" that yields `LIMIT NaN`/`-1` (REFUTED by six
+  inputs), a dead duplicate `report` handler (fixed), and a fabricated "duplicate `total`"
+  (REFUTED by `grep -c`). **LESSON: "simpler" is a claim like any other, and an auditor's finding
+  is a hypothesis until a probe settles it.**
+- **EN-042 / D-027** — a target-name sanitiser that was not INJECTIVE: `same name` and `same/name`
+  both became `same_name`, so two targets shared one namespace and 2 files became 1 row, silently.
+  **LESSON: a value that becomes a KEY must map one-to-one; a sanitiser that is not injective is a
+  MERGE.**
+- **EN-043 / D-028** — the D-009 defect still alive on the MCP surface: `jm_query` on a typo'd index
+  returned `{"rows":[],"n":0}` at success AND materialised a phantom index file. Its own doc's
+  "the same semantics as the CLI" is what exposed it. Plus `GET /health` creating an index on a
+  liveness probe. **LESSON: fixing a defect on ONE surface does not fix the CLASS.**
+- **EN-045 / D-030** — the decision's REASON contradicted its route (a fixed template printed
+  `>= act` for noops and escalates). **LESSON: an exit status and a band count can both be right
+  while the explanation beside them is wrong. Read the field a human will read.**
+- **EN-046..EN-049 / D-031..D-034** — the JUDGE-EVIDENCE family, four instances in one chain:
+  the excerpt excluded the match; the same in filter; one seed monopolised all 100 candidates; and
+  `route` used a question type the API REJECTS (`mcq` -> HTTP 400) so the verb had NEVER worked
+  while a mock validated the wrong shape. **LESSON: at least one test per external boundary must
+  cross it for real. A mock encodes the author's belief about the far side.**
+- **EN-050..EN-053 / D-035 + D-038** — concurrency took FOUR layers, each invisible until the one
+  above was repaired (no `busy_timeout`; the timeout set AFTER the pragma; a check-then-insert
+  schema seed dying on `UNIQUE meta.key`; the WAL conversion raced on every open though WAL is
+  persistent). **LESSON: an intermittent failure needs a test that REPEATS — one round called a
+  broken store green five times.**
+- **EN-051 / D-036 + EN-052 / D-037** — an oversized body blocked the WHOLE HTTP surface (no body
+  cap anywhere), and a QUADRATIC redaction regex (505/1986/7912 ms for 50k/100k/200k) made any
+  large run hang with EMPTY stdout and stderr. **LESSON: an unbounded input is an availability
+  problem, not a performance one; and measure SCALING, not a single case.**
+- **EN-054..EN-063 / D-040..D-046** — the failure-policy and answer-reading family: only one
+  error type was recognised while two verbs went silent; a renamed answer key read as 0 in four
+  verbs; the stored confidence was regex-parsed out of the row's own prose; the cache ignored WHICH
+  endpoint answered; calibrate read an unknown as a zero and could SUGGEST LOWERING A THRESHOLD
+  over an outage; and a usage-less response was billed at $0 so the USD cap could never fire.
+  **LESSON: grep for the idiom after fixing one instance — the same `?? 0` appeared on the WRITE
+  side and the READ side of one column.**
+- **EN-058 + EN-060 + T-07 + EN-064** — three of my own process defects: this host's `pkill` is
+  not procps (exit 2, killed nothing, so a gate failed while the commands passed by hand); a test
+  binding a FIXED PORT is a flake with a schedule; a commit landed with `tsc` RED because `;` let
+  git run after a failed gate; and a `tail -2` hid a red battery from the command that reported it.
+  **LESSON: the command which reports a result is part of the result.**
+
+**THE RUNTIME LEDGER, CANON COPY:** sixteen defects this session, none visible in a green suite —
+every one from crossing a boundary, repeating a measurement, grepping for an idiom after fixing
+its first instance, or reading the field the engine actually writes.
+
+## THE BOUNDARY LADDER — one line per boundary crossed, and what it cost NOT to have crossed it
+
+| boundary | how it was crossed | what reading could not have shown |
+|----------|-------------------|-----------------------------------|
+| the judge's accepted question types | a live call per type | `mcq` -> HTTP 400: a verb that had never made a successful call |
+| the prompt a judge is shown | reading the excerpt, not the trend | the phrase sat at char 1267/9224, outside the 1200-char head slice |
+| the candidate provenance | counting where candidates came from | one seed took all 100; two seeds with 361/486 available contributed nothing |
+| an oversized REQUEST | a 2 MB body to a live surface | the whole surface blocked, `/health` included |
+| an oversized STATE | a 4 MB decision row | a quadratic regex made the run hang with EMPTY stdout AND stderr |
+| four OS processes on one index | four simultaneous CLIs | four layers of concurrency defects, each hidden behind the last |
+| the daemon's real loop | 32 s of background running | `bun run` is a wrapper plus a child; signalling the wrapper orphans the daemon |
+| a service manager | a systemd user unit | `PrivateTmp` gives the service its own /tmp, so a target under /tmp is INVISIBLE |
+| the judge's OUTAGE paths | a controlled endpoint | one error type recognised while two verbs returned silent empties |
+| a RENAMED answer key | a judge answering under another key | four verbs read 0 — and `evaluate` fabricated every metric |
+| two ENDPOINTS, one state | `JM_JUDGE_URL` pointed at a local server | the cache returned the first endpoint's answer for the second |
+| a response with NO usage | a judge omitting its accounting block | a call billed at $0, so the USD cap could never fire |
+| a 5 MB MCP line, a 2 MB ledger burst, 12 concurrent HTTP requests | sent them | all three survived — recorded so silence is not read as proof |
+
+**THE THROUGH-LINE:** every defect this session was found by RUNNING something, REPEATING a
+measurement, or GREPPING for an idiom after fixing its first instance. None was visible in a green
+suite, and none would have been found by reading the code.
+
+## WHAT THE HOT SEAT TAUGHT THAT READING COULD NOT — the closing ledger
+
+1. Four of the sixteen defects were only reachable by FOUR SIMULTANEOUS PROCESSES. Reading the
+   code shows a `busy_timeout` and a WAL pragma; it does not show that the timeout is set after
+   the pragma, or that the schema seed races, or that the WAL conversion runs on every open.
+2. Three were only reachable by STARVING the runtime: a missing key, an unreachable endpoint, a
+   provider that answers without an accounting block. All three are the paths a demo never takes
+   and a production run takes eventually.
+3. Two were only reachable by an OVERSIZED input. The body cap and the quadratic redactor were
+   both invisible until something big arrived, and one of them produced a hang with no output at
+   all — the failure shape that looks like a freeze rather than an error.
+4. The rest were reachable only by OPENING THE RIGHT FILE. Every one of them was a correctness
+   defect in a function nothing had called with the wrong input yet.
+
+**THE CLOSING CLAIM, AND ITS SCOPE:** this is what RUNNING `jm-live-01` taught. It is not a claim
+that the system is defect-free; it is a claim that this instrument, on this instance, has nothing
+left unexperienced. The residual is NAMED: W8's fire gate (parked on the operator's rulings) and
+the source chunk of the independent audit.

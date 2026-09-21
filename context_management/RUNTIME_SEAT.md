@@ -171,3 +171,48 @@ a REAL path (home, `/srv`, `/var`), never under `/tmp`.
 **INSTALLED BUT LEFT STOPPED.** The unit is at `~/.config/systemd/user/jm-watch.service` with a 60 s
 interval and the start/enable lines documented in it. A daemon that writes to `~/.jm` continuously
 is the operator's call to run, not the builder's.
+
+## THE PUSH RESULTS, SESSION 2 (the surface-boundary pushes)
+
+**PUSH 1 — 4 concurrent HTTP requests.** Four simultaneous `/decide` calls against one instance:
+all four answered, none errored, the ledger gained four rows, and the store stayed consistent.
+**PRE-REGISTERED EXPECTATION:** no lost writes, no 5xx. **ACTUAL:** met.
+
+**PUSH 2 — an oversized body (2 MB) to a live surface.** **PRE-REGISTERED EXPECTATION:** a 413
+or a clean rejection. **ACTUAL: THE WHOLE SURFACE BLOCKED** — `/health` included — until the body
+was consumed. Fixed with a 1 MiB cap and a drained remainder; retested on the SAME instance.
+
+**PUSH 3 — 12 concurrent HTTP requests.** **EXPECTATION:** all answered or cleanly rejected.
+**ACTUAL:** met (the fix from PUSH 2 holding under load).
+
+**PUSH 4 — a 5 MB MCP line.** **EXPECTATION:** the parser survives or refuses by name.
+**ACTUAL:** survived; recorded so that silence is not later read as proof of a property nobody
+tested.
+
+**PUSH 5 — a 2 MB ledger burst.** **EXPECTATION:** the append stays atomic, nothing interleaves.
+**ACTUAL:** met; no torn lines.
+
+**PUSH 6 — kill -9 mid-operation.** **EXPECTATION:** the job row is left `running`, the resume
+loses nothing and duplicates nothing. **ACTUAL:** `orphaned > 0` observed, then
+`done=400 distinct=400` after resume.
+
+**PUSH 7 — starve it (no key).** **EXPECTATION:** exit 2 with a named refusal.
+**ACTUAL:** met — and this is what exposed that only ONE error type was being recognised while
+two verbs returned silent empties.
+
+## THE DAEMON AS A SERVICE (the last unexperienced surface)
+
+The seat operated the daemon under a **systemd user unit** — start, tick, clean stop, and a
+`kill -9` restart observed via `Restart=on-failure`. Two things only this boundary shows:
+- `bun run` is a **wrapper plus a child**; signalling the wrapper orphans the daemon.
+- `PrivateTmp` gives the unit **its own /tmp** — a target placed under `/tmp` is INVISIBLE to the
+  service. A configuration that reads as correct produces a working-directory-dependent answer.
+
+## SEAT VERDICT, RESTATED WITH THE FULL STREAM IN VIEW
+
+I am the driver of `jm-live-01`: the CLI and `jm serve` on this host, at the sealed commit. The
+seat is CLOSED for this instance — nothing on it remains unexperienced — with the residual NAMED:
+W8's fire gate (parked on the operator's rulings) and the source chunk of the independent audit.
+
+**A zero-bug seat would have been a red flag.** This one produced sixteen defects, six more from
+the zero-context second operator, and the eleven pushes above.

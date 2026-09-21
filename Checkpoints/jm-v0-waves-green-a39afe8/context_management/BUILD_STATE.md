@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `f8e95debbe84fc6224f2ed635916a883` (git 7497408)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `e8097b887c2dd0fd33e900660f85b784` (git 7497408)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -108,7 +109,7 @@ sealed copy does not belong here.
 | `tests/judge-answer-shape.test.ts` | 79 |
 | `tests/judge-outage.test.ts` | 77 |
 | `tests/judge-policy.test.ts` | 128 |
-| `tests/judge-usage.test.ts` | 63 |
+| `tests/judge-usage.test.ts` | 72 |
 | `tests/ladder-reason.test.ts` | 55 |
 | `tests/ledger.test.ts` | 26 |
 | `tests/mcp.test.ts` | 89 |

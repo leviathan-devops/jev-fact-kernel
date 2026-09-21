@@ -94,3 +94,117 @@ type boundary was broken, while the BATTERY was green (Bun does not typecheck).
   the gate fails is the same defect as an `|| true` on a test.
 - **THE RULE THIS SESSION NOW FOLLOWS:** `bunx tsc --noEmit && bun test && git commit` — one `&&`
   chain, so a red type boundary cannot reach a commit.
+
+### T-08 — THE AUDITOR'S THEATRE, REFUTED SIXTEEN TIMES (recorded, because a false finding is also theatre)
+Across 26 audit runs the lane produced 16 claims that a probe REFUTED. They are not noise to be
+deleted: each one is a place where a plausible-sounding assertion would have become a defect if
+"the audit said so" had been treated as evidence.
+- "`cachePut` resets `hits` to 0" — probed: `hits = 7` preserved.
+- "the return has a DUPLICATE `total` property" — `grep -c "total,"` = 1.
+- "`roomLeft()` should use `>` to match `assert()`" — the operators do different jobs at different
+  points relative to the spend; `>` would let a caller spend into the throw.
+- "the LIMIT guard is unnecessarily complex" — the suggested simplification yields `LIMIT NaN` and
+  `LIMIT -1` (unlimited in SQLite).
+- "9 parameters for 8 placeholders" — 8 and 8, counted mechanically.
+**THE LESSON:** an audit is a SOURCE, not a verdict. Every claim above was settled by running
+something, which is the only thing that has ever settled a claim in this repo.
+
+### T-09 — THE 2 HIGH-FREQUENCY LOGS WERE BEING UPDATED IN THE WRONG FILE (caught, fixed)
+The doc contract says the canon's `RUNNING_BUILD_LOG` and `RUNNING_DEBUG_LOG` update AT THE MOMENT
+OF WORK. For roughly sixty commits this session those entries went to the SHIP log,
+`DEBUG_LOG.md` — which grew to 1,600 lines while the canon's debug log sat at 112 with its last
+entry dated to a much older commit. The work was not missing; it was filed where the contract does
+not read.
+- **CAUGHT BY:** checking the C20 floor residual instead of assuming it was "closed by living" —
+  the floor had not moved because the file had not.
+- **FIXED:** the session's entries landed in the canon logs in the canon's own format, with the
+  ship entries cross-referenced rather than duplicated.
+- **THE CLASS:** a floor that never moves is not evidence of a quiet session; it is evidence that
+  somebody is writing somewhere else.
+
+### T-10 — A COMMIT HID ITS OWN RED BATTERY (caught by the seal, fixed)
+The D-046 commit's chain reported the battery with `bun test 2>&1 | tail -2`, which printed the
+expect-count line rather than the pass/fail counts. The battery was RED (the pin's own two-phase
+cache interaction) and the commit ran anyway; only the SEAL's own battery surfaced it one step
+later.
+- **CAUGHT BY:** `scripts-seal.sh`, which runs the copy's battery and exits non-zero.
+- **FIXED:** the pin corrected, and the verification command now reads the counts explicitly the
+  way the gate runner does (`grep -E "^ *[0-9]+ (pass|fail)"`) and REFUSES to commit without
+  `0 fail`.
+- **THE CLASS:** a report command that can print anything but the result is not a gate. The seal
+  was the gate; the ad-hoc tail was decoration.
+
+## THE METRICS THIS LOG EXISTS TO MOVE
+
+| metric | this session |
+|--------|--------------|
+| OPERATOR-CAUGHT | **1** — the operator's `make sure all commits are labelled with semantic tokens` produced the semantic-token convention; nothing else required an operator correction. The other nine entries were caught by the build's own instruments |
+| SELF-CAUGHT, before any claim | 8 (T-01..T-09) |
+| CLAIMS WITHDRAWN AFTER A PROBE | 16 (the audit refutations, T-08) |
+| FABRICATED PASSES | 0 — no PASS was written that a run did not produce |
+| RUNS PRESENTED WITHOUT THEIR OUTPUT | 0 — every verdict in these logs carries a command or an artifact path |
+| GATES SKIPPED | 0 — and the one gate that FAILED (the audit lane) is recorded as BLOCKED, never upgraded |
+
+## THE STANDING RULES THIS LOG PRODUCED
+
+1. **One `&&` chain for verification.** `bunx tsc --noEmit && bun test && git commit`. T-07 and
+   T-10 are both this rule being absent.
+2. **Read the counts, not the tail.** A report command that can print anything but the pass/fail
+   counts is decoration, not a gate (T-10).
+3. **A floor that never moves is a filing problem, not a quiet session** (T-09).
+4. **A probe settles a claim; an audit proposes one.** Sixteen refutations in one session is what
+   that discipline costs, and it is cheaper than sixteen "fixes" for non-defects (T-08).
+5. **A mock encodes a belief about the far side of a boundary.** At least one test per external
+   boundary must cross it for real (D-034, the verb that had never worked).
+
+## WHAT WOULD BE THEATRE HERE, AND IS NOT DONE
+
+- No entry in this log describes a test as "passing" without a run in the same session.
+- No refutation is described without its probe.
+- No gap is described as closed because it was reworded.
+- The three residuals (C20's floor, C14's session-live half, W8's parked layer) stay OPEN in
+  VIOLATION_LOG and in TASK_QUEUE rather than being restated as done here.
+
+## THE ONE OPERATOR-CAUGHT ITEM, IN FULL
+
+**THE OPERATOR:** *"make sure all commits are labelled w/ semantic context tokens so we can tell
+what they are."*
+
+**WHAT IT REVEALED:** the commit log was a wall of unlabelled one-liners. A reader could not tell a
+fix from a doc update from a wave landing without opening every diff. The operator had to ASK what
+the commits were, which means the log was not doing a log's job.
+
+**WHAT CHANGED:**
+- A standing convention: every message carries a type (`fix:` `feat:` `docs:` `test:` `build:`
+  `refactor:` `blueprint:` `goal:` `chore:` `spec:` `perf:`), a scope qualifier when the change
+  targets a named thing (`fix(judge):`, `docs(ship):`), and the EVIDENCE in the body — test counts,
+  sha references, verdicts. "A commit without evidence is a claim."
+- It was wired into the plans and the TTSR/append surface so future sessions inherit it rather than
+  rediscovering it.
+- Applied retroactively where it mattered, and onward from that point.
+
+**THE CLASS:** this is the same shape as T-09 (the wrong log file) and T-10 (the hidden red
+battery). In all three, the artifact EXISTED and the INFORMATION did not survive into it. A commit
+message, a log entry and a test report are all *interfaces to a future reader*, and an interface
+that requires the reader to reconstruct its content has failed at the interface's only job.
+
+## THE CLASSES THAT ARE ABSENT, WHICH IS WHY THE ENTRIES ABOVE ARE MEANINGFUL
+
+This log is only worth reading if its gaps are true gaps. What did NOT happen:
+
+- **No PASS was written for a run that failed.** The audit lane is BLOCKED in three documents; the
+  container rig's vacuous first pass was recorded as a FAILURE and then strengthened until it could
+  fail.
+- **No gate was skipped and quietly re-run.** The `tsc`-red commit (T-07/T-10) was NOT rewritten or
+  force-pushed away; it is in the history with its cause and its fix.
+- **No scope was shrunk to reach green.** W8 stays PARKED, named, with its four criteria in
+  VIOLATION_LOG; the goal's stop condition is not restated to exclude it.
+- **No residual was reworded into a closure.** C20, C14 and C15–C18 read the same way they read
+  when they were opened.
+- **No "zero bugs" claim was made.** The runtime seat produced 16 defects and the second operator
+  produced 6 more; a session with zero findings would have been treated as a RED FLAG about the
+  instrument, not a green light about the software.
+
+**THE OPERATOR-CAUGHT COUNT IS THE METRIC TO DRIVE TO ZERO — and this session's is 1, for a
+convention rather than a defect. That is the honest reading, and it is not the same as "the
+operator found nothing wrong".**

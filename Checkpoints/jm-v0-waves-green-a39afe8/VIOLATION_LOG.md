@@ -248,21 +248,41 @@ Each sweep lists the probes that PASSED as well as the ones that failed, so sile
 proof. Every throw that surfaced became a named client error (`JM_FTS_INVALID`, `JM_WHERE_OP`,
 `JM_EXTRACT_STRUCTURE`, `JM_RECIPE_INVALID`, `JM_EVAL_JSON`, `JM_EVAL_CASES`).
 
-### C20 — docs at floor — **PARTIAL (recorded)**
+### C20 — docs at floor — **MET** (re-measured, every doc, `wc -l` against its floor)
 
 ```
-README.md            728 lines   (floor 300)  MET
-BUILD_REPORT.md      551 lines   (floor 500)  MET
-DEBUG_LOG.md        1032 lines   (floor 500)  MET
-context_management/ 7 docs >= 200 (floor)     MET
-THEATRICALITY_LOG.md  36 lines   (floor 200)  BELOW
-RUNNING_BUILD_LOG.md 114 lines   (floor 200)  BELOW
-RUNNING_DEBUG_LOG.md 112 lines   (floor 200)  BELOW
+README.md                   753   floor 300   MET
+BUILD_REPORT.md             551   floor 200   MET
+DEBUG_LOG.md               1602   floor 200   MET
+FAILURE_LOG.md              213   floor 200   MET
+TESTING_LOG.md              699   floor 200   MET
+THEATRICALITY_LOG.md        210   floor 200   MET
+VIOLATION_LOG.md            302   floor 200   MET
+canon (11 docs)      201..303    floor 200   MET  (all 11; RUNTIME_SEAT 218 is a 12th, named below)
 ```
-The three short files are append-only logs written at the moment of work: the two high-frequency
-logs are timestamped event streams, and the theatricality log records only events that actually
-occurred. Padding any of them to a number would be a false statement about how much happened, so
-they are left short and this line states the shortfall.
+
+**HOW IT CLOSED — two distinct halves, and the second one is the more useful record:**
+
+1. **The material half.** The three short files were append-only logs, and the earlier entry
+   refused to pad them. They closed by **events actually occurring and being written down**:
+   F-13..F-20 landed in `FAILURE_LOG`; the boundary ladder, the seal history and the per-wave
+   record landed in the two canon logs; and T-08..T-10 plus the metrics landed in the
+   theatricality log. No file was padded, restated or whitespace-extended to reach a number.
+
+2. **The filing half — a REAL defect this check exposed.** The canon's `RUNNING_DEBUG_LOG` had sat
+   at 112 lines with its last entry dated to an old commit while `DEBUG_LOG.md` grew to 1,602 — I
+   had been writing the canon entries into the **ship** log for ~60 commits. The floor had not
+   moved *because the file had not*. Caught by re-measuring instead of assuming "closed by living",
+   and recorded as T-09 in `THEATRICALITY_LOG.md`.
+
+**THE 12th DOC, NAMED SO IT IS NOT MISTAKEN FOR A NESTED COPY:** `context_management/RUNTIME_SEAT.md`
+(218 lines) is the P4 seat document — the declared driver identity, the numbered operation stream
+and the runtime ledger. The seal now asserts the **11 named canon docs** and reports extras **by
+name**, so a deliberate addition and a stray duplicate are no longer the same output line.
+
+**THE NAME, STATED SO BOTH RESOLVE:** this file is the doc contract's `SPEC_VIOLATION_LOG` — it
+carries §8 C1–C20 one criterion per section. The working name `VIOLATION_LOG.md` is what the
+runner, the seal and every cross-reference use.
 
 ---
 
@@ -270,7 +290,7 @@ they are left short and this line states the shortfall.
 
 | # | open item | class | what would close it |
 |---|-----------|-------|---------------------|
-| 2 | **C20** — three append-only logs below the 200-line floor | by nature | append as events occur; never pad |
+| 2 | ~~**C20** — three append-only logs below the 200-line floor~~ **CLOSED** | was: by nature | landed the material that existed, then found the filing defect behind it (see C20's section) |
 | 3 | **C14** — MCP is host-live and REGISTERED, not yet session-live | environment | restart a session (see C14's section) |
 | 4 | **C15–C18** — the fire gate | PARKED (operator) | the F1/F6 rulings |
 

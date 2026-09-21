@@ -112,3 +112,102 @@
 - **Evidence:** `artifacts/` battery 59/0 + `test_same_named_files_across_targets_do_not_collide`.
 - **Frontier:** the same class should be checked for the row adapters (jsonl/sqlite refs are
   absolute already, so they cannot collided — verified by reading the ref construction).
+
+### F-13 — The run that hung with EMPTY stdout and stderr (a quadratic redactor) (2026-09-21)
+- **WHAT I SAW:** a full extract over 2,000 rows printed nothing, wrote nothing, and exited
+  nothing — for the better part of a minute. The shape of the failure was a FREEZE, not an error.
+- **ROOT CAUSE:** the redaction pass was quadratic. Measured directly: 505 ms at 50k characters,
+  1,986 ms at 100k, 7,912 ms at 200k. A 4 MB decision row put minutes of work between the start
+  and the first byte of output.
+- **WHY NO EARLIER TEST CAUGHT IT:** every fixture was small. A quadratic cost is invisible at
+  every size a developer types by hand and dominant at every size a machine produces.
+- **FIX:** the redactor made single-pass, and the giant-row path bounded. Pinned by a scaling
+  measurement rather than a single case.
+- **LESSON:** an unbounded input is an AVAILABILITY problem. And when a program produces no
+  output, the first question is not "did it fail" but "where is it spending its time".
+
+### F-14 — A judge answered under a key nobody read, and `evaluate` fabricated every metric (2026-09-21)
+- **WHAT I SAW:** `evaluate` reported a confident score table for answers that did not exist.
+- **ROOT CAUSE:** the answer key was renamed at the boundary. Four verbs read `answers.answer`
+  and the judge was returning something else; the reader returned `undefined` for every row, and
+  `evaluate` counted the undefineds as wrong answers, producing a full metric table over nothing.
+- **WHY IT SURVIVED:** the mock answered under the OLD key, so the suite agreed with the code's
+  belief about the far side of the boundary. **A mock encodes the author's belief.**
+- **FIX:** one answer-reader used by all four verbs, pinned against a REAL live response shape,
+  with the negative half (a renamed key must be a NAMED refusal, never a zero).
+- **LESSON:** a metric computed over absent data is worse than an error, because it looks like
+  evidence.
+
+### F-15 — A call with no `usage` block was billed at $0, so the USD cap could never fire (2026-09-21)
+- **WHAT I SAW:** a judge that answered correctly while omitting its accounting block produced
+  `inputTokens: 0, costUsd: 0`. Fifty such calls against a **$0.0001** cap still reported
+  `roomLeft=true`.
+- **ROOT CAUSE:** `resp.usage?.input_tokens ?? 0`. The absent field became a specific number —
+  zero — and that number flows into both the ledger's `cost_usd` and the budget's usd cap.
+- **WHY IT MATTERS:** the budget is the guard that stops a runaway loop from spending. Its
+  measurement was, in this path, a constant zero.
+- **FIX:** the gap is REPORTED (`usageMissing: true`) and routed through the existing fail
+  policy — `fail=closed` refuses with `JM_JUDGE_USAGE_MISSING`, `fail=open` degrades with a
+  marked row. **An unmeasurable quantity must refuse a limit enforcement, not satisfy it.**
+- **LESSON:** `?? 0` on a COST is not a default; it is an assertion that the call was free.
+
+### F-16 — Three process failures of my own, and the command that hid one of them (2026-09-21)
+Not software defects. They reached a gate, so they belong here.
+- **THE `pkill` THAT KILLED NOTHING:** this host's `pkill` returns **exit 2** and terminates
+  nothing. A gate failed while the same commands succeeded by hand. The background job runner is
+  the verified tool on this host; `pkill` is a name that resolves to something else.
+- **THE COMMIT THAT LANDED WITH `tsc` RED:** the chain used `;` between the type check and
+  `git commit`, so the commit ran after a failed gate. Fixed by ONE `&&` chain.
+- **THE `tail -2` THAT HID A RED BATTERY:** the command that REPORTED the result printed the
+  expect-count line instead of the pass/fail counts, and a commit ran on a failing suite. The
+  seal's own battery caught it. The verification now reads the counts explicitly and refuses to
+  commit without `0 fail`.
+- **THE LOG WRITTEN TO THE WRONG FILE:** sixty commits of canon-log entries went to the ship log.
+  The floor stayed unmet not because the work was missing but because it was filed elsewhere.
+- **THE LESSON, ONCE, FOR ALL FOUR:** the command which reports a result is part of the result.
+
+### F-17 — The sanitiser that was not injective: two targets, one namespace, silent row loss (2026-09-21)
+- **WHAT I SAW:** ingesting two targets named `same name` and `same/name` produced **1 row from
+  2 files**, with no error.
+- **ROOT CAUSE:** the target-name sanitiser mapped both to `same_name`. A value that becomes a
+  **key** must map one-to-one; a sanitiser that is not injective is not a sanitiser — it is a
+  **merge**.
+- **WHY IT SURVIVED:** every test used one clean name. A collision needs two names that differ
+  before the sanitiser and agree after it, which is exactly what a test author never types.
+- **FIX:** names carry a distinguishing suffix derived from the original when the sanitised form
+  collides; pinned by feeding the colliding pair and asserting `2 rows`.
+- **LESSON:** any function that turns a human string into a KEY is a partition of the input
+  space, and partitions need collision tests.
+
+### F-18 — A verb that had NEVER made a successful call (the rejected question type) (2026-09-21)
+- **WHAT I SAW:** `route` threw HTTP 400 against the live judge on its first real call, ever.
+- **ROOT CAUSE:** it asked with `type: "mcq"`. The API rejects that type. Every test of `route`
+  used a mock that happily answered whatever was asked, so the tests validated the CALLER's
+  belief about the API, not the API.
+- **WHY IT SURVIVED:** the mock is the author's belief encoded as a fixture. It cannot be wrong
+  in a way that exposes the author.
+- **FIX:** `route` now asks with the accepted types; a live call is part of its test.
+- **LESSON:** at least one test per external boundary must cross it FOR REAL. A boundary covered
+  only by a mock is a boundary with no test.
+
+### F-19 — The excerpt that excluded the match (twice, in two verbs) (2026-09-21)
+- **WHAT I SAW:** a decision row carried a `head-1200-chars` excerpt in which the matching phrase
+  did not appear — it sat at character 1267 of 9224.
+- **ROOT CAUSE:** the excerpt was taken from the start of the document while the match could be
+  anywhere in it. The judge was being asked to reason about a passage that had been cut out.
+- **WHY IT SURVIVED:** the fixture documents were short. Under 1,200 characters, head and match
+  coincide, and the bug is invisible by construction.
+- **FIX:** the excerpt is anchored ON THE MATCH with context on both sides; `filter` carried the
+  identical defect and was fixed in the same pass.
+- **LESSON:** grep for the idiom after fixing one instance. The same mistake lived in a second
+  verb, and only looking for it found it.
+
+### F-20 — The confidence that was regex-parsed out of the row's own prose (2026-09-21)
+- **WHAT I SAW:** a threshold-calibration suggestion that did not reflect the probabilities the
+  judge had actually returned.
+- **ROOT CAUSE:** the stored confidence was being scraped with a regex from the decision row's
+  human-readable REASON string, instead of read from the structured field written for it.
+- **WHY IT SURVIVED:** early rows happened to format the same way the regex expected.
+- **FIX:** the structured field is read directly, and a row without it is UNKNOWN (counted and
+  excluded) rather than parsed from prose.
+- **LESSON:** a human-readable message is not a data channel. If a value matters, it gets a field.

@@ -112,3 +112,90 @@ Append-only, updated at the moment of work.
 - README §18 (the operating contract) written from a zero-context operator's gaps, then EXECUTED:
   25/25 claims verified, which itself found 3 defects.
 - AUDIT GATE: BLOCKED (src chunk partial; two chunks complete with 0 findings).
+
+## [2026-09-21] BUILD LOG — the boundary-sweep session — git 2a641ab
+
+- **SURFACES:** all four proven live — CLI (17 verbs), HTTP (`/decide`, `/find`, `/health`,
+  `/jobs`), MCP (stdio, 4 tools), daemon (**as a systemd user unit**: start, tick, `kill -9`
+  restart via `Restart=on-failure`, clean stop).
+- **RUNNERS, all sealed:** `scripts-gates.sh` (41 checks, non-zero exit on any failure),
+  `scripts-real-corpus.sh` (the host's actual 11,832 files + 2,309 rows from four DBs, ~33 GB,
+  sources verified unchanged), `scripts-container-rig.sh` (spec §9 T1–T7 in a fresh Debian-12
+  container AND on the host), `scripts-jm-mcp.sh`, `scripts-jm-watch.sh` (the `exec` launcher),
+  `scripts-seal.sh` (replaces subtrees rather than nesting them, and re-syncs every canon TREE SHA).
+- **BATTERY:** 163 pass / 0 fail / 727 expects / 32 files; `tsc` exit 0 — re-verified FROM the
+  seal's own copy on every refresh.
+- **THE AUDIT GATE:** BLOCKED. Two of three chunks reached `complete` with zero findings; the
+  36-file source chunk is `partial` in every attempt (all lanes return 0 tokens). Five methods
+  tried and recorded in `AUDIT_SUMMARY.md` §5.1 — including `--concurrency 1`, which returned
+  **62 requests, 62 failed, 0 tokens** and thereby DISPROVED its own burst hypothesis.
+- **W8:** PARKED on the operator-owned F1/F6 rulings; `src/firegate/` does not exist and `jef` is
+  not installed, stated in README §7/§10 and VIOLATION_LOG C15–C18.
+- **THE DEFECT LEDGER:** 16 defects (D-027..D-046) plus 3 environment/process facts, all fixed or
+  refuted with their probe, all pinned or gated.
+
+## PER-WAVE RECORD (the wave table's gates, as built)
+
+- **W0 CORE CLI — GREEN.** `index @shadow` twice: `files=11831 changed=11831 text=11306 ms=4019`,
+  then `changed=0 ms=60` (1.5% of the first pass against a `<10%` gate). Known rows return by FTS
+  and by `--where`. The incremental mechanism has TWO paths (a (size, mtime) fast path and a
+  content-sha slow path) and both are exercised.
+- **W1 JOB RUNTIME — GREEN.** The crash contract is proven by a REAL SIGKILL, not a hook: the rig
+  polls the job store until a row is `running`, kills exactly there, and asserts `orphaned > 0`
+  before it will call the angle passed. Resume: `done=400 distinct=400`. Budgets: a cap of 5 stops
+  at exactly 5 (exit 3), and the claim is SYNCHRONOUS so concurrent lanes cannot overshoot.
+- **W2 TARGETS — GREEN, on the real corpora.** fs · jsonl · sqlite adapters; `--in a,b|all`; one
+  query returns a bare `a.md`, a `rows.jsonl#L2` and a `source.sqlite#issues/2`. `scripts-real-corpus.sh`
+  runs it against the host's actual 11,832 files and 2,309 rows sampled from four databases
+  (~33 GB) in ~53 s, with the sources verified byte-unchanged.
+- **W3 RETRIEVE — GREEN.** `scan` (regex gate, hit counts, bounded excerpt), `cluster`
+  (deterministic signatures, no model), `extract` (capture groups; md/json/csv). `test_filter_bands`
+  asserts ids, per-row probabilities, the kept/rejected split, and a cache-absorbed replay.
+- **W4 FIND — GREEN.** The pin's named `test_find_patterns` did not exist; writing it found three
+  defects. Every pattern carries `n`, exemplar ids and a probability; the candidate set is
+  round-robin across seeds so one token cannot monopolise a search.
+- **W5 DECIDE — GREEN.** Live judging on the real API; a 100-row batch makes 100 calls and 0 on the
+  replay, byte-identical. `route` works against the live judge for the first time (one `noul` per
+  shortlisted candidate over a deterministic shortlist) and picks `omp-session-forensics` at 0.800
+  for a session-log task. Fail-closed is now honoured for EVERY outage, not just a missing key.
+- **W6 SURFACES — GREEN.** HTTP (`/decide` live, `/health` a pure report, `/find` refusing a
+  missing index, a 1 MiB body cap), MCP (stdio, handshake verified, read tools refusing a missing
+  index), daemon (an idempotent tick, a real JSONL journal, and a systemd user unit whose `kill -9`
+  restart is observed).
+- **W7 REPORT / CALIBRATE — GREEN.** `report` is a read (no row written) and counts a malformed
+  ledger line as `failed`; `report --job` reconciles the queue against the ledger (exit 0 reconciled,
+  3 not, 2 for a typo); `calibrate` counts UNKNOWN rows and excludes them, and an outage can no
+  longer emit a lower-the-threshold suggestion.
+- **W8 FIRE GATE — PARKED.** No code. Stated in README §7/§10 and VIOLATION_LOG C15–C18.
+
+## THE SEAL HISTORY (every sealed state, and what it verified)
+
+| seal | sha | battery FROM THE COPY | note |
+|------|-----|----------------------|------|
+| wave-0 | `35e77425` | 18 / 0 | Mode B, src-empty recorded as an honest gap at round zero |
+| post second-operator r1 | `35e77425` | 30 / 0 | the CLI fixed; the drill's six defects pinned |
+| W2/W3 | `a75230e3` | 71 / 0 | the adapters and the retrieval verbs |
+| W5/W6/W7 | `22178de5` | 116 / 0 | all four surfaces; the container rig carried by the seal |
+| post D-030/D-031 | `f53b9b57` | 130 / 0 | round-robin seeds; the excerpt anchored on the match |
+| post D-035..D-038 | `72f5a8c5` | 141 / 0 | the four-layer concurrency fix |
+| post D-040..D-044 | `f69a828f` | 157 / 0 | the judge policy, the answer reader, the cache endpoint scope |
+| post D-046 | `e8097b88` | 163 / 0 | the unmeasured cost; the canon logs landed |
+
+Each row was produced by `scripts-seal.sh`, which REPLACES each subtree (never copies into it),
+re-syncs every canon doc's TREE SHA line, regenerates BUILD_STATE's inventories, and then runs the
+battery and the structure gate FROM THE COPY. A row that cannot point at a verified copy does not
+belong here.
+
+## THE ARTIFACT INVENTORY
+
+- `artifacts/container-rig-2026-09-21.json` — the spec §9 T1–T7 tokens, both environments.
+- `artifacts/audit-*.json` — EIGHT preserved audit runs, none overwritten, including the two
+  `BLOCKED` ones and the partial one this document refuses to call a pass.
+- `docs/blueprints/` — the design canon (the runtime layer, the engine blueprint).
+- `packages/jm/` — the build package: the DPL1 spec (the binding authority), the wave plan, the
+  goal prompts, the depth doc.
+- `recipes/screening-escalate.json` — the worked recipe, live-proven (act/escalate/noop = 1/1/1).
+- The five runners, all sealed.
+
+- **CURRENT:** git 2a641ab — the canon logs landed where the contract reads them, closing the
+  filing half of C20; the floor half is now met in all three logs by material, not by padding.
