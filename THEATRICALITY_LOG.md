@@ -34,3 +34,50 @@ operator) · BLOCKED-OPEN (noticed, not yet corrected, with the reason).
 - **Evidence:** the row itself says `n=3; no move warranted — mechanism proof`.
 - **Disposition:** BLOCKED-OPEN — a real threshold move needs >=50 later-truth rows; the resume
   condition is the ledger volume, named in NEXT_STEPS.
+
+## [2026-09-21] SESSION ENTRIES — append-only, written at the moment each was noticed
+
+### T-01 — a probe that would have been a green light over unexercised work (CAUGHT, fixed)
+The container rig's T5 (crash-resume) first slept 320 ms and killed the child process. The child was
+still starting, so it had claimed ZERO rows: the scenario would have reported `orphaned=0` — a pass
+over a run that proved nothing. CAUGHT BY the rig's own guard (`assert orphaned > 0`), which refused
+to call the angle passed. FIXED: the rig now polls the job store until a row is `running` and kills
+exactly there. This is the class the file exists for, caught on itself.
+
+### T-02 — an error path declared fixed without ever being executed (CAUGHT, fixed)
+An audit flagged `watch.ts`'s empty catch as a silent swallow. The first fix recorded the failure on
+the tick — but the journal was written BEFORE the state attempt (so the two records disagreed:
+`errors=2` on stdout, `errors: []` in the journal) and the same array was pushed twice (`errors` IS
+`res.errors`). CAUGHT BY running the failure path with a directory planted at `state.json`. A fix
+for an error path that never ran is not a fix.
+
+### T-03 — a doc claim written first and verified second (CAUGHT, fixed)
+README §18's 25 claims were written from intent and then EXECUTED. Five failed: two were the
+verifier's own stale expectations, three were real defects (the cost line corrupted piped output;
+per-verb exit codes; `target add` accepted a phantom root). The section now says "if a line here
+disagrees with the engine, the engine wins" and carries the sweep.
+
+### T-04 — a "simplification" recommended by an audit and refuted by six inputs (REFUTED, recorded)
+The audit called the LIMIT guard "unnecessarily complex" and proposed
+`Math.min(Math.floor(raw), 10_000)`. Probed: that yields `LIMIT NaN` for NaN and `LIMIT -1`
+(UNLIMITED in SQLite) for a negative. The shipped guard exists for exactly those cases. No change;
+the refutation is pinned so the "fix" cannot land later.
+
+### T-05 — a test the contract named and the code never had (CAUGHT, fixed)
+The proof contract names `test_find_patterns`. It did not exist. Writing it found three defects
+(a raw SQLiteError leaking from malformed FTS input, a budget cap that overshot 3x under
+concurrency, and `--common` accepted-and-never-read). A named-but-absent test is a hole in the
+evidence. A systematic sweep then found three MORE absent (`test_filter_bands`, `test_serve_decide`,
+`test_calibrate_row`); all are now declared and passing.
+
+### T-06 — my own encoding write truncated a source file (CAUGHT, restored)
+A Python edit wrote `src/verbs/query.ts` with `encoding="ascii"` and hit a non-ASCII character,
+leaving the file at 0 bytes. CAUGHT immediately by `wc -c` and restored from git; the FTS fix was
+re-applied through the file API instead. Recorded because the tool that broke it was mine, and the
+next session should know that a failing write can leave a TRUNCATED file, not just an error.
+
+### WHAT THIS LOG DOES NOT CONTAIN
+No fabricated PASS, no unrun command presented as evidence, no gate skipped. The count is small
+because the session's theatricality was caught in-flight — which is the point of the guard, not an
+absence of material. The metric to drive is OPERATOR-CAUGHT, and this session's operator-caught
+count is ZERO: every entry above was caught by the build's own instruments.

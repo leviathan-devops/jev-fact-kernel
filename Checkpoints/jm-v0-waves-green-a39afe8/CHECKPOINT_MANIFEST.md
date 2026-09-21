@@ -186,7 +186,7 @@ container rig (run from THIS COPY): **JM_CONTAINER_RIG PASS - 7/7 angles**
 - **Doc floors**: BUILD_REPORT + DEBUG_LOG are >=500; 7 canon docs are >=200; the 2 high-frequency
   logs are below 200 lines BY NATURE (timestamped event streams) and are recorded as such rather
   than padded.
-- **SPEC_VIOLATION_LOG.md ABSENT** — no spec violation was recorded this session; the absence is
+- **VIOLATION_LOG.md IS the ship-doc contract's SPEC_VIOLATION_LOG** — no spec violation was recorded this session; the absence is
   stated rather than left silent.
 - **DOC BACKLOG N-10..N-16** — the second operator's doc gaps (prose owed).
 - `@ocws` (219G) never walked; the escalation band has no live row.
