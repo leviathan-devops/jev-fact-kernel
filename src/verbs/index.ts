@@ -11,6 +11,10 @@ export interface IndexOpts {
   maxTextBytes?: number;   // text indexed into FTS5 only under this size
   maxHashBytes?: number;   // content hashed only under this size
   limit?: number;          // stop after N files (testing)
+  // The store's `files.path` is UNIQUE. Two targets with the same relative path (README.md,
+  // index.ts, ...) would COLLIDE and silently lose rows, so a multi-target ingest passes
+  // "<target>/" here and every stored path is namespaced by its target.
+  prefix?: string;
 }
 
 export interface IndexStats {
@@ -72,7 +76,7 @@ export interface OneFileResult { rel: string; changed: boolean; textIndexed: boo
 export function indexFile(db: Database, root: string, abs: string, opts: IndexOpts = {}): OneFileResult {
   const maxText = opts.maxTextBytes ?? 262_144;
   const maxHash = opts.maxHashBytes ?? 8 * 1024 * 1024;
-  const rel = relative(root, abs);
+  const rel = (opts.prefix ?? "") + relative(root, abs);
   const st = statSync(abs);
   const now = new Date().toISOString();
   const prev = db.query("SELECT id, size, mtime, state FROM files WHERE path = ?").get(rel) as { id: number; size: number; mtime: number; state: string } | null;
@@ -111,6 +115,7 @@ export function indexFile(db: Database, root: string, abs: string, opts: IndexOp
 export function listFiles(root: string, opts: IndexOpts = {}): string[] { return walk(root, opts); }
 
 export function indexTarget(db: Database, name: string, root: string, opts: IndexOpts = {}): IndexStats {
+  const prefix = opts.prefix ?? "";
   const t0 = Date.now();
   const maxText = opts.maxTextBytes ?? 262_144;      // 256 KB
   const maxHash = opts.maxHashBytes ?? 8 * 1024 * 1024; // 8 MB
@@ -122,7 +127,7 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
 
   const tx = db.transaction(() => {
     for (const full of paths) {
-      const rel = relative(root, full);
+      const rel = prefix + relative(root, full);
       seen.add(rel);
       try {
         const r = indexFile(db, root, full, { ...opts, maxTextBytes: maxText, maxHashBytes: maxHash });

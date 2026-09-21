@@ -3,6 +3,9 @@
 import { openDb, indexPathFor, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
 import { targetsIn, ingestAll } from "./targets.ts";
 import { serveStdio } from "./mcp.ts";
+import { scanIndex } from "./verbs/scan.ts";
+import { clusterIndex } from "./verbs/cluster.ts";
+import { extractFields, renderExtract } from "./verbs/extract.ts";
 import { watch, tick, readJournal } from "./watch.ts";
 import { indexTarget } from "./verbs/index.ts";
 import { runIndexJob } from "./job/indexJob.ts";
@@ -11,7 +14,7 @@ import { filterIndex } from "./verbs/filter.ts";
 import { find } from "./verbs/find.ts";
 import { startServer } from "./serve.ts";
 import { calibrate, recordTruth, recordCalibration } from "./calibrate.ts";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { queryIndex } from "./verbs/query.ts";
 import { withLedger, readLedger } from "./ledger.ts";
 
@@ -47,6 +50,9 @@ function usage(): void {
   jm index --in a,b|all [--name N]                 multi-target ingest (fs | jsonl | sqlite)
   jm query --in a,b|all [--fts P] [--where W]      query the multi-target index
   jm target add <name> <kind> <root> | jm target ls | jm target rm <name>
+  jm scan <index> [--lex P] [--re R] [--limit N] [--json]      seeds -> candidates (keyless)
+  jm cluster <index> [--lex P] [--re R] [--min N] [--json]     group candidates (no model)
+  jm extract <index> --re R|--field K [--lex P] [--out F]      structured pulls -> result
   jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
   jm watch [--once] [--interval MS] [--in a,b]     the reconcile daemon (journal per tick)
   jm journal [--limit N] [--json]                  the watch journal
@@ -232,6 +238,58 @@ async function main(): Promise<number> {
       else console.log(`JM_FIND trend: ${res.trend} · out=${res.out}`);
       return res.budgetStopped ? 3 : 0;
     } catch (err) { db.close(); const m = String(err); console.error(`JM_ERROR: ${m}`); return m.includes("JEV_NO_KEY") ? 2 : 1; }
+  }
+
+  if (verb === "scan") {
+    // W3/S9: seeds -> candidates. Keyless and deterministic.
+    const indexName = flag("name") ?? (positional[0] ?? "all");
+    const db = openDb(indexPathFor(indexName));
+    try {
+      const r = await withLedger("scan", { index: indexName, lex: flag("lex"), re: flag("re"), limit: flag("limit") }, async () => {
+        const res = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        return { result: res, stats: { scanned: res.scanned, returned: res.returned, truncated: res.truncated }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else for (const c of r.candidates) console.log(`${c.hits}\t${c.size}\t${c.path}\t${c.excerpt.slice(0, 90)}`);
+      return 0;
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return String(err).includes("JM_SCAN_RE_INVALID") ? 2 : 1; }
+  }
+
+  if (verb === "cluster") {
+    // W3/S10: group the scan's candidates. No model.
+    const indexName = flag("name") ?? (positional[0] ?? "all");
+    const db = openDb(indexPathFor(indexName));
+    try {
+      const r = await withLedger("cluster", { index: indexName, lex: flag("lex"), re: flag("re") }, async () => {
+        const sc = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        const cl = clusterIndex(db, sc.candidates, { minSize: flag("min") ? Number(flag("min")) : undefined });
+        return { result: { scan: { scanned: sc.scanned, returned: sc.returned }, ...cl }, stats: { clusters: cl.clusters.length, grouped: cl.grouped }, costUsd: 0 };
+      });
+      db.close();
+      if (has("json")) console.log(JSON.stringify(r, null, 2));
+      else for (const c of r.clusters) console.log(`n=${c.n}\t${c.kind}\t${c.source}\t[${c.signature.slice(0, 4).join(",")}]\t${c.exemplars.map((e) => e.path.split("/").pop()).join(", ")}`);
+      return 0;
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return 1; }
+  }
+
+  if (verb === "extract") {
+    // W3/S9: structured pulls from the scan's candidates -> the RESULT artifact.
+    const indexName = flag("name") ?? (positional[0] ?? "all");
+    if (!flag("re") && !flag("field")) { console.error("JM_ARGS: jm extract --re <regex|--field K> [--lex L] [--out F]"); return 2; }
+    const db = openDb(indexPathFor(indexName));
+    try {
+      const r = await withLedger("extract", { index: indexName, re: flag("re"), field: flag("field"), lex: flag("lex") }, async () => {
+        const sc = scanIndex(db, { lex: flag("lex"), re: flag("re"), where: flag("where"), limit: flag("limit") ? Number(flag("limit")) : undefined });
+        const ex = extractFields(db, sc.candidates, { re: flag("re"), field: flag("field"), structure: (flag("structure") as "md" | "json") ?? "json" });
+        return { result: ex, stats: { rows: ex.rows.length, values: ex.total, empty: ex.empty }, costUsd: 0 };
+      });
+      db.close();
+      const out = renderExtract(r, (flag("structure") as "md" | "json") ?? "json");
+      if (flag("out")) { writeFileSync(flag("out")!, out); console.log(`wrote ${flag("out")} (${r.total} values, ${r.rowsWithValues} rows)`); }
+      else process.stdout.write(out + (out.endsWith("\n") ? "" : "\n"));
+      return 0;
+    } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return String(err).includes("JM_EXTRACT_RE_INVALID") ? 2 : 1; }
   }
 
   if (verb === "mcp") {

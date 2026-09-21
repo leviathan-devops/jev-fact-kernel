@@ -103,3 +103,12 @@
   1 medium fixed, 1 medium refuted).
 - **Note:** the checkpoint copies inflate the audit scope (58 files vs 26) — future audits should
   carry `--exclude 'Checkpoints/**'` by default.
+
+### F-12 — D-008 CRITICAL: cross-target path collision (silent row loss) — FIXED + PINNED
+- **Found by:** the W3 retrieve suite (a cluster count that would not come out right).
+- **Defect:** target-root-relative store paths merged `one/a.md` and `two/a.md` into one row; the
+  second was reported `changed=0` and never written. Silent, unreported data loss.
+- **Fixed:** paths are namespaced by target name for multi-target ingest; single-target unchanged.
+- **Evidence:** `artifacts/` battery 59/0 + `test_same_named_files_across_targets_do_not_collide`.
+- **Frontier:** the same class should be checked for the row adapters (jsonl/sqlite refs are
+  absolute already, so they cannot collided — verified by reading the ref construction).

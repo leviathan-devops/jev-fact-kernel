@@ -628,3 +628,31 @@ open follow-ups    the 49 medium findings (see THE FRONTIER)
   other query in the file.
 - **LESSON:** SQL-semantics claims are cheap to settle with a 6-line probe. Probe first, patch
   second — a "fix" for a non-defect is a new defect.
+
+## EN-027 — D-008 (CRITICAL): two targets' same-named files collapsed into ONE row
+- **CLASS:** silent wrong answer — the store lost a row and reported `changed=0`, nothing else.
+- **SYMPTOM (as first seen):** `test_cluster_splits_by_source` returned ONE cluster where two
+  sources were set up. Chasing it exposed the real defect underneath.
+- **PROBE (the reproduction, 5 lines of shell):**
+  ```
+  /tmp/collide/one/a.md = "CONTENT-FROM-ONE"   /tmp/collide/two/a.md = "CONTENT-FROM-TWO"
+  jm target add one fs /tmp/collide/one ; jm target add two fs /tmp/collide/two
+  jm index --in all --name collide
+    one  fs  rows=1  changed=1  2ms
+    two  fs  rows=1  changed=0  1ms     <- the second target's file was SILENTLY DROPPED
+  jm query collide --json  ->  rows: 1  (a.md 17)
+  ```
+- **ROOT CAUSE:** `files.path` is UNIQUE and `indexFile` stored `relative(root, abs)`. Each target
+  has its OWN root, so `one/a.md` and `two/a.md` both stored as `a.md`. The incremental skip then
+  saw an identical (size, mtime) and skipped the write entirely.
+- **BLAST RADIUS:** any `--in` spanning targets: README.md, index.ts, package.json, a.md — every
+  common filename in two targets is a lost row. This is the exact class C-criteria call a silent
+  wrong answer.
+- **FIX:** `IndexOpts.prefix` — the multi-target ingest passes `<target>/` and every stored path is
+  namespaced (`one/a.md`, `two/a.md`). Path-based single-target indexing is unchanged (a bare
+  `a.md`), so the existing W0 gate and its pins still hold.
+- **VERIFICATION:** both targets now report `changed=1`; 2 rows; both bodies findable by FTS;
+  pinned by `test_same_named_files_across_targets_do_not_collide`. Battery 59/0.
+- **LESSON:** a UNIQUE key built from a ROOT-RELATIVE path is only unique per root. The moment a
+  second root is introduced, the key silently merges rows — and the incremental skip turns the
+  merge into a DROP. Any multi-source ingest needs a namespacing decision made explicitly.

@@ -155,3 +155,19 @@ monkey: JM_ADAPTER_UNKNOWN · JM_SQLITE_MISSING · malformed jsonl line KEPT + f
 battery 36 pass / 0 fail / 159 expects / 11 files · tsc exit 0
 ```
 **W2: GREEN.** (`src/targets.ts` 154L, `src/adapters/{sqlite,jsonl}.ts` 62+38L, `tests/adapters.test.ts`.)
+
+### W3 GATE — RETRIEVE (scan · cluster · extract) — GREEN
+```
+$ jm scan w2all --lex tombstone --re 'tomb\w+'            # keyless, deterministic
+1  38  /tmp/w2fix/rows.jsonl#L2  {"kind":"evt","msg":"tombstone delta"}
+1  23  a.md                      alpha tombstone record
+$ jm cluster w2all --lex tombstone
+n=1  text       .             [alpha,record,tombstone]  a.md
+n=1  jsonl:fixRows /tmp/w2fix [delta,kind,tombstone]    rows.jsonl#L2
+$ jm extract w2all --lex tombstone --re 'service (\w+)'   -> total: 2, empty: 0
+
+D-008 CRITICAL found + fixed: two targets holding the same relative path merged into ONE row
+(the second read changed=0). Paths are now namespaced by target; both rows stored, both findable.
+battery 59 pass / 0 fail / 232 expects / 14 files · tsc exit 0
+```
+**W3: GREEN** (with D-008 recorded as the wave's critical find).

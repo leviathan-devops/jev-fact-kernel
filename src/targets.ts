@@ -55,7 +55,8 @@ export const fsAdapter: Adapter = {
     for (const abs of files) {
       const rel = abs.slice(root.length + 1);
       let st; try { st = fileStat(abs); } catch { continue; }
-      yield { target: t.name, kind: "fs", ref: rel, text: "", meta: { abs, size: st.size, mtimeMs: st.mtimeMs } };
+      // ref = "<target>/<rel>": the SAME key indexFile writes, so enumerate and ingest agree.
+      yield { target: t.name, kind: "fs", ref: `${t.name}/${rel}`, text: "", meta: { abs, size: st.size, mtimeMs: st.mtimeMs } };
     }
   },
   text: (item) => item.text,
@@ -115,7 +116,7 @@ export async function ingestTarget(db: Database, t: Target, opts: { limit?: numb
     for await (const it of fsAdapter.enumerate(t, opts)) {
       rows++;
       try {
-        const r = indexFile(db, root, String((it.meta as { abs: string }).abs), {});
+        const r = indexFile(db, root, String((it.meta as { abs: string }).abs), { prefix: `${t.name}/` });
         if (r.changed) changed++;
         if (r.textIndexed) textIndexed++;
       } catch { /* one bad file never aborts the batch */ }
