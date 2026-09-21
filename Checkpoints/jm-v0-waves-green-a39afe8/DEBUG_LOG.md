@@ -1622,3 +1622,36 @@ ONE SURFACE AND NOT ON ANOTHER.
   JSON-RPC envelope and the tool's payload and asserts the VALUE.
 - **PROVEN:** 8/8 angles on the host AND in the container (`jm-ct-rig`, bun 1.4.2) —
   `JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED`.
+
+## EN-066 — D-048 + D-049: the launcher surface probed, two more defects, both in the entry point
+The T10 angle proved the launcher's PROTOCOL from a foreign cwd. These probes attack the launcher's
+ENVIRONMENT and the PATH it is invoked by — the two places a registered entry point actually breaks.
+Seven probes; two found defects, five behaved.
+
+**D-048 — an unset `HOME` was a raw bash crash, not the named refusal (P1).**
+```
+probe: env -i ./scripts-jm-mcp.sh          (no PATH, no HOME)
+before: exit=1   err=.../scripts-jm-mcp.sh: line 15: HOME: unbound variable
+after:  exit=127 err=scripts-jm-mcp.sh: no bun found (tried JM_BUN, PATH, $HOME/.bun/bin)
+```
+Under `set -u`, `$HOME` in the third rung of the ladder aborted the script BEFORE the `[ -x "$BUN" ]`
+check could print its message. The client sees a dead server and no reason. Fixed with `${HOME:-}`.
+**The class:** a fallback ladder whose LAST rung can itself throw has no last rung.
+
+**D-049 — invoked through a SYMLINK, the launcher `cd`-ed to the wrong directory (P5).**
+```
+probe: ln -s .../scripts-jm-mcp.sh /tmp/symprobe/jm-link.sh && /tmp/symprobe/jm-link.sh
+before: exit=1   err=error: Module not found "src/cli.ts"
+after:  exit=0   out={"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05",...
+```
+`dirname "$0"` yields the LINK's directory, not the target's. Symlinking a launcher into `~/bin` is
+the ORDINARY way to put one on PATH, so this is the common case, not an exotic one. Fixed with
+`readlink -f "$0"` before `dirname`.
+**The class:** `$0` is how the caller named the program, not where the program lives.
+
+**THE FIVE THAT BEHAVED, recorded so silence is not read as proof:** the PATH rung resolves; the
+HOME rung resolves; a non-executable `JM_BUN` is a named 127; an unwritable `JM_HOME` starts the
+server (the store error comes later and named); extra argv is ignored, so a caller cannot inject a
+verb into a registered launcher.
+
+**PINNED:** `tests/launcher.test.ts` — six cases, positive and negative halves, 6 pass / 0 fail.

@@ -9,9 +9,15 @@
 # mode a REGISTERED launcher must not have: it is invoked by absolute path, in an environment the
 # author does not control.
 set -euo pipefail
-cd "$(dirname "$0")"
+# RESOLVE THE SCRIPT'S REAL PATH, not the path it was invoked by. `dirname "$0"` on a SYMLINK
+# yields the LINK's directory, so a launcher symlinked into ~/bin (the ordinary way to put one on
+# PATH) would `cd` to the wrong place and fail with "Module not found src/cli.ts". Probed: P5.
+SELF="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+cd "$(dirname "$SELF")"
 BUN="${JM_BUN:-}"
 [ -n "$BUN" ] || BUN="$(command -v bun 2>/dev/null || true)"
-[ -n "$BUN" ] || BUN="$HOME/.bun/bin/bun"
+# `${HOME:-}` and not `$HOME`: under `set -u` an UNSET HOME aborts the script at this line with a raw
+# bash "unbound variable" error, so the named message below never prints. Probed: P1.
+[ -n "$BUN" ] || BUN="${HOME:-}/.bun/bin/bun"
 [ -x "$BUN" ] || { echo "scripts-jm-mcp.sh: no bun found (tried JM_BUN, PATH, \$HOME/.bun/bin)" >&2; exit 127; }
 exec "$BUN" run src/cli.ts mcp

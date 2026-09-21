@@ -1,6 +1,7 @@
 # CURRENT_STATE — JM (2026-09-21, waves W0–W7 + the audit fix pass)
 
-**TREE SHA: `59a00768718ddf8ee4a41ffff58b63b6` (git a18a880)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `5ed0c4cfefcf2253b637a43eacfa6781` (git 0f5f00f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 

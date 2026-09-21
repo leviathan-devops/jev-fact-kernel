@@ -225,3 +225,19 @@ the source chunk of the independent audit.
   fire-gate twin. A rig reporting "8/8" with a reused number reads as covering an angle it does not
   touch. Renamed T10.
 - **PROVEN:** host 8/8 and container 8/8 (`jm-ct-rig`, bun 1.4.2).
+
+## [2026-09-22] D-048 + D-049 — two defects in the launcher, found by probing the ENTRY POINT
+
+- **THE SURFACE:** T10 proved the launcher's protocol from a foreign cwd. Seven further probes
+  attacked its ENVIRONMENT and the PATH it is invoked by — `env -i`, a symlink, a bad override, an
+  unwritable home, extra argv.
+- **D-048:** with `HOME` unset, `set -u` aborted the script at the `$HOME/.bun/bin/bun` rung with a
+  raw `unbound variable` error, so the named 127 message never printed. **A fallback ladder whose
+  last rung can itself throw has no last rung.** Fixed with `${HOME:-}`.
+- **D-049:** invoked through a SYMLINK, `dirname "$0"` resolved to the LINK's directory and the
+  server died with `Module not found "src/cli.ts"`. Symlinking a launcher into `~/bin` is the
+  ordinary way to put one on PATH. **`$0` is how the caller named the program, not where it lives.**
+  Fixed with `readlink -f`.
+- **FIVE PROBES BEHAVED** and are recorded so silence is not read as proof: both resolution rungs,
+  a bad `JM_BUN`, an unwritable `JM_HOME`, and extra argv being ignored.
+- **PINNED:** `tests/launcher.test.ts`, 6 cases with both halves.
