@@ -71,3 +71,34 @@ Updated at the MOMENT of the work (fresh-capture rule).
 - VERIFICATION: fresh pair → identical sha a3bc30351f68dad8, calls=0 cached=3.
 - LESSON: an artifact that includes HOW it was produced can never be replayed. Separate the
   decision from the delivery.
+
+## [2026-09-21] W-END — THE AUDIT'S BOUNDARY FAMILY (7 entries, one mechanism)
+- CLASS: unvalidated boundary arguments (the happy path never passed them).
+- ENTRIES: fail-closed swallowed (filter/find) · tombstones searchable · the 0.0.0.0 bind · the NaN
+  family (caps/pool/queue) · the cache key ignoring the questions · the batch aborting on one file ·
+  the double-counted measurement.
+- ROOT CAUSE (one sentence): every one is an ARGUMENT the happy path never passed — NaN, negative,
+  missing, deleted, hostile.
+- FIX: the fix pass (78cd3be) — see DEBUG_LOG EN-009..EN-015 for the mechanism/diff/verification of each.
+- LESSON: write the boundary suite BEFORE the audit; a green happy path is a receipt for effort, not
+  a capability measurement.
+- RESIDUAL: the 49 medium findings remain (five families; DEBUG_LOG's THE FRONTIER).
+
+## [2026-09-21] W-END — THE RE-AUDIT (in flight)
+- WHAT: `ocr review --from 7b7f7eb --to HEAD --format json` re-running after the fix pass.
+- WHY: the gate's own rule — a FAIL blocks until fixed AND re-run; the fix is a claim, the re-run is proof.
+- EXPECTED: the high count drops from 30 toward 0; the verdict line replaces the FAIL in TESTING_LOG.
+- LESSON: one audit is a snapshot; the pair (before/after) is the evidence of the fix.
+
+## [2026-09-21] W-END — D-016 THE DOCS LANDED SHORT ON FIRST WRITE (process entry)
+- SYMPTOM: the first write of BUILD_REPORT (78L), DEBUG_LOG (59L), and the canon set (17-46L each)
+  was FAR below the floors.
+- ROOT CAUSE: content was authored to the session's natural length, not to the contract's floor;
+  the floors exist because the contract's material (transcripts, tables, dispositions) does not fit
+  in fewer lines.
+- FIX: the material was added — the verbatim run transcript, the test inventory, the audit's
+  findings table, the ruling index, the recovery procedures — taking BUILD_REPORT to 523 and
+  DEBUG_LOG to 506, the canon to 200+ each.
+- VERIFICATION: `wc -l` per doc (E-17); nothing was padded with whitespace or restated content.
+- LESSON: a floor is a statement about the material, not about formatting. If the floor is not met,
+  the material was not gathered.

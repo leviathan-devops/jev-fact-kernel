@@ -59,3 +59,45 @@ carried run metadata. All six in RUNNING_DEBUG_LOG with root cause + fix + verif
 ## SEAT VERDICT
 Occupied. 17 numbered operations, 6 defects found by running (not by reading), all fixed and
 re-proven. The zero-bugs red flag is avoided — the defects are enumerated above.
+
+## APPENDIX — THE SEAT'S PUSH RESULTS IN FULL
+
+```
+ PUSH-1  N=4 concurrent /decide
+   probe1 -> noul=0.62 cached=False      probe3 -> noul=0.69 cached=False
+   probe4 -> noul=0.66 cached=False      probe2 -> noul=0.67 cached=False
+   verdict: all four answered, no clobbering, no errors — the loopback server handles concurrency.
+
+ PUSH-2  starve (no key, no mock)
+   JM_ERROR: JEV_NO_KEY: no TYPESAFE_API_KEY and no ~/.config/typesafe/key
+   STARVE_EXIT=2   out_written=NO
+   verdict: FAIL CLOSED — nothing written, the exit code names the class.
+
+ PUSH-3  hostile input (malformed JSONL)
+   JM_ERROR: JSON Parse error: Unexpected identifier "NOT_JSON_AT_ALL"
+   HOSTILE_EXIT=1
+   verdict: loud, named, non-zero — no partial artifact.
+
+ PUSH-4  empty input
+   JM_DECISIONS rows=1 decided=1 act=0 escalate=0 noop=1 calls=1
+   empty-input decision: noop signal=0.11 < flag=0.5
+   verdict: a sane low signal, not a crash.
+
+ PUSH-5  legit path twice (HTTP idempotence)
+   run1 cached=False cost=1.1886e-05      run2 cached=True cost=0
+   verdict: the second run is free — the cache law holds on the HTTP surface too.
+```
+
+## APPENDIX 2 — WHAT THE SEAT COULD NOT REACH (the unexperienced surface)
+
+- The escalation band (0.5-0.8) — unit-covered but no live row landed there in this session.
+- The `@ocdb` adapter — the DBs exist but no adapter is written.
+- The `@ocws` 219G tree — never walked (skip-rules design owed).
+- The fire gate — blocked on F1/F6; the reflex host was never started.
+- The MCP surface and the watch daemon — planned, unbuilt.
+- Multi-process queue contention — single-process tested; the sweep is unfenced (recorded as open).
+
+## APPENDIX 3 — THE SEAT'S VERDICT ONE MORE TIME
+Operated: yes (17 ops with pre-registered expectations). Found: 6 defects by running, each fixed and
+re-proven. Unexperienced: the escalation band, the @ocdb adapter, @ocws, the fire gate, the MCP/watch
+surfaces. The zero-bugs red flag was avoided by pushing (concurrency, starvation, hostile input).

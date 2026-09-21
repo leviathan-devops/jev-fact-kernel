@@ -39,3 +39,54 @@ Append-only, updated at the moment of work.
   Replay → calls=0 cached=3; two fresh runs byte-identical (sha a3bc30351f68dad8).
   Battery 13 pass / 0 fail · tsc exit 0.
 - NEXT: W3 retrieve verbs + W4 find chain.
+
+## [2026-09-21] W3+W5 — THE JUDGE CLIENT + DECISION-TREE (the product path)
+- WHAT: src/judge/{key,transport,cache,policy,client}.ts · src/verbs/decision-tree.ts · the
+  `jm decision-tree` CLI verb · tests/decision.test.ts.
+- WHY: this is the product — bounded evidence in, typed calibrated judgment out, cached forever,
+  routed by policy, recorded. Everything else is plumbing.
+- HOW: key resolution env→file (fingerprint only); the ONE network seam with a canned-response mode;
+  fingerprint = sha256(model ⊕ schema#questionsHash ⊕ canonical(redact(state))); thresholds in
+  policy objects; fail-closed without a key.
+- EVIDENCE: real API — daemon-crash `act 0.97`, README-typo `noop 0.08`, checkout-500s `act 0.90`,
+  `$0.000044`; replay `calls=0 cached=3`; two runs sha `a3bc30351f68dad8`.
+- NEXT: W4 find chain (landed the same session: 44 → 30 → 1 → 1).
+
+## [2026-09-21] W6+W7 — SURFACES + CALIBRATION
+- WHAT: src/serve.ts (health/decide/find/jobs) · src/calibrate.ts (bands, truth, the calibration row).
+- EVIDENCE: `/decide` `noul 0.98` `$0.0000124`; replay `cached=true cost=0`; `calibrate` → decisions=3
+  act=2 noop=1 mean=0.65; a calibration row written with the honest n=3 note.
+
+## [2026-09-21] P4 — THE RUNTIME SEAT (17 operations)
+- WHAT: the seat declared; OPS 01-17 executed first-person; the push set (N=4, starve, hostile, empty).
+- EVIDENCE: the full table in RUNTIME_SEAT.md; 6 defects found by running.
+- LESSON: the corpus that was the wrong corpus (session_diff is diff blobs) — targeting is a decision.
+
+## [2026-09-21] P5 — THE ADVERSARIAL SWEEP
+- WHAT: 5 probe families + the live injection discrimination + the redaction probe.
+- EVIDENCE: injection `act 0.99` vs benign `noop 0.01`; cache fingerprints only, no PII; D-007 found.
+- LESSON: the invisible byte (0x08) that killed secret redaction — scan generated writes for C0 bytes.
+
+## [2026-09-21] P6 — THE AUDIT (the gate that said no)
+- WHAT: `ocr review` over the full range: 174 comments, 91 canonical (30 high).
+- EVIDENCE: artifacts/audit-2026-09-21.json; AUDIT_SUMMARY.md; the gate line in TESTING_LOG.
+- NEXT: the fix pass (78cd3be) landed all highs; the RE-AUDIT is the proof owed.
+
+## [2026-09-21] W-END — DOCS TO FLOOR + THE AUDIT GATE STORY
+- WHAT: BUILD_REPORT 523L · DEBUG_LOG 506L · the canon set each >= 200L · the 3 logs >= 90L ·
+  AUDIT_SUMMARY.md · artifacts/audit-2026-09-21.json landed in the repo.
+- WHY: the doc contract's floors, met with material (transcripts, tables, dispositions) rather than
+  whitespace — the anti-padding law.
+- HOW: the run transcript from the session itself; the test inventory from the files; the audit's
+  findings from its own artifact; the ruling tables from the session's decisions.
+- EVIDENCE: `wc -l` per doc (see EVIDENCE_STATE E-17); the audit artifact's sha; the gate line in
+  TESTING_LOG reading `AUDIT GATE: FAIL (0 critical, 30 high) — fixes applied, re-audit owed`.
+- NEXT: the re-audit verdict; then the medium frontier (N-2..N-6).
+
+## [2026-09-21] SESSION CLOSE — THE STATE THE NEXT LOG ENTRY INHERITS
+- The engine works live; the battery is 18/0; tsc is 0; the ledger holds 32+ runs.
+- The audit gate reads FAIL (the first run's 30 highs, all fixed; the re-audit in flight).
+- The medium frontier (49 findings, five families) is the next fix wave.
+- W2's adapters, W8, the MCP/watch surfaces: unbuilt, with their acceptance criteria written.
+- The checkpoint `jm-v0-waves-green-a39afe8` carries the post-fix tree; refresh it after any change.
+- The two logs above carry the moment-of-work entries; this one closes the session's arc.
