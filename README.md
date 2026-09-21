@@ -135,10 +135,16 @@ cached forever**. Heavy local work, light judgment, free repeats.
 
 ---
 
-## 7. The runtime-kernel layer (the fire gate)
+## 7. The runtime-kernel layer (the fire gate) — DESIGNED, NOT BUILT (W8, parked)
 
-The sibling surface that makes JM a *runtime* system rather than a batch tool:
-every shape-triggered reflex passes through ONE semantic gate before it acts.
+**STATUS: no code.** `src/firegate/` does not exist and `jef` is not installed. W8 is parked on
+two operator-owned rulings (F1: the embedding/vector question; F6: the pi wrap points), and the
+pin's own guidance is to state such a stop and keep building the independent fronts — which is
+what happened: everything else in this README is built and measured, and this section describes a
+DESIGN. It is kept because the shape is load-bearing for the surface above it.
+
+When built, the sibling surface makes JM a *runtime* system rather than a batch tool:
+every shape-triggered reflex will pass through ONE semantic gate before it acts.
 
 ```
  TRIGGER (shape, code) → ASSEMBLE (≤5k tok) → PREDICATE VETO? → GATE (Jev) → ROUTE
@@ -171,26 +177,44 @@ first, structure contract).
 
 ---
 
-## 9. Status board (honest, current)
+## 9. Status board (MEASURED, 958fcca)
+
+Every row carries its evidence. If a row disagrees with the tree, the tree wins.
 
 | Component | State | Evidence |
 |-----------|-------|----------|
 | Design (engine + use cases) | **COMPLETE** | 2 blueprints, 16.5K + 24.9K bytes |
 | Design (fire gate) | **COMPLETE** | `JM_MASTER_BLUEPRINT_v1.md` 691L |
-| Substrate bible | **COMPLETE** | 3,006L, sha `dab371a0…` |
+| Substrate bible | **COMPLETE** | 3,006L |
 | Build spec (DPL1) | **IN THIS PACKAGE** | `packages/jm/JM_DPL1_SPEC.md` |
-| Repo | **CREATED** | this tree, git-initialised |
-| Docs migrated | **DONE** | 18 files under `docs/` |
-| `src/` implementation | **EMPTY** | pre-Wave 1 |
-| Reflex scripts | **EMPTY** | pre-Wave 1 |
-| Tests | **EMPTY** | pre-Wave 6 |
-| Ledger | **EMPTY** | no runs yet |
+| `src/` implementation | **33 files · 2911 lines** | `find src -name '*.ts'` |
+| CLI verbs | **17** | `grep -c 'if (verb ===' src/cli.ts` |
+| Tests | **19 .ts under `tests/`** (17 carrying suites + `helpers.ts` + the container harness) | `bun test` -> 89 pass / 0 fail / 343 expects across 17 files |
+| Type boundary | **CLEAN** | `bunx tsc --noEmit` -> exit 0 |
+| Surfaces | **CLI · HTTP · MCP · daemon — all four LIVE** | see §13 and §18.8/§18.9 |
+| Container rig (spec §9 T1–T7) | **PASS 7/7 in a container AND on the host** | `artifacts/container-rig-2026-09-21.json` |
+| Fire gate (W8) | **NOT BUILT — PARKED** | operator-owned F1/F6 rulings are owed |
+| Audit gate | **BLOCKED — never PASS** | `AUDIT_SUMMARY.md` §5; retry condition is mechanical |
 
-Nothing runs yet. That sentence is the point of this repo's first release: the
-design is complete enough to build from, and honest about the fact that it is
-still design.
+### What RUNS today (each line demonstrable in one command)
 
----
+```
+bun test                                 89 pass / 0 fail / 343 expects / 17 files
+bun run tests/container/harness.ts       JM_CONTAINER_RIG PASS — 7/7 angles
+bun run src/cli.ts index --in all         multi-target ingest, keyless, incremental
+bun run src/cli.ts query <idx> --fts P    pointer rows back in ms
+bun run src/cli.ts decision-tree …        live judging, cached replay, fail-closed without a key
+bun run src/cli.ts serve --port 7777      the HTTP surface
+bun run src/cli.ts mcp                    the MCP surface (stdio JSON-RPC)
+bun run src/cli.ts watch --once           the daemon's reconcile tick
+```
+
+### What does NOT run (stated, not implied)
+
+- **The fire gate / `jef`** — designed, not written (W8, parked).
+- **`@ocws` (219G)** — never walked.
+- **The escalation band** — no live row.
+- **Embeddings / vector search** — explicitly out of scope for v1.
 
 ## 10. Quickstart (MEASURED — every line below was run on this host 2026-09-21)
 
@@ -208,9 +232,11 @@ jm decision-tree --rows scenarios.jsonl --criteria policy.md --recipe recipe.jso
 jm serve --port 7777            # POST /decide
 jm mcp                          # tools: jm_query, jm_find, jm_decide, jm_index (stdio JSON-RPC)
 
-# the runtime layer
-jef validate reflexes/*.reflex.yaml
-jef shadow-report --reflex destructive-edit
+# the runtime layer -- NOT BUILT. W8 is PARKED on the operator-owned F1/F6 rulings, so `jef`
+# does not exist on this host (`which jef` -> not found) and neither does `src/firegate/`.
+# These two lines are the CONTRACT W8 must satisfy, kept here so the shape is not lost:
+#   jef validate reflexes/*.reflex.yaml
+#   jef shadow-report --reflex destructive-edit
 ```
 
 ---
