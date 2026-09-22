@@ -3058,3 +3058,29 @@ moved to it. **MEASURED ON THE REAL API:**
    engine. Both now echo the requested keys and return one answer per question, exactly as the wire
    does. The suite caught this immediately, which is why the boundary fake must be faithful rather
    than convenient.
+
+## EN-108 — `decision-tree` BATCHED (the planning/gate verb), and the claim-loop that replaced the pool
+The last judged verb on one-request-per-row. Now: **`rows=20 decided=20 calls=20 cached=0 requests=1`** —
+twenty staged artifacts judged in ONE HTTP request (verified cold against the live API).
+
+**THE CLAIM LOOP REPLACED THE POOL, and it preserves the 121-audit semantics exactly.** The pool
+claimed one row at a time, so a REFUNDED claim (a degraded row under `fail: open`) freed its slot and
+the next row could be attempted — `decisions=6` with `budgetCalls=3` over a dead port. Claiming all
+rows up front (my first batching attempt) broke that: it hit the cap at 3 and stopped with a FALSE
+"budget exhausted" — the very defect 121 exists to prevent. The loop claims `min(200, room)` per chunk,
+makes ONE request, settles each row (a failed chunk refunds every claim in it), and **a claim failure
+mid-chunk is NOT final** — the refund frees the room the next chunk needs. `budgetStopped` is set only
+when a chunk cannot even start.
+
+**A REAL CACHE/CACHE ASYMMETRY the determinism test caught:** a COLD run reported the RESPONSE model
+(`jev-1.13.0`) while an ALL-CACHED run reported the REQUEST constant (`jev-latest`) — so the same work
+produced two different artifacts and the byte-identical-replay contract broke on the model field alone.
+`askMany` now reports the model from the cached row (what produced the cache), as `ask()` already did.
+
+**THE TEST DOUBLES WERE MADE FAITHFUL.** One shared helper (`tests/helpers.ts: echoJudge`) replaces
+every fixed-key server stub with one that ECHOES the requested keys and returns one answer per
+question — the documented wire contract. A stub that answers a fixed key answers NOTHING once the
+engine batches, and the engine correctly raises `JM_JUDGE_ANSWER_COUNT`. Eight stub sites converted.
+
+**FINAL STATE:** 233 pass / 0 fail · tsc exit 0 · host suite 12/12 · every judged verb batched
+(`filter`, `find`, `decision-tree`) · `requests` printed on all three so a regression is visible.

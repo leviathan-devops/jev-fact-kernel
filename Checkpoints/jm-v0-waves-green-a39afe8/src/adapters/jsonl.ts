@@ -38,7 +38,20 @@ export async function* streamJsonl(path: string, opts: { maxLineBytes?: number; 
       yielded++;
       yield { line: physical, text: typeof value === "string" ? value.slice(0, maxLine) : JSON.stringify(value).slice(0, maxLine), value };
     }
-  } finally { rl.close(); stream.destroy(); }
+  } finally {
+    // DESTROY **AND AWAIT THE CLOSE** (found by MEASURING THE BASELINE: this adapter's fd test failed
+    // ~20% of full-battery runs with `Expected: 0 · Received: 1`). `stream.destroy()` INITIATES the
+    // close; the fd is released on the 'close' EVENT, a later tick. So an EARLY ABANDON released its
+    // handle 'eventually' — and a caller measuring immediately after could still see it. MEASURED: 2
+    // of 10 consecutive battery runs failed on exactly one stray fd, timing dependent. A resource
+    // released at an unspecified later time is not a resource released.
+    rl.close();
+    await new Promise<void>((resolve) => {
+      if (stream.closed) { resolve(); return; }
+      stream.once("close", () => resolve());
+      stream.destroy();
+    });
+  }
 }
 
 /** A JSON file may be an array (one object per element) or a single object. */

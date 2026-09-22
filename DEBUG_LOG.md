@@ -3084,3 +3084,46 @@ engine batches, and the engine correctly raises `JM_JUDGE_ANSWER_COUNT`. Eight s
 
 **FINAL STATE:** 233 pass / 0 fail · tsc exit 0 · host suite 12/12 · every judged verb batched
 (`filter`, `find`, `decision-tree`) · `requests` printed on all three so a regression is visible.
+
+## EN-109 — THE FLAKE: a 20% failure rate, root-caused by MEASURING the baseline, not assuming it
+**Found while minting a build pin — the BASELINE is re-measured first-hand, and it read 232/1.**
+
+**THE MEASUREMENT.** Ten consecutive full-battery runs: **2/10 had failures** (20%). The failing
+test was always the same one, at a varying point:
+```
+(fail) jsonl.ts:11 — an abandoned stream must not leak its file handle
+       > test_early_abandon_does_not_leak_fds
+  Expected: 0    Received: 1    at tests/audit-pass3.test.ts:319
+```
+One stray file descriptor, timing-dependent — the classic shape of a resource released on an
+unspecified later tick.
+
+**THE TWO-SIDED ADJUDICATION** (the skill's law: both sides before any verdict):
+- **Side A — is the TEST wrong?** It counts `/proc/self/fd` SYNCHRONOUSLY right after the loops.
+  `stream.destroy()` initiates the close; the fd is released on the `close` EVENT, a later tick.
+  So the test races the close. Plausible.
+- **Side B — is the CODE wrong?** `destroy()` IS called (a previous audit fixed the missing
+  destroy), so there is no permanent leak — but the release is event-loop dependent. A resource
+  released "eventually" is a resource a caller cannot rely on: a long-lived process (the daemon,
+  the watch loop) that abandons streams accumulates handles until the loop happens to turn.
+- **VERDICT: BOTH.** The test was racing, AND the adapter's release was non-deterministic. The
+  honest fix is the one that makes the CODE deterministic, which also makes the test pass for the
+  right reason.
+
+**THE FIX** (`src/adapters/jsonl.ts:41`): `rl.close()` then
+`await new Promise(resolve => { if (stream.closed) resolve(); stream.once("close", resolve); stream.destroy(); })`.
+The generator no longer exits until the handle is actually released.
+
+**VERIFICATION (the before/after on the SAME measurement):**
+```
+fd test, before fix:  1 failure in 8 runs
+fd test, after fix:   0 failures in 10 runs
+full battery, before: 2 failures in 10 runs   (20%)
+full battery, after:  0 failures in 10 runs
+```
+
+**THE LESSON.** A flaky test is not "just flaky" — it is a measurement of a REAL non-determinism,
+and the correct response is to find which side owns it. Averaging it away ("it usually passes")
+would have shipped a handle leak into a daemon whose whole job is long-running reconciliation.
+**The baseline measurement found it before the build started, which is exactly what a re-measured
+baseline is for.**
