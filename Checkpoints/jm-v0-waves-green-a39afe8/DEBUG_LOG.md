@@ -2711,3 +2711,51 @@ fresh store`.
 inputs** — a cast string, an unexpanded path, a hand-maintained set, a written-and-unread version.
 Each is a check that the code LOOKS like it performs. **A value that crosses a boundary unchecked is
 a value the boundary does not exist for.**
+
+## EN-099 — the medium tier: a NaN that poisoned the whole report, and a crash that wore a success shape
+Two more adjudicated from the 97 mediums. Both are the same family as the rest of the tier — a value
+the code TRUSTS that nothing validated — and both were measured, not reasoned about.
+
+**report.ts:57/146 · MEDIUM · ONE malformed cost destroyed the figure for every other row.**
+```
+ledger.jsonl:  [ {..., "cost_usd": 0}, {..., "cost_usd": "not-a-number"}, {..., "cost_usd": 0} ]
+$ jm report n
+  ledger:  2 rows · 2 ok · 0 failed · $NaN          <- MEASURED, before the fix
+```
+`cost += Number(r.cost_usd ?? 0)` returns **NaN** for a non-numeric value — a hand-edited or corrupt
+line — and NaN is contagious: every subsequent addition carries it, so the whole report's cost figure
+became `$NaN`. *Fix:* an unreadable cost is **COUNTED, not accumulated** (`cost_unknown`), and the count
+is named on the output — the same rule the malformed-JSON catch beside it already kept.
+**Verified, both sites:**
+```
+before   ledger: 2 rows · 2 ok · 0 failed · $NaN
+after    ledger: 2 rows · 2 ok · 0 failed · $0.000000 · 1 UNREADABLE cost
+clean    ledger: 1 rows · 1 ok · 0 failed · $0.000000          (no note when nothing is damaged)
+--job    ledger: 2 rows total · 2 naming this job · … · $0.000000 · 1 UNREADABLE cost
+```
+
+**indexJob.ts:31/37 · MEDIUM · a crashed run reported a success shape, and failures were dropped.**
+Two defects in one result object:
+- `.catch((e) => { error = String(e); return null })` set `error`, but **every** counter below then
+  read `res?… ?? 0` — so a crash produced `processed=0 done=0 pending=0 running=0` **plus
+  `files=<the whole index>`**, and a caller checking `done > 0` could not tell a crash from an empty
+  job. *Fix:* an explicit `ok` on the result and on the CLI line.
+- `runQueued` **REPORTS** `failed` (`RunResult:7`) and this function **DROPPED it**, so items that
+  permanently failed were invisible in the summary — a swallowed count, the same shape as a swallowed
+  exception with the exception recorded and the number lost. *Fix:* the count is carried.
+**Verified with a real per-item failure (a mode-000 file):**
+```
+before   JM_QUEUED done=2 pending=0 running=0 files=2 resumed=0 budget_stopped=false ms=11
+ after   JM_QUEUED ok=true done=1 failed=1 pending=0 running=0 files=1 resumed=0 …
+```
+The error is also **collapsed to one line** on the CLI (`re.replace(/\s+/g, " ").slice(0,160)`) —
+an error carrying a newline made the whole `JM_QUEUED` line unparseable, the same defect one level up.
+
+**AND TWO PROBE ERRORS OF MY OWN, RECORDED:**
+- I reached for `res?.errors.length` when `RunResult` declares `failed: number` — **tsc caught it**,
+  which is the typed boundary doing its job.
+- My first pin indexed both files and THEN locked one; the second run skipped it because the
+  incremental fast path saw (size, mtime) unchanged. **That is a correct optimisation and a wrong
+  probe.** The test now creates the unreadable file *after* the first index, so it is genuinely NEW
+  on the run that must fail on it — and the pin was proven to bite by dropping the count and watching
+  it go red.

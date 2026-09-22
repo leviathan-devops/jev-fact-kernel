@@ -1,8 +1,8 @@
 # CHECKPOINT MANIFEST - jm-v0-waves-green-a39afe8
 
 date: 2026-09-21 (sealed) | seal mode: **B (no lock - living snapshot, refreshed after every wave)
-source tree sha256: `6497d4914f3a14eaa6c19b5c4bee092c`
-git: branch master @ 68d0b1a
+source tree sha256: `9e186c7046187661a3a2d11369a8379c`
+git: branch master @ d0f750f
 
 battery (run from THIS COPY): **RECHECK BY RUNNING IT** | tsc exit 0
 container rig (run from THIS COPY): **JM_CONTAINER_RIG PASS - 7/7 angles**

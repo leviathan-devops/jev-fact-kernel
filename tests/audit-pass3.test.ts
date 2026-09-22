@@ -4,7 +4,7 @@
 // more high/critical findings — including two in code written the SAME DAY. Each probe below is the
 // settlement that turned a hypothesis into a defect.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
@@ -679,5 +679,72 @@ describe("store/db.ts:4 — a store built by another SCHEMA_VERSION is refused b
       if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe("report.ts:57/146 — one unreadable cost must not poison the whole total", () => {
+  test("test_a_malformed_cost_is_counted_not_accumulated", () => {
+    // MEASURED BEFORE THE FIX: `cost += Number(r.cost_usd ?? 0)` returns NaN for a non-numeric value,
+    // and ONE such row destroyed the figure for every other row — a ledger holding a single
+    // `"cost_usd":"not-a-number"` made `jm report` print `$NaN`. The row is now COUNTED and the
+    // damage is NAMED on the output, the same rule the malformed-JSON catch beside it already kept.
+    const home = mkdtempSync(join(tmpdir(), "jm-nan-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "a.md"), "alpha");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      run("index", corpus, "--name", "n");
+      const led = join(home, "ledger.jsonl");
+      writeFileSync(led, readFileSync(led, "utf8") + JSON.stringify({ ts: "2026-01-01T00:00:00.000Z", kind: "run", verb: "bogus", status: "ok", cost_usd: "not-a-number" }) + "\n");
+
+      const out = run("report", "n").stdout.toString();
+      expect(out).not.toContain("$NaN");                       // the poisoning is gone
+      expect(out).toContain("$0.000000");                      // the readable rows still total correctly
+      expect(out).toContain("1 UNREADABLE cost");              // and the damage is NAMED, not hidden
+
+      // a clean ledger prints no such note
+      writeFileSync(led, readFileSync(led, "utf8").split("\n").filter((l) => !l.includes("not-a-number")).join("\n"));
+      const clean = run("report", "n").stdout.toString();
+      expect(clean).not.toContain("UNREADABLE");
+      expect(clean).not.toContain("$NaN");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
+
+describe("indexJob.ts:31/37 — a crashed run must not wear a success shape, and failures must be counted", () => {
+  test("test_queued_index_reports_ok_and_failed", () => {
+    // TWO defects in one result shape:
+    //  · `.catch((e) => { error = String(e); return null })` set `error`, but every counter then read
+    //    `res?… ?? 0` — so a crash produced all-zeros PLUS `files=<the whole index>`, and a caller
+    //    checking `done > 0` could not tell a crash from an empty job. `ok` now states it.
+    //  · `runQueued` REPORTS `failed` (RunResult:7) and this function DROPPED it, so items that
+    //    permanently failed were invisible in the summary — a swallowed count.
+    const home = mkdtempSync(join(tmpdir(), "jm-ij-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "good.md"), "readable");
+    writeFileSync(join(corpus, "locked.md"), "unreadable");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      // THE LOCKED FILE MUST BE **NEW** ON THE RUN THAT READS IT. The first draft indexed both files
+      // and then locked one — and the second run skipped it entirely, because the incremental fast
+      // path saw (size, mtime) unchanged and never re-read it. That is a correct optimisation and a
+      // wrong probe. The unreadable file is therefore created after the first index.
+      run("index", corpus, "--name", "n", "--queued", "--job", "j1");
+      const locked = join(corpus, "locked-late.md");
+      writeFileSync(locked, "unreadable");
+      chmodSync(locked, 0o000);
+      const out = run("index", corpus, "--name", "n", "--queued", "--job", "j2").stdout.toString();
+      chmodSync(locked, 0o644);
+      expect(out).toContain("JM_QUEUED");
+      expect(out).toMatch(/ok=(true|false)/);       // the outcome is STATED, never inferred from zeros
+      expect(out).toMatch(/failed=\d/);             // and the failure count is ON THE LINE
+      expect(out).toMatch(/failed=[1-9]/);          // the unreadable file is counted, not dropped
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });

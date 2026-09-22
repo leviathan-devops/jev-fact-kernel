@@ -24,7 +24,7 @@ export interface Report {
   cache: { rows: number; hits: number };
   kinds: Record<string, number>;
   targets: { name: string; kind: string; root: string }[];
-  ledger: { path: string; rows: number; ok: number; failed: number; cost_usd: number; verbs: Record<string, number> };
+  ledger: { path: string; rows: number; ok: number; failed: number; cost_usd: number; cost_unknown: number; verbs: Record<string, number> };
 }
 
 export function report(db: Database, opts: ReportOpts = {}): Report {
@@ -45,7 +45,7 @@ export function report(db: Database, opts: ReportOpts = {}): Report {
   for (const r of kindRows) kinds[r.k] = r.n;
 
   const p = opts.ledgerPath ?? ledgerPath();
-  let rows = 0, ok = 0, failed = 0, cost = 0;
+  let rows = 0, ok = 0, failed = 0, cost = 0, costUnknown = 0;
   const verbs: Record<string, number> = {};
   if (existsSync(p)) {
     for (const line of readFileSync(p, "utf8").split("\n")) {
@@ -54,7 +54,14 @@ export function report(db: Database, opts: ReportOpts = {}): Report {
       try {
         const r = JSON.parse(line) as { verb?: string; status?: string; cost_usd?: number };
         if (r.status === "ok") ok++; else failed++;
-        cost += Number(r.cost_usd ?? 0);
+        // AN UNREADABLE COST IS COUNTED, NOT ACCUMULATED (audit report.ts:57/146). `Number(x ?? 0)`
+        // returns **NaN** for a non-numeric value (a hand-edited or corrupt line), and ONE such row
+        // poisons the running total: MEASURED, a single `"cost_usd":"not-a-number"` made the whole
+        // report print `$NaN`, destroying the figure for every other row. The row is still COUNTED
+        // (it is a row) and the problem is NAMED on the output, so a damaged ledger is visible rather
+        // than silently rounded away — the same rule the malformed-JSON catch beside it already keeps.
+        const c = typeof r.cost_usd === "number" && Number.isFinite(r.cost_usd) ? r.cost_usd : null;
+        if (c === null) costUnknown++; else cost += c;
         if (r.verb) verbs[r.verb] = (verbs[r.verb] ?? 0) + 1;
       } catch { failed++; }         // a malformed ledger line is COUNTED, never silently dropped
     }
@@ -69,7 +76,7 @@ export function report(db: Database, opts: ReportOpts = {}): Report {
     files, live: files, gone, text_indexed: textIndexed, docs, fts_rows: fts, tags, runs, decisions,
     cache, kinds,
     targets: loadTargets().map((t) => ({ name: t.name, kind: t.kind, root: t.root })),
-    ledger: { path: p, rows, ok, failed, cost_usd: cost, verbs },
+    ledger: { path: p, rows, ok, failed, cost_usd: cost, cost_unknown: costUnknown, verbs },
   };
 }
 
@@ -82,7 +89,7 @@ export function report(db: Database, opts: ReportOpts = {}): Report {
 export interface JobReport {
   job: string;
   queue: { total: number; done: number; pending: number; running: number; failed: number; distinct: number; duplicate_fingerprints: number };
-  ledger: { rows: number; this_job: number; ok: number; failed: number; cost_usd: number; verbs: Record<string, number> };
+  ledger: { rows: number; this_job: number; ok: number; failed: number; cost_usd: number; cost_unknown: number; verbs: Record<string, number> };
   files: number;                 // index rows the job's work produced, when the index is present
   c8: { rows: number; decisions: number; runs: number };   // the C8 operands, SHOWN so the equality is checkable
   reconciled: boolean;           // C8: rows === decisions + runs
@@ -130,7 +137,7 @@ export function jobReport(db: Database | null, jobId: string, opts: { ledgerPath
 
   // the ledger half: every row, and the rows that name THIS job
   const p = opts.ledgerPath ?? ledgerPath();
-  let rows = 0, thisJob = 0, ok = 0, failed = 0, cost = 0;
+  let rows = 0, thisJob = 0, ok = 0, failed = 0, cost = 0, costUnknown = 0;
   // C8's operands, counted over the SAME job filter as `thisJob`: every ledger row naming this
   // job must be either a decision or a run, so `rows == decisions + runs` is checkable within
   // one store rather than across two. Reported, not hidden — see the note at the return.
@@ -143,7 +150,14 @@ export function jobReport(db: Database | null, jobId: string, opts: { ledgerPath
       try {
         const r = JSON.parse(line) as { verb?: string; kind?: string; status?: string; cost_usd?: number; args?: Record<string, unknown> };
         if (r.status === "ok") ok++; else failed++;
-        cost += Number(r.cost_usd ?? 0);
+        // AN UNREADABLE COST IS COUNTED, NOT ACCUMULATED (audit report.ts:57/146). `Number(x ?? 0)`
+        // returns **NaN** for a non-numeric value (a hand-edited or corrupt line), and ONE such row
+        // poisons the running total: MEASURED, a single `"cost_usd":"not-a-number"` made the whole
+        // report print `$NaN`, destroying the figure for every other row. The row is still COUNTED
+        // (it is a row) and the problem is NAMED on the output, so a damaged ledger is visible rather
+        // than silently rounded away — the same rule the malformed-JSON catch beside it already keeps.
+        const c = typeof r.cost_usd === "number" && Number.isFinite(r.cost_usd) ? r.cost_usd : null;
+        if (c === null) costUnknown++; else cost += c;
         if (r.verb) verbs[r.verb] = (verbs[r.verb] ?? 0) + 1;
         const a = r.args ?? {};
         if (a.job === jobId || a.jobId === jobId || a.in === jobId) {
@@ -161,7 +175,7 @@ export function jobReport(db: Database | null, jobId: string, opts: { ledgerPath
   return {
     job: jobId,
     queue: q,
-    ledger: { rows, this_job: thisJob, ok, failed, cost_usd: cost, verbs },
+    ledger: { rows, this_job: thisJob, ok, failed, cost_usd: cost, cost_unknown: costUnknown, verbs },
     files,
     // C8's DOCUMENTED PREDICATE, with its OPERANDS REPORTED (audit M-J). The field used to read
     // `dup === 0 && q.running === 0` — the DUP LAW, a real property but NOT the criterion the name
@@ -191,7 +205,7 @@ export function renderJobReport(r: JobReport): string {
     `queue:        ${r.queue.total} rows · ${r.queue.done} done · ${r.queue.pending} pending · ${r.queue.running} running · ${r.queue.failed} failed`,
     `fingerprints: ${r.queue.distinct} distinct · ${r.queue.duplicate_fingerprints} duplicate`,
     `index files:  ${r.files} live`,
-    `ledger:       ${r.ledger.rows} rows total · ${r.ledger.this_job} naming this job · ${r.ledger.ok} ok · ${r.ledger.failed} failed · $${r.ledger.cost_usd.toFixed(6)}`,
+    `ledger:       ${r.ledger.rows} rows total · ${r.ledger.this_job} naming this job · ${r.ledger.ok} ok · ${r.ledger.failed} failed · $${r.ledger.cost_usd.toFixed(6)}${r.ledger.cost_unknown > 0 ? ` · ${r.ledger.cost_unknown} UNREADABLE cost` : ""}`,
     `ledger verbs: ${Object.entries(r.ledger.verbs).map(([k, n]) => `${k}=${n}`).join(" ") || "(none)"}`,
     `C8 operands:  rows=${r.c8.rows} decisions=${r.c8.decisions} runs=${r.c8.runs}`,
     `reconciled:   ${r.reconciled ? "YES" : "NO"} (C8: rows == decisions + runs)`,
@@ -209,7 +223,7 @@ export function renderReport(r: Report): string {
     `cache:        ${r.cache.rows} rows · ${r.cache.hits} hits`,
     `kinds:        ${Object.entries(r.kinds).map(([k, n]) => `${k}=${n}`).join(" ")}`,
     `targets:      ${r.targets.map((t) => `${t.name}(${t.kind})`).join(" ") || "(none)"}`,
-    `ledger:       ${r.ledger.rows} rows · ${r.ledger.ok} ok · ${r.ledger.failed} failed · $${r.ledger.cost_usd.toFixed(6)}`,
+    `ledger:       ${r.ledger.rows} rows · ${r.ledger.ok} ok · ${r.ledger.failed} failed · $${r.ledger.cost_usd.toFixed(6)}${r.ledger.cost_unknown > 0 ? ` · ${r.ledger.cost_unknown} UNREADABLE cost` : ""}`,
     `ledger verbs: ${Object.entries(r.ledger.verbs).map(([k, n]) => `${k}=${n}`).join(" ")}`,
   ];
   return lines.join("\n");

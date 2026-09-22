@@ -257,7 +257,11 @@ async function main(): Promise<number> {
       });
       db.close();
       if (has("json")) console.log(JSON.stringify(q, null, 2));
-      else console.log(`JM_QUEUED done=${q.done} pending=${q.pending} running=${q.running} files=${q.files} resumed=${q.resumed} budget_stopped=${q.budgetStopped}${q.error ? " error=" + q.error : ""} ms=${q.ms}`);
+      // `ok` AND `failed` ARE ON THE LINE (audit indexJob.ts:31/37): without them a crashed run
+      // printed `done=0 … files=<the whole index>` and a scripted caller could not tell it from an
+      // empty job. The error is also COLLAPSED TO ONE LINE — an error carrying a newline made the
+      // whole JM_QUEUED line unparseable, which is the same defect one level up.
+      else console.log(`JM_QUEUED ok=${q.ok} done=${q.done} failed=${q.failed} pending=${q.pending} running=${q.running} files=${q.files} resumed=${q.resumed} budget_stopped=${q.budgetStopped}${q.error ? " error=" + String(q.error).replace(/\s+/g, " ").slice(0, 160) : ""} ms=${q.ms}`);
       return q.budgetStopped ? 3 : 0;
     }
     const stats = await withLedger("index", { arg, name: indexName, root }, async () => {
