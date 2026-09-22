@@ -77,9 +77,19 @@ export interface JsonRpcRequest { jsonrpc: "2.0"; id?: number | string | null; m
 
 /** One request -> one response. Pure enough to unit-test without a transport. */
 export async function handle(req: JsonRpcRequest): Promise<Record<string, unknown> | null> {
+  // A REQUEST WITHOUT AN `id` IS A NOTIFICATION, AND JSON-RPC 2.0 FORBIDS REPLYING TO ONE.
+  // `req.id ?? null` made a notification indistinguishable from a request, so a `tools/call` sent
+  // without an id came back as `{"id":null,"result":…}` — a frame the client is not reading, which
+  // it can then mis-parse as the answer to a LATER request. Probed: M7.
+  //
+  // The method still RUNS: `callTool` is awaited BEFORE `ok`/`err` is built, so a fire-and-forget
+  // `jm_index` still indexes. Only the reply is suppressed — which is what fire-and-forget means.
+  // `id: null` (present but null) stays a REQUEST per the spec, and the parse-error path below
+  // keeps its mandatory `id: null` frame.
+  const notification = req.id === undefined;
   const id = req.id ?? null;
-  const ok = (result: unknown) => ({ jsonrpc: "2.0" as const, id, result });
-  const err = (code: number, message: string) => ({ jsonrpc: "2.0" as const, id, error: { code, message } });
+  const ok = (result: unknown) => (notification ? null : { jsonrpc: "2.0" as const, id, result });
+  const err = (code: number, message: string) => (notification ? null : { jsonrpc: "2.0" as const, id, error: { code, message } });
 
   switch (req.method) {
     case "initialize":

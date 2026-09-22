@@ -1690,3 +1690,31 @@ the counts), T-12 (a `;` after the gate runner).
 and joined by the wrong operator. The rule is therefore mechanical, not motivational: every
 verification step is joined by `&&`, and no step's output is filtered by a `tail` that can drop the
 result line.
+
+## EN-069 — D-051: the MCP server ANSWERED A NOTIFICATION (a protocol violation on the agent surface)
+- **FOUND BY:** probing the MCP surface as a protocol, not as a set of tools — seven cases: invalid
+  JSON, an unknown method, an unknown tool, a missing argument, a wrong-typed argument, empty stdin,
+  and **a request with no `id`**.
+- **SYMPTOM:** a `tools/call` sent WITHOUT an `id` came back as
+  `{"jsonrpc":"2.0","id":null,"result":{…}}`.
+- **THE SPEC:** JSON-RPC 2.0 — *"A Notification is a Request object without an `id` member… The
+  Server MUST NOT reply to a Notification."*
+- **ROOT CAUSE:** `const id = req.id ?? null;` at `src/mcp.ts:80`. The `?? null` made a notification
+  (no `id` member) indistinguishable from a request carrying `id: null`, so every frame got a reply.
+- **WHY IT MATTERS, and it is the worst shape on this surface:** the reply is a frame the client is
+  NOT reading. On a newline-delimited transport it sits in the stream and can be consumed as the
+  answer to a LATER request — **a wrong answer to the wrong question, with nothing erroring.** An
+  agent acting on another request's result is exactly the failure the whole engine exists to avoid.
+- **FIX:** `const notification = req.id === undefined;` and `ok`/`err` return `null` for one. The
+  method still RUNS — `callTool` is awaited BEFORE the frame is built — because a notification is
+  PROCESSED, only its reply is suppressed. `id: null` (present but null) stays a REQUEST per the
+  spec, and the parse-error path keeps its mandatory `id: null` frame.
+- **PROVEN, all four halves:** a notification gets no reply; a notification-shaped `jm_index` still
+  created its index file (`all.sqlite` appeared with one frame emitted); a normal request still
+  replies; an explicit `id: null` still replies. Pinned as `tests/mcp-notification.test.ts` (5 cases).
+- **THE OTHER SIX PROBES BEHAVED**, recorded so silence is not proof: `-32700` for invalid JSON,
+  `-32601` for an unknown method, `-32602` for an unknown tool, a named `JM_INDEX_MISSING` for a
+  missing argument, and empty stdin producing no output at all.
+- **A NOTE ON MY OWN TEST:** it first passed `name` to `jm_index`, a key the schema does not declare,
+  so the write landed in `all.sqlite` and the assertion failed. Standard JSON-Schema semantics
+  (unknown keys ignored) — and a reminder that a test's own argument names are part of what it tests.

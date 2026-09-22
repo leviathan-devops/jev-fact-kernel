@@ -256,3 +256,17 @@ the source chunk of the independent audit.
 - **FIXED:** pgrep+kill with a wait for the port to free; and three fixed sleeps replaced by polls
   to deadlines (two already covered this class — this was the third).
 - **PROVEN:** two consecutive runs, `41 / 0` each, **0 orphans after each**.
+
+## [2026-09-22] D-051 — the MCP server answered a notification
+
+- **THE PROBE:** seven cases against the MCP surface AS A PROTOCOL: invalid JSON, an unknown method,
+  an unknown tool, a missing argument, a wrong-typed argument, empty stdin, and a request with no id.
+- **THE DEFECT:** `req.id ?? null` made a notification indistinguishable from a request, so a
+  `tools/call` without an `id` got `{"id":null,"result":…}` — a frame the client is not reading,
+  which can be consumed as the answer to a LATER request. **A wrong answer to the wrong question,
+  with nothing erroring.** JSON-RPC 2.0: the server MUST NOT reply to a notification.
+- **THE FIX:** `req.id === undefined` marks a notification; `ok`/`err` return null for one, while the
+  method still RUNS (a notification is processed; only the reply is suppressed). `id: null` stays a
+  request; the parse-error path keeps its mandatory `id: null` frame.
+- **SIX OF SEVEN PROBES BEHAVED** — `-32700`, `-32601`, `-32602`, a named `JM_INDEX_MISSING`, and
+  empty stdin producing nothing. Recorded so silence is not read as proof.

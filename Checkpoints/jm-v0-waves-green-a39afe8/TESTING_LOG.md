@@ -697,3 +697,39 @@ AFTER  err500/err429 + fail=closed -> exit 2, ZERO decisions · ok -> exit 0, ca
 PINNED tests/judge-outage.test.ts runs its OWN controlled endpoint (3 tests)
 battery 144 pass / 0 fail / 678 expects / 27 files · tsc exit 0
 ```
+
+### ADV-4 — THE SURFACES ADDED SINCE ADV-3 (the launcher entry point, and the answer-reader family)
+
+**WHY A FOURTH SWEEP:** ADV-3's frontier named the parked W8 layer as the only unswept surface. Two
+surfaces have been added or changed since: the **registered MCP launcher** (a shell entry point that
+an MCP client executes by absolute path — new in this session) and the **usage-missing path** in the
+judge client (D-046). A frontier statement that predates a surface is a false statement, so it is
+re-measured rather than inherited.
+
+**THE LAUNCHER, PROBED AS A SURFACE — 7 probes, 2 defects, 5 that behaved:**
+```
+P1  no PATH, no HOME            -> D-048  exit=1, raw bash "HOME: unbound variable"
+                                            (the named 127 message never printed)
+P2  PATH only (the registry's)  -> behaves  exit=0, initialize answered
+P3  HOME only (the old rung)    -> behaves  exit=0
+P4  JM_BUN non-executable       -> behaves  exit=127, names every rung it tried
+P5  invoked via a SYMLINK       -> D-049  exit=1, `Module not found "src/cli.ts"`
+                                            (dirname "$0" is the LINK's directory)
+P6  JM_HOME unwritable          -> behaves  starts; the store error comes later and named
+P7  extra argv appended         -> behaves  ignored; a caller cannot inject a verb
+```
+Both defects fixed and pinned (`tests/launcher.test.ts`, 6 cases, both halves).
+
+**THE USAGE-MISSING PATH (D-046), probed both ways:**
+```
+judge answers WITHOUT a usage block, fail=closed -> JM_JUDGE_USAGE_MISSING (refuses)
+judge answers WITHOUT a usage block, fail=open   -> a MARKED noop row, run completes
+judge answers WITH usage                         -> unaffected
+50 such calls against a $0.0001 usd cap          -> before: usd=0 roomLeft=true (cap unfireable)
+                                                    after:  the call is refused or marked
+```
+
+**ADV-4: PASSED with a non-empty ledger (2 defects).** The frontier is now re-measured and the
+unswept surface is named exactly: **the parked W8 layer** (no code exists to probe — `src/firegate/`
+is absent and `jef` is not installed) and **the OMP-session mount** (an MCP server mounts at session
+start, so a running session cannot observe its own registry; C14 records this).
