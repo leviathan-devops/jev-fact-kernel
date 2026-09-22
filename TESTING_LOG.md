@@ -867,3 +867,60 @@ RESUME        a lane whose per-item rounds all succeed; the medium/low set is th
 ```
 
 **No ship-ready claim is made while this line reads BLOCKED.**
+
+### THE AUDIT GATE — THE THIRD PASS: a FULL-FILE SCAN, and it found a critical in same-day code
+
+The first two passes were **diff** reviews. This one is `ocr scan` — a **whole-file** review with no
+diff, which reaches code the diff-shaped passes had already "covered":
+
+```
+RUN        ocr scan --path src --no-plan --provider verboo --model deepseek-v4.1-flash
+STATUS     completed_with_errors     <- the FIRST run to complete every file (the earlier two: partial)
+FILES      34/34   COMMENTS 133   TOKENS 13,880,064   ELAPSED 24m13s
+WARNINGS   4 x scan_subtask_error: context deadline exceeded
+           (src/job/indexJob.ts, src/judge/client.ts, src/adapters/sqlite.ts, src/targets.ts)
+           ZERO memory-compression failures — `--no-plan` avoids the endpoint that rejected requests
+           in BOTH earlier passes, which is why this one got further
+ARTIFACT   artifacts/scan-2026-09-22-src-completed.json
+DISTINCT   133 findings: 2 critical · 13 high · 57 medium · 61 low
+```
+
+**IT FOUND TWO CRITICALS IN CODE WRITTEN THE SAME DAY.**
+
+| # | sev | finding | the measured mechanism |
+|---|-----|---------|------------------------|
+| ledger.ts:58 | critical | **the success-path check was swallowed by its own catch** | My EN-077 fix put the `throw` INSIDE the `try`, so the `catch` caught and re-wrapped it — producing the doubled message I had already SEEN in my own probe output and read past. The behaviour was right by accident; the mechanism was wrong. **The fix for a swallowed failure contained a swallowed failure.** Now the outcome is held outside and the check runs after the catch |
+| pool.ts:26 | critical | **a slot's VALUE decided whether the slot was WRITTEN** | `slots.filter((x): x is O => x !== undefined)` dropped every worker that legitimately resolved to `undefined` (valid when O is undefined/void/optional), losing results AND breaking the documented input-order guarantee. `runPool` feeds `runQueued`, `decisionTree`, `filterIndex`, `find` — the whole judged path. Now tracked with a `filled[]` array |
+| index.ts:74 | high | **`--include` destroyed the files it excluded** | `jm index <dir> --include '*.md'` marked the previously indexed `b.txt` gone AND purged its text — the **THIRD instance** of one over-broad rule after D-060 and D-061 |
+| mcp.ts:199 | high | **a non-object JSON frame killed the server** | `JSON.parse("null")` SUCCEEDS, so it passed the parse guard; `handle` then dereferenced `req.id` on `null`. The client saw a **dead pipe** with no frame. Now `-32600 JM_MCP_INVALID_REQUEST`, and the server survives |
+| serve.ts:137 | high | **`/find` had no catch** | `/decide` maps `JEV_NO_KEY`→503 and everything else→500 with the engine's sentence; `/find` had no try/catch, so a real engine failure escaped to Bun's default handler as a stack-shaped 500. Verified: keyless `POST /find` → **503** with the engine's sentence |
+| decision-tree.ts:121 | high | **a degraded row leaked its budget claim** | `claim()` increments `pending` (counted by `roomLeft()`) and only `settle()` releases it; both degraded-return sites returned without settling, so a judge outage under `fail: "open"` leaked one claim per row and ended with a **false "budget exhausted"** |
+| queue.ts:61 | high | **the ownership guard was insufficient** | `complete()` guarded on `state='running'` alone, which a DIFFERENT claim also satisfies: *stale-claim → sweep-to-pending → live-reclaim → stale-ack* overwrites the live result. The `attempts` counter is the generation token and is now matched |
+| judge/transport.ts:49 | high | **the body cap was disableable by a typo** | `Number(env ?? default)` yields NaN for `1mb`, and `bytes > NaN` is always false — the cap was silently OFF. Refused by name now |
+| + 7 more | high | recorded in the artifact, each with its probe | |
+
+**AND THE RULE THAT NEEDED THREE REPAIRS, NOW STATED ONCE:**
+> **"Not seen this run" is only evidence of deletion if the run WOULD have seen it.**
+
+D-060 (another target's namespace), D-061 (a capped walk) and index.ts:74 (an include filter) were
+three separate repairs of one rule, because it was never written down.
+
+**AND ONE MORE INSTRUMENT DEFECT:** T5's verdict printed `JM_RESUME_DUP>0` for BOTH an incomplete
+resume (`d.n !== 400`) and a duplicate (`d.n !== d.uniq`) — and duplicates are structurally impossible
+here (`queue.fingerprint` is UNIQUE), so the label named a defect that cannot exist and sent the
+investigation the wrong way. The checks are now separate (`JM_RESUME_INCOMPLETE`). **A failure label
+that names the wrong cause costs more to disprove than to discover.**
+
+**AUDIT GATE: BLOCKED.** Not FAIL — every high/critical finding across **three** passes was adjudicated
+by probe, confirmed, fixed and pinned, with zero false positives surviving. Not PASS — the runs report
+`partial`/`completed_with_errors` rather than `complete` (per-item rounds and 4 subtasks exceed the
+lane's deadlines on this host), and the **medium/low tiers remain largely unadjudicated**.
+
+```
+PASSES        3 (2 diff reviews + 1 full-file scan)
+CONFIRMED     24 high/critical findings, all fixed and pinned
+REFUTED       1 (M-I: the read-only open does not mutate the store — mtime unchanged)
+COVERAGE      every selected file reviewed in all three passes
+OPEN          the medium/low tiers — named by file in artifacts/audit-adjudication-ledger.md
+NOT CLAIMED   completeness: no run reaches `complete` on this host's lane
+```
