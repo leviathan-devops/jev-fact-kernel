@@ -4,7 +4,7 @@
 // more high/critical findings — including two in code written the SAME DAY. Each probe below is the
 // settlement that turned a hypothesis into a defect.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
@@ -296,5 +296,31 @@ describe("job/store.ts:9 — no job id may resolve to the SHARED jobs root", () 
       if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe("jsonl.ts:11 — an abandoned stream must not leak its file handle", () => {
+  test("test_early_abandon_does_not_leak_fds", async () => {
+    // MEASURED BEFORE THE FIX: `rl.close()` relinquishes the readline interface but does NOT destroy
+    // the underlying `fs.ReadStream`, so an EARLY ABANDON — the `limit` break, or a caller breaking
+    // out of the `for await` — left the stream open until GC. 40 abandoned generators with
+    // `limit: 1` left **40 open fds** (exactly 1:1). `enumerate` streams every jsonl target through
+    // this generator, so an index run over many sources accumulates handles.
+    const home = mkdtempSync(join(tmpdir(), "jm-fd-"));
+    const f = join(home, "big.jsonl");
+    writeFileSync(f, Array.from({ length: 3000 }, (_, i) => JSON.stringify({ i })).join("\n") + "\n");
+    try {
+      const { streamJsonl } = await import("../src/adapters/jsonl");
+      const fds = () => readdirSync("/proc/self/fd").length;
+      for await (const _ of streamJsonl(f, { limit: 1 })) break;   // warm-up
+      const before = fds();
+      for (let i = 0; i < 40; i++) { for await (const _ of streamJsonl(f, { limit: 1 })) break; }
+      expect(fds() - before).toBe(0);                              // no handle per abandoned generator
+
+      // and a full read is unaffected
+      let n = 0;
+      for await (const _ of streamJsonl(f, {})) n++;
+      expect(n).toBe(3000);
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });

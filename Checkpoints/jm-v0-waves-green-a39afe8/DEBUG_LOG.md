@@ -2363,3 +2363,20 @@ difference.
 **THE GENERAL LESSON, now hit twice in this tier:** a comment that states a rule is a claim like any
 other. This one said "most specific first" while the code did the opposite, and it had been read
 past — including by me, twice.
+
+## EN-089 — the JSONL stream leaked a file handle per abandoned read
+**jsonl.ts:11 · MEDIUM · `rl.close()` does not destroy the underlying stream.**
+Node's `readline.Interface.close()` *"relinquishes control over the input stream"* — it does **not**
+destroy it. So an EARLY ABANDON — the `limit` break, or a caller breaking out of the `for await` —
+left the `fs.ReadStream` open until GC. **MEASURED: 40 abandoned generators with `limit: 1` left 40
+open fds** (delta=40, exactly 1:1). `enumerate` streams every jsonl target through this generator, so
+an index run over many sources accumulates handles. *Fix:* hold the stream and `stream.destroy()` in
+the `finally` alongside `rl.close()`. **Verified:** delta=**0** across the same 40 abandons, and a
+full read still returns every row (5000/5000).
+
+**THE PATTERN IN THIS TIER, NAMED:** three of the five medium findings are the SAME shape — **a
+resource released on the happy path and not on the other one.** A store closed in `try` but not
+`catch` (cli.ts 383/423/504), a claim settled on success but not on degradation
+(decision-tree.ts:121), a stream closed when fully consumed but not when abandoned (jsonl.ts:11).
+Each was invisible to a test that took the happy path, and each is the reason the phrase "the happy
+path is the LAST confirmation" exists in this build's contract.

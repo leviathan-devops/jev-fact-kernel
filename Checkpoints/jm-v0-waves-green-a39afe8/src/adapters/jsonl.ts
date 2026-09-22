@@ -8,7 +8,14 @@ export interface JsonlRow { line: number; text: string; value: unknown; }
 export async function* streamJsonl(path: string, opts: { maxLineBytes?: number; limit?: number } = {}): AsyncGenerator<JsonlRow> {
   const maxLine = opts.maxLineBytes ?? 65_536;
   const limit = opts.limit ?? Infinity;
-  const rl = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
+  // THE STREAM IS HELD SO IT CAN BE DESTROYED, not just the readline interface (audit
+  // jsonl.ts:11). `rl.close()` "relinquishes control over the input stream" — it does NOT destroy
+  // it — so an EARLY abandon (the `limit` break, or a caller breaking out of the `for await`)
+  // left the `fs.ReadStream` open until GC. **MEASURED: 40 abandoned generators with `limit: 1`
+  // left 40 open fds** (delta=40, exactly 1:1). `enumerate` streams every jsonl target through
+  // this generator, so an index run over many sources accumulates handles.
+  const stream = createReadStream(path, { encoding: "utf8" });
+  const rl = createInterface({ input: stream, crlfDelay: Infinity });
   let n = 0;
   try {
     for await (const raw of rl) {
@@ -24,7 +31,7 @@ export async function* streamJsonl(path: string, opts: { maxLineBytes?: number; 
       try { value = JSON.parse(line); } catch { value = { __malformed: true, raw: line.slice(0, 200) }; }
       yield { line: n, text: typeof value === "string" ? value.slice(0, maxLine) : JSON.stringify(value).slice(0, maxLine), value };
     }
-  } finally { rl.close(); }
+  } finally { rl.close(); stream.destroy(); }
 }
 
 /** A JSON file may be an array (one object per element) or a single object. */
