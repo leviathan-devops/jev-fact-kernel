@@ -2,3 +2,7 @@
 # double-counted (they are byte-identical by design).
 [test]
 root = "tests"
+# THE HERMETICITY PRELOAD: six judge-server test files need a key to be PRESENT (requireKey gates
+# the call before any network). It used to come from an ambient ~/.config/typesafe/key, so the
+# suite passed on the author's machine and failed in a fresh container with 9 JEV_NO_KEY errors.
+preload = ["./tests/preload.ts"]

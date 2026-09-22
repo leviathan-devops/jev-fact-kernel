@@ -2467,3 +2467,80 @@ from a real decision.
 never)` — an unchecked cast that **disabled exactly the type checking which would catch a future field
 rename**, i.e. the defect class this function had just been fixed for. The parameter now takes
 `JudgeResponse["answers"]` and no cast is needed: the boundary is checked, not asserted.
+
+## EN-093 — THE CONTAINER FOUND WHAT THE HOST COULD NOT: the suite was not hermetic
+**Triggered by the operator: "TEST ALL OF THIS IN A FUCKING CONTAINER."** The container rig had been
+running 8 angles green for hours — and it had **never run the battery**. The moment it did, the suite
+FAILED on a machine that had never seen this tree.
+
+```
+host        ~/.config/typesafe/key present   ->  217 pass / 0 fail
+container   no key file, no env var          ->  208 pass / 9 fail   (JEV_NO_KEY)
+```
+
+**THE ROOT CAUSE — AN AMBIENT CREDENTIAL.** Six test files point the judge at a LOCAL endpoint
+(`JM_JUDGE_URL`) so the outage/usage/policy paths are reachable, but `requireKey()` gates the call
+*before* any network happens — so those tests need a key to be PRESENT even though no real API is
+contacted. On this machine that key came from `~/.config/typesafe/key`, so the suite passed here and
+failed anywhere else. **A green battery that depends on the author's home directory is a claim about
+the author's machine, not about the code.**
+
+**THE FIX — `tests/preload.ts` + `bunfig.toml`:** a placeholder is supplied with `??=` (only when
+absent, so a developer who exports a real key still exercises that path, and the tests that prove the
+KEYLESS behaviour delete it themselves). **Verified: 217/0 in the container as well as the host.**
+
+**AND IT EXPOSED A SECOND, SHARPER DEFECT — a leak with a mask.**
+`retrieve.test.ts:89` did `delete process.env.TYPESAFE_API_KEY` with **no restore** — the D-059 class
+(a process-global removed and not put back, so every later file in the run inherits a keyless
+environment). On the host it was **masked** because `resolveKey()` falls back to the key FILE; in the
+container, where the env var is the only source, the leak became visible. Fixed: save and restore.
+**Same shape as the rig's H-6/H-7 (env set and not restored) — now three instances, all in the
+layer that verifies everything else.**
+
+**AND A THIRD — a unit test making a NETWORK CALL.**
+`cli-contract.test.ts`'s positive half said *"the judge may answer with the host key ... depending on
+the environment"*. On a machine WITH a key it reached the REAL API and got a 401 back
+(`JM_DECISIONS ... calls=1`), i.e. a network call inside a unit test, decided by the home directory.
+Fixed by neutralising **both** key sources (the env var AND `HOME`, because `resolveKey` checks the
+file too — the first attempt at this fix failed for exactly that reason and the failure was the
+evidence).
+
+**THE LESSON, AND IT IS THE SHARPEST OF THE SESSION:** the container rig was green for hours and
+proved the RIG works; it took running the BATTERY there to discover the battery itself was
+machine-dependent. **A test rig that never runs the suite is a rig that never tests the suite.**
+
+## EN-094 — IT IS OPERATIONAL: `jm` is a first-class executable
+**The operator: "I NEED THIS OPERATIONAL RIGHT NOW ... A POINTABLE TARGETABLE TANGIBLE DECISION
+MAKING TOOL I CAN USE."** The one thing standing between "built" and "usable" was that `jm` was not
+on PATH — the README documented `jm index …` while the only working invocation was
+`bun run src/cli.ts index …`.
+
+**Delivered:** `bin/jm` in the repo (wired as the package's `bin` entry) and installed at
+`~/.local/bin/jm` — a **thin shim**, not a copy. It carries the launcher lessons the MCP launcher's
+two defects taught (D-048/D-049), because a launcher IS a surface: **symlink-safe** (`readlink -f`,
+not `dirname $0`), **HOME-independent** (`${HOME:-}` under `set -u`), and **fail-closed** (a named
+error and exit 127 if the repo or bun cannot be resolved). The repo root is **pinned**, not
+discovered: a shim that guesses its project runs the wrong thing from the wrong directory.
+
+**PROVEN, from a foreign cwd (`/tmp`):**
+```
+$ which jm
+/home/leviathan/.local/bin/jm
+$ jm                          # the usage dump, all 17 verbs
+$ jm target add demo fs /tmp/jmdemo
+target demo (fs) -> /tmp/jmdemo
+registry /home/leviathan/.jm/targets.json
+$ jm index --in demo --name work
+demo	fs	rows=2	changed=2	7ms
+$ jm query work --fts tombstone
+147	new	demo/log.jsonl
+81	new	demo/notes.md
+$ jm scan work --lex tombstone   &&   jm cluster work --lex tombstone
+n=2	text	demo	[session,tombstone,body,deleted]	log.jsonl, notes.md
+$ jm route --task "find which session log mentions a deleted session"
+route=act choice=skill:omp-session-forensics p=0.890 runner-up=skill:session-log-recovery(0.860)
+judged: 12 of a 477-entry catalogue
+reason: skill:omp-session-forensics at p=0.890 >= act 0.8
+```
+**The live judge made a real decision, picked the right tool from a 477-entry catalogue, and emitted
+an injection line — from a directory that is not the repo.**

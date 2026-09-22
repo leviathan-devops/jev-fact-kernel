@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `85f7d995389fedb2392cf8444caa521c` (git c921862)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `a53e98d57aa8b7c443db06500059ec33` (git 2db4a64)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -54,7 +54,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 105 |
 | `src/watch.ts` | 119 |
 
-## THE TEST INVENTORY (tests/, 43 files)
+## THE TEST INVENTORY (tests/, 44 files)
 
 | file | lines |
 |------|-------|
@@ -71,7 +71,7 @@ sealed copy does not belong here.
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |
 | `tests/calibrate-unknown.test.ts` | 66 |
-| `tests/cli-contract.test.ts` | 153 |
+| `tests/cli-contract.test.ts` | 163 |
 | `tests/concurrency.test.ts` | 95 |
 | `tests/container/harness.ts` | 354 |
 | `tests/decide.test.ts` | 209 |
@@ -93,11 +93,12 @@ sealed copy does not belong here.
 | `tests/mcp-notification.test.ts` | 70 |
 | `tests/mcp.test.ts` | 89 |
 | `tests/phantom-artifacts.test.ts` | 175 |
+| `tests/preload.ts` | 22 |
 | `tests/query.test.ts` | 37 |
 | `tests/redact-perf.test.ts` | 58 |
 | `tests/regression.test.ts` | 54 |
 | `tests/resume.test.ts` | 100 |
-| `tests/retrieve.test.ts` | 192 |
+| `tests/retrieve.test.ts` | 201 |
 | `tests/store.test.ts` | 37 |
 | `tests/watch.test.ts` | 133 |
 | `tests/wave-gates.test.ts` | 192 |

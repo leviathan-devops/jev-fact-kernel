@@ -85,12 +85,21 @@ describe("W3 retrieve", () => {
 
   test("test_cluster_no_model_keyless", async () => {
     const { sb, db } = await seeded();
+    // THE KEY IS RESTORED, NOT MERELY DELETED (the D-059 leak class). This test proves the KEYLESS
+    // path, and `delete process.env.TYPESAFE_API_KEY` removed a PROCESS-GLOBAL without putting it
+    // back — so every later file in the same run inherited a keyless environment. On the host that
+    // was MASKED (the key also exists as a file, which `resolveKey` falls back to), which is exactly
+    // why the container — where the env var is the ONLY source — exposed it.
+    const prevKey = process.env.TYPESAFE_API_KEY;
     try {
       delete process.env.TYPESAFE_API_KEY;
       const sc = scanIndex(db, { lex: "tombstone" });
       const cl = clusterIndex(db, sc.candidates);                    // must not throw without a key
       expect(cl.ms).toBeGreaterThanOrEqual(0);
-    } finally { db.close(); sb.cleanup(); }
+    } finally {
+      if (prevKey === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prevKey;
+      db.close(); sb.cleanup();
+    }
   });
 
   test("test_signature_stopwords_and_order", () => {

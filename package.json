@@ -13,5 +13,8 @@
     "typescript": "5.9.3",
     "@types/bun": "1.4.2",
     "bun-types": "1.4.2"
+  },
+  "bin": {
+    "jm": "./bin/jm"
   }
 }

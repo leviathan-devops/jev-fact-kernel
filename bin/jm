@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# jm — the JM decision engine, on PATH.
+#
+# This is a THIN SHIM, not a copy: it resolves the repo, then execs the real CLI. It carries the
+# lessons the MCP launcher's two defects taught (D-048/D-049), because a launcher is a SURFACE:
+#
+#   * SYMLINK-SAFE. `dirname "$0"` yields the LINK's directory, so a shim symlinked into ~/bin would
+#     resolve to the wrong place. `readlink -f` resolves the real path first.
+#   * HOME-INDEPENDENT. The bun ladder tries `JM_BUN`, then PATH, then `$HOME/.bun/bin/bun` — with
+#     `${HOME:-}` so an unset HOME cannot abort the script under `set -u`.
+#   * FAIL-CLOSED. If the repo or bun cannot be resolved, it says so by NAME and exits non-zero
+#     rather than silently doing nothing.
+set -euo pipefail
+
+# THE REPO ROOT IS PINNED, not discovered. A shim that guesses its project is a shim that runs the
+# wrong thing from the wrong directory; this one names the single place the engine lives.
+JM_REPO="${JM_REPO:-/home/leviathan/JARVIS_WORKSPACE/Shared_Workspace/JevManager}"
+
+[ -f "$JM_REPO/src/cli.ts" ] || {
+  echo "jm: the engine is not at '$JM_REPO' (set JM_REPO to its location)" >&2
+  exit 127
+}
+
+BUN="${JM_BUN:-}"
+[ -n "$BUN" ] || BUN="$(command -v bun 2>/dev/null || true)"
+[ -n "$BUN" ] || BUN="${HOME:-}/.bun/bin/bun"
+[ -x "$BUN" ] || { echo "jm: no bun found (tried JM_BUN, PATH, \$HOME/.bun/bin)" >&2; exit 127; }
+
+# RUN FROM THE REPO so `src/cli.ts` and its relative imports resolve, whatever cwd the caller is in.
+cd "$JM_REPO"
+exec "$BUN" run src/cli.ts "$@"

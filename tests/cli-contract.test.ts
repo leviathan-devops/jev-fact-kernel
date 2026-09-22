@@ -11,8 +11,10 @@ import { saveTargets } from "../src/store/db.ts";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
-async function jm(args: string[]): Promise<{ code: number; out: string; err: string }> {
-  const p = Bun.spawn(["bun", CLI, ...args], { stdout: "pipe", stderr: "pipe", env: { ...process.env } });
+async function jm(args: string[], envOverride: Record<string, string | undefined> = {}): Promise<{ code: number; out: string; err: string }> {
+  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+  for (const [k, v] of Object.entries(envOverride)) { if (v === undefined) delete env[k]; else env[k] = v; }
+  const p = Bun.spawn(["bun", CLI, ...args], { stdout: "pipe", stderr: "pipe", env });
   const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   const code = await p.exited;
   return { code, out, err };
@@ -114,14 +116,22 @@ describe("recipe validation (D-020)", () => {
         expect({ recipe: body, code: r.code }).toEqual({ recipe: body, code: 2 });
         expect(r.err).toMatch(/JM_RECIPE_INVALID/);
       }
-      // the POSITIVE half: a well-formed recipe is ACCEPTED — it gets past validation and into
-      // the work (the judge may answer with the host key or refuse with JEV_NO_KEY depending on
-      // the environment; neither is a validation failure).
+      // the POSITIVE half: a well-formed recipe is ACCEPTED — it gets past validation and into the
+      // work. **THE KEY IS EXPLICITLY REMOVED**, so the run reaches the key wall deterministically
+      // instead of depending on whether the ambient shell happens to hold one. The old comment
+      // admitted the dependency ("the judge may answer with the host key ... depending on the
+      // environment"), and on a machine WITH a key the run went to the REAL API and returned a 401 —
+      // a network call inside a unit test, decided by the author's home directory.
       const good = join(sb.root, "good.json");
       writeFileSync(good, JSON.stringify({ recipe: "r", version: 1, questions: { flag: { type: "noul", instructions: "?" } }, policy: { act: 0.8, flag: 0.5, fail: "closed" } }));
-      const ok = await jm(["decision-tree", "--rows", rows, "--recipe", good]);
+      // BOTH SOURCES ARE NEUTRALISED. `resolveKey()` checks the env var AND the key FILE
+        // (`~/.config/typesafe/key`), so deleting the env var alone still resolved on a machine with
+        // a key on disk — which is why the first attempt at this fix still reached the real API and
+        // returned `JM_DECISIONS ... calls=1` (a 401 swallowed as a decision). HOME is redirected to
+        // the sandbox, where no key file exists, so the keyless path is reached BY CONSTRUCTION.
+        const ok = await jm(["decision-tree", "--rows", rows, "--recipe", good], { TYPESAFE_API_KEY: undefined, HOME: sb.home });
       expect(ok.err).not.toMatch(/JM_RECIPE_INVALID/);
-      expect(ok.out + ok.err).toMatch(/JM_DECISIONS|JEV_NO_KEY/);     // it ran, or it hit the key wall
+      expect(ok.out + ok.err).toMatch(/JEV_NO_KEY/);                  // it ran, and hit the key wall
     } finally { sb.cleanup(); }
   });
 
