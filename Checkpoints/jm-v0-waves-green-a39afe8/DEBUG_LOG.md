@@ -2277,3 +2277,23 @@ yields the same.
 exercise it against the boundary the docs name, and an implementation that quietly serves a
 different case. `--field` had a test — against a SQLite fixture. The docs named both adapters; the
 test named one.
+
+## EN-086 — the last two highs: a swallowed cost guard, and a copied threshold
+**find.ts:94 / policy.ts · HIGH · `fail: "open"` silently swallowed the D-046 cost guard.**
+The guard throws `JM_JUDGE_USAGE_MISSING` **inside the pool task**, where `runPool` captures it as a
+generic error — and `fatalJudgeError` treated only `JEV_NO_KEY` as unconditionally fatal. So under
+`fail: "open"` the throw was swallowed and the run **completed with rows whose cost was never
+measured**: exactly the state D-046 exists to refuse. `fail: "open"` is the opt-in to **DEGRADE** — a
+marked row whose cost is known to be zero — **not an opt-in to run without accounting.** *Fix:* an
+unmeasured cost is fatal regardless of polarity, for the same reason a missing key is.
+**Verified:** both polarities now REFUSE with `JM_JUDGE_USAGE_MISSING` (pre-fix, `failOpen=true`
+completed).
+
+**calibrate.ts:30 · HIGH · the canonical default, copied.**
+`p.act ?? 0.8` / `p.flag ?? 0.5` duplicated `DEFAULT_POLICY` (`judge/policy.ts:4`), which `route` and
+`decision-tree` already import. Inlining a business threshold means a change to the policy **silently
+does not reach calibration**, so the bands it reports describe a policy nobody runs. *Fix:* the
+import. Small change, and it is the same class as the rest: **a value that exists in two places is a
+value that will disagree with itself.**
+
+**THE THIRD PASS IS NOW FULLY ADJUDICATED AT THE HIGH/CRITICAL TIER: 15 of 15 confirmed and fixed.**

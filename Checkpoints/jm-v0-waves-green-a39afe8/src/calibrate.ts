@@ -1,3 +1,4 @@
+import { DEFAULT_POLICY } from "./judge/policy.ts";
 // src/calibrate.ts — W7: read the recorded decisions, report the bands, move a threshold on evidence.
 import type { Database } from "bun:sqlite";
 
@@ -27,7 +28,11 @@ export function calibrate(db: Database): CalibrationReport {
     try { p = JSON.parse(r.policy ?? "{}") as { act?: number; flag?: number }; } catch { p = {}; }   // one malformed row must not abort calibration
     const s = r.conf;
     sum += s; n++;
-    if (s >= (p.act ?? 0.8)) bands.act++; else if (s >= (p.flag ?? 0.5)) bands.escalate++; else bands.noop++;
+    // THE CANONICAL DEFAULT, NOT A COPY OF IT (audit calibrate.ts:30). `?? 0.8` / `?? 0.5`
+    // duplicated `DEFAULT_POLICY` (`judge/policy.ts:4`), which `route` and `decision-tree`
+    // already import. Inlining a business threshold means a change to the policy silently does
+    // not reach calibration, so the bands it reports describe a policy nobody runs.
+    if (s >= (p.act ?? DEFAULT_POLICY.act)) bands.act++; else if (s >= (p.flag ?? DEFAULT_POLICY.flag)) bands.escalate++; else bands.noop++;
   }
   const meanSignal = n ? sum / n : 0;
   const truth = db.query("SELECT COUNT(*) AS n FROM decisions WHERE context_ref IS NOT NULL AND context_ref != ''").get() as { n: number };   // '' is not a truth

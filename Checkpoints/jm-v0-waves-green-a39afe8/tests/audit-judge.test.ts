@@ -4,7 +4,7 @@
 // Both are guards that hold in the obvious case and fail in the less obvious one — the shape this
 // build keeps meeting.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { callSystemOne } from "../src/judge/transport";
@@ -94,6 +94,45 @@ describe("cache.ts:23 — a redactor inside a CACHE KEY must not erase the input
     const mk = (c: string) => ({ contact: c });
     for (const [a, b] of [["+1 555 123 4567", "+1 555 999 8888"], ["(555) 123-4567", "(555) 999-8888"], ["555-123-4567", "555-999-8888"], ["+44 20 7946 0958", "+44 20 7000 0000"]]) {
       expect(fingerprint("m", "v1", mk(a))).toBe(fingerprint("m", "v1", mk(b)));
+    }
+  });
+});
+
+describe("find.ts:94 / policy.ts — an unmeasured cost is fatal REGARDLESS of fail polarity", () => {
+  test("test_usage_missing_refuses_even_under_fail_open", async () => {
+    // The D-046 guard throws `JM_JUDGE_USAGE_MISSING` INSIDE the pool task, where `runPool` captures
+    // it as a generic error — and `fatalJudgeError` treated only `JEV_NO_KEY` as unconditionally
+    // fatal. So under `fail: "open"` it was silently swallowed and the run completed with rows whose
+    // cost was never measured: exactly the state D-046 exists to refuse. `fail: "open"` is the opt-in
+    // to DEGRADE (a marked row whose cost is known to be zero), not an opt-in to run without
+    // accounting. MEASURED: both polarities now REFUSE.
+    const home = mkdtempSync(join(tmpdir(), "jm-fm-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    for (let i = 0; i < 3; i++) writeFileSync(join(corpus, `f${i}.md`), `tombstone record ${i}\nmore tombstone text here to make a decent excerpt`);
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
+    process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
+    delete process.env.JM_LEDGER;
+    const server = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { is_instance: { type: "noul", noul: 0.9 } } }); } });   // NO usage block
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
+    try {
+      const { openDb, indexPathFor } = await import("../src/store/db");
+      const { indexTarget } = await import("../src/verbs/index");
+      const { find } = await import("../src/verbs/find");
+      const db = openDb(indexPathFor("fm"));
+      indexTarget(db, "fm", corpus, {});
+      for (const failOpen of [false, true]) {
+        await expect(find(db, { phrase: "tombstone", failOpen, concurrency: 1 })).rejects.toThrow(/JM_JUDGE_USAGE_MISSING/);
+      }
+      db.close();
+    } finally {
+      server.stop(true);
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
+      if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
+      if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

@@ -57,6 +57,15 @@ export function fatalJudgeError(errors: { error: string }[], opts: { failOpen?: 
   if (errors.length === 0) return null;
   const noKey = errors.find((e) => e.error.includes("JEV_NO_KEY"));
   if (noKey) return noKey.error;
+  // AN UNMEASURED COST IS FATAL REGARDLESS OF FAIL POLARITY (audit find.ts:94), for the same reason
+  // `JEV_NO_KEY` is: `fail: "open"` is the opt-in to DEGRADE, and degradation means a marked row whose
+  // cost is known to be zero. It is not an opt-in to run without accounting. The D-046 guard throws
+  // `JM_JUDGE_USAGE_MISSING` inside the pool task, where `runPool` captures it as a generic error —
+  // so under `fail: "open"` it was silently swallowed and the run completed with rows whose cost was
+  // never measured, which is exactly the state D-046 exists to refuse. The budget cannot be enforced
+  // against a cost nobody measured, so this is fatal whatever the polarity.
+  const usageMissing = errors.find((e) => e.error.includes("JM_JUDGE_USAGE_MISSING"));
+  if (usageMissing) return usageMissing.error;
   return opts.failOpen ? null : errors[0].error;
 }
 
