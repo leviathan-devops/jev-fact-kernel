@@ -2169,3 +2169,61 @@ wrote it up as the fix failing. The `404` was the ENGINE refusing correctly — 
 `--name f`, so the server was serving the default `decisions` index, which did not exist. **The probe
 was wrong, not the code** — the same class as the T10 `phrase`/`query` mistake, and the reason every
 failure is adjudicated both ways before a fix.
+
+## EN-082 — the T5 flake, and the label that sent the investigation after a defect that cannot exist
+**WHAT HAPPENED:** a seal run reported `JM_CONTAINER_RIG FAIL — 7/8 angles, failed: T5(JM_RESUME_DUP>0)`.
+T5 then passed **4/4** when run directly, and the next seal run was `8/8`.
+
+**THE INSTRUMENT DEFECT, which is the more useful half:** T5's verdict line was
+```
+record("T5", ok, ok ? "JM_RESUME_OK dup=0" : "JM_RESUME_DUP>0", …)
+const ok = orphaned > 0 && d.n === 400 && d.n === d.uniq;
+```
+**One label covered TWO different failures.** `d.n !== 400` (an INCOMPLETE resume) and `d.n !== d.uniq`
+(a duplicate) both printed `JM_RESUME_DUP>0` — and duplicates are **structurally impossible** here
+(`queue.fingerprint` is `UNIQUE`), so the label named a defect that cannot exist and sent the
+investigation the wrong way. **A failure label that names the wrong cause is worse than no label: it
+costs more to disprove than to discover.** The two checks are now separate (`JM_RESUME_INCOMPLETE` vs
+`JM_RESUME_DUP>0`) and the message carries `(INCOMPLETE: expected 400)` when that is the failure.
+
+**AND THE AUDIT'S OWN FINDING ON THE SAME SUBSYSTEM, FIXED (queue.ts:61, HIGH).**
+`complete(id, result)` guarded on `state='running'` ALONE — which is satisfied by a *different* claim.
+The sequence *stale process claims row 5 (attempts=1) → the sweep returns it to pending → a live
+process re-claims row 5 (attempts=2) → the stale process acks* passes the state check and **overwrites
+the live result**, defeating the documented guarantee that "a stale process must NOT overwrite the
+live result". The row's `attempts` counter is the generation token, so `complete` now accepts an
+optional attempt and matches it:
+```
+UPDATE queue SET state='done', … WHERE id=? AND state='running' AND attempts=?
+```
+This is very plausibly the mechanism behind the intermittent T5 — a resume whose in-flight row was
+re-acked by the process that had already been killed. **Stated as a hypothesis, not a claim:** the
+flake did not reproduce in 4 direct runs or in the following seal, and a fix that cannot be shown to
+have cured its symptom is recorded as a fix for the DEFECT, not as a cure for the FLAKE.
+
+**THE FLAKE ITSELF IS RECORDED AS OPEN.** What is established: it is intermittent, it occurred under
+the seal's heavier conditions, and it now produces an HONEST label. The resume condition for
+diagnosing it is the next occurrence — which will say `JM_RESUME_INCOMPLETE` if the resume fell short,
+and that is a different investigation from a duplicate.
+
+## EN-083 — the budget claim leak, and TWO defects in my own fix for it
+**THE AUDIT'S FINDING (decision-tree.ts:121, HIGH) — confirmed.** `budget.claim()` increments
+`pending`, which `roomLeft()` counts, and only `settle()` releases it. **Both degraded-return sites**
+(the fail-open noop and the outer catch) returned WITHOUT settling, so every degraded row permanently
+consumed a slot: a run that hit a judge outage under `fail: "open"` leaked one claim per row and then
+stopped with a **false "budget exhausted"** — the degradation path silently became a budget failure.
+
+**FIX ATTEMPT 1 WAS WRONG, and the type system caught the FIRST half of it.** I wrote a `finally`
+that refunds an unsettled claim — correct in shape — but reached for `budget.settle(0, false)`, and
+`settle`'s `!cached` branch calls `spend(0)`, which **increments the call count**. So a FAILED call
+was billed as a spend, and a run of degraded rows exhausted a calls cap on calls that never happened.
+**Measured: `budgetCalls: 3` over 6 failing rows stopped at 3 with `budgetStopped=true`.** The refund
+belongs on the `cached` path — `settle(0, true)` is the release-without-spend branch, which is exactly
+what "this claim produced no measured call" means. **A refund is not a purchase.**
+**Verified:** `budgetCalls: 3` over 6 failing rows now yields `decisions=6 noop=6 budgetStopped=false`.
+
+**AND MY FIRST PIN FOR IT WAS VACUOUS.** The test passed `budget:` — a property the verb does not
+accept (the parameter is `budgetCalls`). It was IGNORED, so the assertion ran with no cap at all and
+passed for no reason. **tsc caught it** (`'budget' does not exist in type …`) — which is what a typed
+boundary is for — and the corrected test FAILED against the wrong refund and passes against the right
+one, so it now bites in both directions.

@@ -113,6 +113,14 @@ export async function decisionTree(opts: {
     if (budgetStopped) return null;
     if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)   // HARD CAP: no room, no call
     const state = { row, criteria, context };
+    // EVERY CLAIM IS RELEASED (audit decision-tree.ts:121). `budget.claim()` increments `pending`,
+    // which `roomLeft()` counts, and only `settle()` decrements it — but BOTH degraded-return sites
+    // (the fail-open noop here and the outer catch below) returned WITHOUT settling. So every
+    // degraded row permanently consumed a slot: a run that hit a judge outage under `fail: "open"`
+    // leaked one claim per row and then stopped with a false "budget exhausted" — the degradation
+    // path silently became a budget failure. A claim that produces no measured call is REFUNDED;
+    // `finally` is the only shape that covers every exit, including a rethrow.
+    let settled = false;
     try {
       let res;
       try {
@@ -128,7 +136,8 @@ export async function decisionTree(opts: {
       const decided = reasonForSignal(value, policy);
       const d: DecisionRow = { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model, signal: value };
       budget.settle(res.costUsd, res.cached);
-    if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
+      settled = true;
+      if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
     } catch (err) {
@@ -142,6 +151,16 @@ export async function decisionTree(opts: {
       const noKey = String(err).includes("JEV_NO_KEY");
       if (noKey || policy.fail === "closed") throw err;
       return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
+    } finally {
+      // THE CLAIM IS ALWAYS RELEASED — including on the fail-open return above and on a rethrow.
+      //
+      // THE REFUND GOES THROUGH THE `cached` PATH, and my first attempt at this got it wrong:
+      // `settle(0, false)` calls `spend(0)`, which INCREMENTS the call count — so a FAILED call was
+      // billed as a spend, and a run of degraded rows exhausted a calls cap on calls that never
+      // happened (measured: cap=3 over 6 failing rows stopped at 3 with `budgetStopped=true`).
+      // `settle(0, true)` is the release-without-spend branch, which is exactly what "this claim
+      // produced no measured call" means. A refund is not a purchase.
+      if (!settled) budget.settle(0, true);
     }
   }, { concurrency: opts.concurrency ?? 6 });
 

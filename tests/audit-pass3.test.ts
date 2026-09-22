@@ -92,3 +92,41 @@ describe("index.ts:74 — a filter narrows the WALK, it does not delete", () => 
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+describe("decision-tree.ts:121 — a degraded row must not leak its budget claim", () => {
+  test("test_fail_open_rows_refund_their_claim", async () => {
+    // `budget.claim()` increments `pending` (counted by `roomLeft()`) and only `settle()` releases
+    // it — but BOTH degraded-return sites returned WITHOUT settling, so every fail-open row
+    // permanently consumed a slot. MEASURED BEFORE THE FIX: a run that hit a judge outage under
+    // `fail: "open"` leaked one claim per row and then stopped with a FALSE "budget exhausted" —
+    // the degradation path silently became a budget failure. A claim producing no measured call is
+    // refunded, and `finally` is the only shape covering every exit including a rethrow.
+    const home = mkdtempSync(join(tmpdir(), "jm-bt-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
+    process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
+    process.env.JM_JUDGE_URL = "http://127.0.0.1:9/";      // a dead port: every call fails
+    delete process.env.JM_LEDGER;
+    try {
+      const { openDb, indexPathFor } = await import("../src/store/db");
+      const { decisionTree, validateRecipe } = await import("../src/verbs/decision-tree");
+      const rows = join(home, "rows.jsonl");
+      writeFileSync(rows, Array.from({ length: 6 }, (_, i) => JSON.stringify({ i, body: `row ${i}` })).join("\n") + "\n");
+      const recipe = validateRecipe({ recipe: "bt", version: 1, questions: { f: { type: "noul", instructions: "?" } }, policy: { act: 0.8, flag: 0.5, fail: "open" } } as never);
+      // `budgetCalls` IS THE PARAMETER — my first version passed `budget`, an unknown property the
+      // verb IGNORED, so the assertion ran with no cap at all and passed vacuously. tsc caught it
+      // (`'budget' does not exist in type …`), which is exactly why the boundary is typed.
+      const db = openDb(indexPathFor("bt"));
+      const r = await decisionTree({ db, rowsPath: rows, recipe, concurrency: 2, budgetCalls: 3 });   // cap 3, 6 rows
+      db.close();
+      expect(r.decisions).toBe(6);                        // ALL rows attempted — no leaked claims
+      expect(r.bands.noop).toBe(6);                       // and every one is a MARKED degradation
+      expect(r.budgetStopped).toBe(false);                // the cap was NOT falsely exhausted
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
+      if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
+      if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

@@ -2205,3 +2205,25 @@ have cured its symptom is recorded as a fix for the DEFECT, not as a cure for th
 the seal's heavier conditions, and it now produces an HONEST label. The resume condition for
 diagnosing it is the next occurrence — which will say `JM_RESUME_INCOMPLETE` if the resume fell short,
 and that is a different investigation from a duplicate.
+
+## EN-083 — the budget claim leak, and TWO defects in my own fix for it
+**THE AUDIT'S FINDING (decision-tree.ts:121, HIGH) — confirmed.** `budget.claim()` increments
+`pending`, which `roomLeft()` counts, and only `settle()` releases it. **Both degraded-return sites**
+(the fail-open noop and the outer catch) returned WITHOUT settling, so every degraded row permanently
+consumed a slot: a run that hit a judge outage under `fail: "open"` leaked one claim per row and then
+stopped with a **false "budget exhausted"** — the degradation path silently became a budget failure.
+
+**FIX ATTEMPT 1 WAS WRONG, and the type system caught the FIRST half of it.** I wrote a `finally`
+that refunds an unsettled claim — correct in shape — but reached for `budget.settle(0, false)`, and
+`settle`'s `!cached` branch calls `spend(0)`, which **increments the call count**. So a FAILED call
+was billed as a spend, and a run of degraded rows exhausted a calls cap on calls that never happened.
+**Measured: `budgetCalls: 3` over 6 failing rows stopped at 3 with `budgetStopped=true`.** The refund
+belongs on the `cached` path — `settle(0, true)` is the release-without-spend branch, which is exactly
+what "this claim produced no measured call" means. **A refund is not a purchase.**
+**Verified:** `budgetCalls: 3` over 6 failing rows now yields `decisions=6 noop=6 budgetStopped=false`.
+
+**AND MY FIRST PIN FOR IT WAS VACUOUS.** The test passed `budget:` — a property the verb does not
+accept (the parameter is `budgetCalls`). It was IGNORED, so the assertion ran with no cap at all and
+passed for no reason. **tsc caught it** (`'budget' does not exist in type …`) — which is what a typed
+boundary is for — and the corrected test FAILED against the wrong refund and passes against the right
+one, so it now bites in both directions.
