@@ -2009,3 +2009,36 @@ is the evidence**, so the pin asserts the numbers rather than a proxy.
 `Bun.spawnSync` against a judge served **by the test process itself** — `spawnSync` blocks the event
 loop, so the child's request could never be answered and the run produced **empty output**. An
 awaited `Bun.spawn` leaves the loop free. (The same class as D-059: the instrument, not the product.)
+
+## EN-078 — the phantom class, still live on TWO SURFACES after two CLI fixes
+The README states the invariant and the CLI enforces it: **a run that refuses its input must not have
+touched the disk.** `openDb` CREATES, so wherever it runs before the input is validated, a refused
+request leaves an index behind — and a phantom index then answers every read at exit 0 with zero rows,
+making "no such index" indistinguishable from "no matches". **The CLI was fixed for this twice
+(D-028 on the read guard, D-054/D-055/D-056 on the verbs) and both SURFACES kept the old order.**
+
+**mcp:134 · HIGH · a REFUSED `jm_index` created an index.**
+```
+tools/call jm_index {"arguments":{}}   ->  "JM_ARGS: in required"   AND  all.sqlite on disk
+```
+`callTool` opened the store (lines 132-136) before each branch validated its arguments. *Fix:*
+validate every tool's required arguments BEFORE the open. **Verified:** the refusal names the
+argument and leaves **no artifact**.
+
+**serve:94 · HIGH · an unknown ROUTE created a store.**
+```
+GET /nonexistent  ->  404   AND  decisions.sqlite on disk
+```
+`isRead` was computed and the db opened, and only then did the router reject an unknown path — so
+any 404 a scanner produced left `decisions.sqlite` behind. *Fix:* the route and method are validated
+before the store is touched; `/health` and `/jobs` are answered above this block, so anything
+reaching it must be `/decide` or `/find` with POST. **Verified:** `/nonexistent` → 404 and
+`GET /decide` → 404 with **no artifact**, while `/health` and `/jobs` still answer 200.
+
+**Pinned:** `tests/audit-phantom-surfaces.test.ts` (2 cases) — each asserts the status code AND the
+absence of the artifact, because the original defect passed the first and failed the second.
+
+**THE COUNT, AND WHY IT MATTERS:** this invariant has now been repaired FOUR times — twice on the CLI
+verbs, once on the MCP dispatcher, once on the HTTP router. Each repair fixed the SITES it found, not
+the RULE, which is exactly why the fourth instance existed. **A rule enforced at N call sites is not
+enforced; it is remembered N times.**

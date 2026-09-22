@@ -91,6 +91,14 @@ export function startServer(opts: ServeOpts = {}) {
       }
 
       // ── the store-backed paths ──────────────────────────────────────────────────────────────
+      // ROUTE BEFORE STORE (audit serve:94). `openDb` CREATES, and it ran BEFORE the route was
+      // validated — so `GET /nonexistent` returned 404 AND left `decisions.sqlite` behind. MEASURED.
+      // /health and /jobs are answered above this block, so anything reaching here must be /decide or
+      // /find with POST; anything else is refused by name without touching the disk. The same
+      // invariant the CLI now enforces: a request that is REFUSED must not have created anything.
+      if (!(url.pathname === "/decide" || url.pathname === "/find") || req.method !== "POST") {
+        return Response.json({ error: "JM_ROUTE: unknown path" }, { status: 404 });
+      }
       const isRead = url.pathname === "/find" && req.method === "POST";
       let db: Database;
       try {

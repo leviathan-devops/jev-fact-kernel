@@ -126,6 +126,14 @@ export async function handle(req: JsonRpcRequest): Promise<Record<string, unknow
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
   const indexName = typeof args.index === "string" ? args.index : (name === "jm_decide" ? "decisions" : "all");
+  // ARGUMENTS BEFORE THE STORE (audit mcp:134). `openDb` CREATES, and it ran before each branch
+  // validated its arguments — so a REFUSED call still left an index behind: `jm_index` with no `in`
+  // created `all.sqlite` and then threw `JM_ARGS: in required`. MEASURED. The CLI's version of this
+  // invariant was fixed (D-054/D-055/D-056: "a run that refuses its input must not have touched the
+  // disk"); this surface kept the old order, which is exactly the failure the same-semantics claim
+  // (§18.8) exists to prevent.
+  if (name === "jm_index" && (typeof args.in !== "string" || args.in.length === 0)) throw new Error("JM_ARGS: in required");
+  if (name === "jm_find" && (typeof args.phrase !== "string" || args.phrase.length === 0)) throw new Error("JM_ARGS: phrase required");
   // SAME SEMANTICS AS THE CLI (D-028): a READ tool refuses a missing index, a WRITE tool creates
   // one. This surface used openDb() for everything, so `jm_query` on a typo'd index returned
   // `{"rows": [], "n": 0}` at exit 0 AND materialised a phantom index file - the D-009 defect,
