@@ -73,7 +73,10 @@ tok "client error -> 2 (typo'd index)" bash -c "$J query nosuchindex --fts x >/d
 tok "client error -> 2 (bad structure)" bash -c "$J extract gate --re x --structure tsv >/dev/null 2>&1; [ \$? -eq 2 ]"
 tok "client error -> 2 (typo'd job)" bash -c "$J report --job nosuchjob >/dev/null 2>&1; [ \$? -eq 2 ]"
 tok "budget stop -> 3" bash -c "$J index @gate --queued --job gc --budget-calls 5 >/dev/null 2>&1; [ \$? -eq 3 ]"
-tok "stdout is DATA (no cost line)" bash -c "$J query gate --fts tombstone 2>/dev/null | grep -qv 'cost='"
+# `grep -qv 'cost='` was VACUOUS: it succeeds as soon as ANY line lacks `cost=`, which is almost
+# always true — so a `cost=` line on stdout went undetected and the "data only" guarantee was not
+# checked at all. The assertion must be "NO line carries a cost line": `! grep -q`. Audit M-D.
+tok "stdout is DATA (no cost line)" bash -c "! $J query gate --fts tombstone 2>/dev/null | grep -q 'cost='"
 
 echo ""
 echo "═══ L4 — THE CONTAINER RIG (host parity half) ═══"

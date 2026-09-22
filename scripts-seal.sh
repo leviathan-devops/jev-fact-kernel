@@ -127,7 +127,12 @@ printf "  tests: %s files (live %s)\n" "$(find "$CP/tests" -name '*.ts' | wc -l)
 # deliberate addition (RUNTIME_SEAT, the P4 seat doc) is distinguishable from a nested copy.
 CANON11="CURRENT_STATE NEXT_STEPS DECISION_CHAIN EVIDENCE_STATE BUILD_STATE COMPACTION_SURVIVAL POST-COMPACTION_PROMPT CHANGELOG TASK_QUEUE RUNNING_BUILD_LOG RUNNING_DEBUG_LOG"
 missing=0; for n in $CANON11; do [ -f "$CP/context_management/$n.md" ] || { echo "  CANON MISSING: $n.md"; missing=1; }; done
-extras=$(find "$CP/context_management" -name '*.md' -printf '%f\n' | sed 's/\.md$//' | grep -vxF "$(echo $CANON11 | tr ' ' '\n')" | tr '\n' ' ')
+# `|| true` ON THE SELECTION. Under `set -o pipefail`, `grep -vxF` exits 1 when it selects NOTHING —
+# which is exactly the case where the canon holds precisely the 11 named docs — and pipefail carries
+# that 1 into the assignment, aborting the seal at the moment everything is correct. It has not fired
+# because RUNTIME_SEAT is always an extra; it would fire the first time the canon is exactly 11. The
+# selection is a REPORT, not a gate: an empty result is success. Found by the audit (M-F).
+extras=$(find "$CP/context_management" -name '*.md' -printf '%f\n' | sed 's/\.md$//' | { grep -vxF "$(echo $CANON11 | tr ' ' '\n')" || true; } | tr '\n' ' ')
 printf "  context_management: 11 canon %s%s\n" "$([ $missing -eq 0 ] && echo present || echo INCOMPLETE)" "$([ -n "$extras" ] && echo " + extras: $extras")"
 [ $missing -eq 0 ] || exit 1
 printf "  ship docs: %s/7\n" "$(for f in BUILD_REPORT.md DEBUG_LOG.md FAILURE_LOG.md TESTING_LOG.md THEATRICALITY_LOG.md VIOLATION_LOG.md AUDIT_SUMMARY.md; do [ -f "$CP/$f" ] && echo x; done | wc -l)"

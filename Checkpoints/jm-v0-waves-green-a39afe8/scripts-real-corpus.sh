@@ -16,6 +16,15 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 JM_HOME="${1:-/tmp/jm-real}"
+# THE DESTRUCTIVE PATH IS GUARDED. The next lines run `rm -rf "$JM_HOME"`, and JM_HOME comes straight
+# from $1 — so `./scripts-real-corpus.sh "$HOME"`, or a typo'd or relative path, silently destroyed an
+# arbitrary directory. The same class as the seal's H-1 finding, in a second script. A scratch store
+# is DISPOSABLE by construction, so the guard requires it to look like one: under /tmp, or carrying a
+# `jm` marker. Anything else is refused by name, before any deletion. Found by the audit (M-G).
+case "$JM_HOME" in
+  /tmp/*|/var/tmp/*|*jm-*|*jm_*) : ;;
+  *) echo "REFUSING: JM_HOME must be a disposable scratch path (under /tmp or containing 'jm'); got '$JM_HOME' — this script rm -rf's it" >&2; exit 1 ;;
+esac
 export JM_HOME
 OCDB="${OCDB_DIR:-$HOME/.local/share/opencode}"
 STORAGE="${SHADOW_DIR:-$HOME/.local/share/opencode/storage}"
