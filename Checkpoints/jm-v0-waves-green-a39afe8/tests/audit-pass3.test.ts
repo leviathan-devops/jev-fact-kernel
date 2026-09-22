@@ -862,3 +862,34 @@ describe("the judged verbs — a claim is released on EVERY exit, and the trend 
     }
   }, 30000);
 });
+
+describe("query.ts — a NUMERIC column with a non-numeric value must refuse, not match nothing", () => {
+  test("test_where_numeric_value_is_validated", () => {
+    // FOUND WHILE PROVING THE OPERATOR SKILL — by running the documented commands rather than reading
+    // them. `--where 'size>>>'` exited 0 with EMPTY output. The parser's greedy `(.+)` bound `">>"` as
+    // the VALUE, and the predicate became `f.size > '>>'` — and **SQLite orders TEXT ABOVE INTEGER, so
+    // that comparison is FALSE for every row.** An empty result at exit 0, indistinguishable from
+    // "no matches" — the same class as D-009/D-028/D-054, in a verb the earlier sweeps had called clean.
+    // Measured: `size > 0` -> 1 row · `size > '>>'` -> 0 rows · `size > '10 AND'` -> 0 rows.
+    const home = mkdtempSync(join(tmpdir(), "jm-wv-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "a.md"), "alpha");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      run("index", corpus, "--name", "w");
+      // EVERY malformed numeric form REFUSES BY NAME, at exit 2
+      for (const bad of ["size>>>", "size===", "size>10 AND", "mtime>>>"]) {
+        const r = run("query", "w", "--where", bad);
+        expect(r.exitCode).toBe(2);
+        expect(r.stderr.toString()).toContain("JM_WHERE_VALUE");
+      }
+      // a TEXT column with the same shape is NOT refused — the comparison is meaningful there
+      expect(run("query", "w", "--where", "path>>>").exitCode).toBe(0);
+      // and the ordinary numeric filter still works
+      expect(run("query", "w", "--where", "size>0").stdout.toString()).toContain("a.md");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});

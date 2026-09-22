@@ -9,6 +9,15 @@ const COLS = new Set(["size", "mtime", "kind", "state", "path", "sha256", "text_
 // word "undefined" into the SQL (the regex currently prevents it, but the guard was in the wrong
 // place). Checking membership and using `op` directly says what it means.
 const OPS = new Set([">=", "<=", "!=", ">", "<", "="]);
+// THE NUMERIC COLUMNS, and why the distinction is load-bearing (audit-by-probe, found while proving
+// the operator skill: `--where 'size>>>'` exited 0 with EMPTY output). The parser accepted `>>` as
+// the VALUE because `(.+)` is greedy, and then bound it as a STRING — producing `f.size > '>>'`.
+// **SQLite orders TEXT ABOVE INTEGER, so that comparison is FALSE for every row**, and the operator
+// gets an empty result at exit 0 that is indistinguishable from "no matches". Measured:
+//   `size > 0` -> 1 row · `size > '>>'` -> 0 rows · `size > '10 AND'` -> 0 rows
+// Same class as D-009/D-028/D-054: a malformed input answered as an empty success. A value for a
+// NUMERIC column must BE a number, or the query refuses by name.
+const NUMERIC_COLS: Record<string, true> = { size: true, mtime: true, text_indexed: true };
 
 /** Parse `col op value [AND col op value]` — whitelisted columns/ops only. */
 type Bind = string | number;
@@ -22,7 +31,14 @@ function parseWhere(expr: string): { sql: string; params: Bind[] } {
     if (!COLS.has(col)) throw new Error(`JM_WHERE_COLUMN: "${col}" is not queryable`);
     if (!OPS.has(op)) throw new Error(`JM_WHERE_OP: "${op}" is not a supported operator`);   // loud, never `undefined` in the SQL
     let val: Bind = rawVal.trim().replace(/^['"]|['"]$/g, "");
-    if (/^-?\d+(\.\d+)?$/.test(String(val))) val = Number(val);
+    const numeric = /^-?\d+(\.\d+)?$/.test(String(val));
+    if (numeric) val = Number(val);
+    // A NUMERIC COLUMN NEEDS A NUMERIC VALUE (see NUMERIC_COLS above). Without this, `size>>>`
+    // bound `">>"` as a string, and SQLite's TEXT-above-INTEGER ordering made the predicate FALSE
+    // for every row — an empty result at exit 0, indistinguishable from "no matches".
+    if (NUMERIC_COLS[col] === true && !numeric) {
+      throw new Error(`JM_WHERE_VALUE: "${col}" is numeric, so "${rawVal.trim()}" is not a comparable value`);
+    }
     clauses.push(`f.${col} ${op} ?`); params.push(val);
   }
   return { sql: clauses.join(" AND "), params };
