@@ -1,6 +1,6 @@
 # COMPACTION_SURVIVAL — JM (overwrite; state-at-a-glance + the operating laws + recovery)
 
-**TREE SHA: `ae350815221cd90c001f44b018f01942` (git 47db67d)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `2455901d7aed25991e9539fc2986ad85` (git e85489f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## 1. STATE AT A GLANCE (2026-09-21)
 
 ```

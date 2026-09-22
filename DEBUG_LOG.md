@@ -2042,3 +2042,47 @@ absence of the artifact, because the original defect passed the first and failed
 verbs, once on the MCP dispatcher, once on the HTTP router. Each repair fixed the SITES it found, not
 the RULE, which is exactly why the fourth instance existed. **A rule enforced at N call sites is not
 enforced; it is remembered N times.**
+
+## EN-079 — the src/judge subsystem's two defects, and a FALSE CLAIM I wrote about it
+**FIRST, THE CORRECTION.** The gate line I wrote last turn said *"leaving `src/judge/*` unreviewed in
+the scoped run"*. **That was FALSE**, and the artifacts refute it:
+
+```
+PASS 1   files_reviewed=107  selected=107   src/judge findings= 9
+PASS 2   files_reviewed= 54  selected= 54   src/judge findings=13
+```
+
+`files_reviewed` equals `selected` exactly in both passes; `src/judge/*` appears in a completed group
+(`Plan completed for group "src/calibrate.ts,src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,
+src/judge/policy.ts,src/judge/transport.ts"`) and each judge file was read 6–11 times. **I inferred
+"unreviewed" from a failure COUNT without reading the coverage, and wrote the inference as a
+measurement** — the exact class this build hunts. The gate line is corrected, and the failures the
+run actually reported are named: two `code_search` calls whose regex `git grep` cannot compile, and
+several `Memory compression failed: 400` from the lane's own compression endpoint.
+
+**THEN, THE SUBSYSTEM'S REAL DEFECTS — both guards that hold in the obvious case and fail in the
+less obvious one:**
+
+**transport:49 · HIGH · the oversized-payload cap was disableable by a typo.**
+`Number(process.env.JM_JUDGE_MAX_BODY ?? MAX_OUTBOUND_BYTES)` yields **NaN** for any non-numeric
+override — `JM_JUDGE_MAX_BODY=1mb` is the natural typo — and `bytes > NaN` is **ALWAYS FALSE**. The
+cap was silently DISABLED, and the oversized-payload hang it was written for came straight back.
+*Fix:* a non-finite or non-positive override is refused by name. **Verified:** `"1mb"` →
+`JM_JUDGE_MAX_BODY_INVALID`; `50` → the cap still enforces (`547 bytes exceeds the 50-byte cap`).
+
+**client.ts:61 · HIGH · MY OWN D-046 GUARD WAS BYPASSED ON EVERY CACHE REPLAY.**
+`cachePut` ran BEFORE `usageMissing` was computed, so a usage-less response WAS cached — and on any
+later identical `ask()` the cache-hit path returns **early** (`cached: true`) *without the flag*, so
+the fail-closed `JM_JUDGE_USAGE_MISSING` refusal added by D-046 evaporated on the second call.
+**The guard held on the first call and failed on the second** — the worst shape a guard can have,
+because a test that makes one call passes and a run that makes two does not. `ask` has **seven live
+callers** (every judged verb, plus the MCP and HTTP surfaces), so the blast radius was the whole
+judged path. *Fix:* an unmeasured response is not cached. **Verified:** two identical calls now make
+**2** judge calls and BOTH report `usageMissing: true`.
+
+**AND A THIRD FINDING — IN MY OWN NEW TEST, THE D-059 CLASS AGAIN.**
+The first version of `tests/audit-judge.test.ts` set `process.env.HOME` and restored only
+JM_HOME/JM_LEDGER/KEY/URL. The sandbox home (a DELETED temp dir by cleanup time) leaked into every
+later test, so the launcher tests — which read `$HOME/.bun/bin/bun` — began failing with **exit 127 =
+no bun found**, in a run where they pass alone. **Reproduced with two files, minutes after writing
+the rule.** The fix is in the test; the rule stands: restore EVERY variable you set.

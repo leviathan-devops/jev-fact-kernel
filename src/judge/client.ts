@@ -58,9 +58,16 @@ export class Judge {
 
     const key = this.requireKey();
     const resp = await callSystemOne(key, { state, model, questions });
-    cachePut(this.db, fp, "typesafe", resp.model, schemaVersion, fp, resp.answers);
     const tokens = resp.usage?.input_tokens;
     const usageMissing = typeof tokens !== "number" || !Number.isFinite(tokens);
+    // DO NOT CACHE AN UNMEASURED RESPONSE (audit client.ts:61). `cachePut` ran BEFORE `usageMissing`
+    // was computed, so a usage-less answer WAS cached — and on any later identical `ask()` the
+    // cache-hit path above returns EARLY (`cached: true`) without the flag, so the fail-closed
+    // `JM_JUDGE_USAGE_MISSING` refusal added by D-046 was **bypassed on every replay**. The guard
+    // held on the first call and evaporated on the second, which is the worst shape a guard can
+    // have: it works in the test that makes one call and fails in the run that makes two. A
+    // response whose cost cannot be measured is not cacheable state; it is re-asked each time.
+    if (!usageMissing) cachePut(this.db, fp, "typesafe", resp.model, schemaVersion, fp, resp.answers);
     const costUsd = usageMissing ? 0 : tokens * USD_PER_INPUT_TOKEN;
     return { answers: resp.answers, model: resp.model, cached: false, inputTokens: usageMissing ? 0 : tokens, costUsd, usageMissing, fingerprint: fp };
   }

@@ -804,8 +804,14 @@ ARTIFACT   artifacts/audit-2026-09-22-complete-attempt.json
 DISTINCT   119 after de-duplication: 1 critical · 9 high · 49 medium · 60 low
 ```
 
-**THE 1 FAILED ITEM IS `src/judge/*`** — one subsystem's deeper round still exceeded even the
-90-minute deadline. Everything else completed.
+**WHAT "1 OF 54 FAILED" MEANS — corrected the turn after it was written.** This line first said
+*"THE 1 FAILED ITEM IS `src/judge/*`"*. **That was FALSE**, and the artifacts refute it:
+`files_reviewed=54` equals `selected=54`, and `src/judge/*` appears in a completed group
+(`Plan completed for group "src/calibrate.ts,src/judge/cache.ts,src/judge/client.ts,src/judge/key.ts,
+src/judge/policy.ts,src/judge/transport.ts"`) with each judge file read 6–11 times and 13 findings
+produced. **Every selected file was reviewed.** The failure count is a per-item review ROUND, and the
+run's own log names the actual failures: two `code_search` calls whose regex `git grep` cannot compile,
+and several `Memory compression failed: 400 Bad Request` from the lane's own compression endpoint.
 
 **SIX MORE HIGH/CRITICAL FINDINGS, ALL CONFIRMED AND FIXED:**
 
@@ -827,17 +833,37 @@ against the reviewer.
 **ADJUDICATION TALLY: 16 high/critical findings confirmed and fixed (10 + 6), 1 refuted, 0 unproven.**
 
 **AUDIT GATE: BLOCKED.** Not FAIL — every high/critical finding in two full passes was adjudicated by
-probe, confirmed, fixed and pinned, with zero false positives surviving. Not PASS — **no run reaches
-`complete`**: the lane's deepest round exceeds even a 90-minute deadline on this host, leaving
-`src/judge/*` unreviewed in the scoped run and **~100 medium/low findings UNADJUDICATED**. A
-`partial` artifact cannot stand for a complete review.
+probe, confirmed, fixed and pinned, with zero false positives surviving. Not PASS — the tool's own
+status is `partial`, and a `partial` artifact cannot stand for a complete review.
+
+**A CORRECTION TO THIS LINE, made the turn after it was written.** It previously read *"leaving
+`src/judge/*` unreviewed in the scoped run"*. **That was FALSE.** Re-reading the artifacts:
 
 ```
-ADJUDICATED   16 high/critical — confirmed, fixed, pinned (see artifacts/audit-adjudication-ledger.md)
-REFUTED       1 (M-I: the read-only open does not mutate the store — mtime unchanged)
-OPEN          ~100 medium/low findings — named by file in the ledger
-UNREVIEWED    src/judge/* (the scoped run's 1 failed group) + the Checkpoints copies
-RESUME        a lane whose deepest round completes, or a per-subsystem scoped review
+PASS 1   files_reviewed=107  selected=107   comments=121   src/judge findings=9
+PASS 2   files_reviewed= 54  selected= 54   comments=120   src/judge findings=13
+```
+
+**Every selected file was reviewed in BOTH passes** — `files_reviewed` equals `selected` exactly — and
+`src/judge/*` is named in a `Plan completed for group "src/calibrate.ts,src/judge/cache.ts,
+src/judge/client.ts,src/judge/key.ts,src/judge/policy.ts,src/judge/transport.ts"` line, with each
+judge file read 6–11 times. The `"1 of 54 selected item(s) failed"` message is a per-item review ROUND
+failure, not an unreviewed file. **I inferred "unreviewed" from a failure count without reading the
+coverage, and wrote it as a claim.** The honest statement is the one below.
+
+**WHAT ACTUALLY FAILED in pass 2** (from the run's own log): two `code_search` tool calls
+(`git grep failed: exit status 128: fatal: -e option, '...(': missing closing parenthesis` — the MODEL
+emitted a regex `git grep` cannot compile) and several `Memory compression failed: 400 Bad Request`
+(the lane's own compression endpoint). Both are **lane tooling limits, not unreviewed code.**
+
+```
+ADJUDICATED   18 high/critical (10 pass 1 + 8 pass 2) — confirmed, fixed, pinned
+REFUTED        1 (M-I: the read-only open does not mutate the store — mtime unchanged)
+COVERAGE      BOTH passes reviewed EVERY selected file (107/107, 54/54)
+OPEN          ~100 medium/low findings — named by file in artifacts/audit-adjudication-ledger.md
+NOT CLAIMED   completeness: the tool's status is `partial` (per-item round failures, plus its own
+              memory-compression endpoint rejecting requests), so no run reaches `complete`
+RESUME        a lane whose per-item rounds all succeed; the medium/low set is the work queue
 ```
 
 **No ship-ready claim is made while this line reads BLOCKED.**

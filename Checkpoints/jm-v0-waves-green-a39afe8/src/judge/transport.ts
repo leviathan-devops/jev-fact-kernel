@@ -46,7 +46,16 @@ export async function callSystemOne(key: string, body: unknown, timeoutMs = 30_0
   }
   // REFUSE AN OVERSIZED PAYLOAD HERE, not at the far side: measured, a 4 MB body neither returned
   // nor errored (the abort below did not fire), so the caller saw nothing at all.
-  const cap = Number(process.env.JM_JUDGE_MAX_BODY ?? MAX_OUTBOUND_BYTES);
+  //
+  // THE OVERRIDE IS VALIDATED (audit transport:49). `Number(env ?? default)` yields **NaN** for any
+  // non-numeric value — `JM_JUDGE_MAX_BODY=1mb` is the natural typo — and `bytes > NaN` is ALWAYS
+  // FALSE, so the cap was silently DISABLED and the oversized-payload hang this guard exists to
+  // prevent came straight back. A guard whose override can switch it off with a typo is not a guard.
+  const rawCap = process.env.JM_JUDGE_MAX_BODY;
+  const cap = rawCap === undefined ? MAX_OUTBOUND_BYTES : Number(rawCap);
+  if (!Number.isFinite(cap) || cap <= 0) {
+    throw new Error(`JM_JUDGE_MAX_BODY_INVALID: "${rawCap}" is not a positive number (bytes) — refusing to run with the oversized-payload cap disabled`);
+  }
   const bytes = judgeBodyBytes(body);
   if (bytes > cap) {
     throw new JudgePayloadTooLarge(`JM_JUDGE_PAYLOAD_TOO_LARGE: ${bytes} bytes exceeds the ${cap}-byte cap (JM_JUDGE_MAX_BODY overrides) — the state is too large to judge; trim the row or the excerpt`);
