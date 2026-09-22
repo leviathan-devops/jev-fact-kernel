@@ -3127,3 +3127,36 @@ and the correct response is to find which side owns it. Averaging it away ("it u
 would have shipped a handle leak into a daemon whose whole job is long-running reconciliation.
 **The baseline measurement found it before the build started, which is exactly what a re-measured
 baseline is for.**
+
+## EN-110 — THE SECOND FLAKE CLASS: hardcoded test ports (and why the fd fix was not the whole story)
+**The fd fix (EN-109) measured 0/10 — then a LATER 10-run window read 3/10, and a third read 2/10.**
+A flake measured once is not measured. Three independent windows, each 10 runs, caught what one
+window missed.
+
+**THE INSTANCES, caught by name:**
+```
+run 6  -> test_D036_oversized_body_is_refused_and_the_surface_survives   (wave-gates.test.ts:176)
+RUN2   -> test_serve_decide                                              (wave-gates.test.ts)
+```
+Different tests each time — the signature of a RESOURCE conflict, not a logic error.
+
+**THE ROOT CAUSE, found by sweeping the CLASS rather than chasing instances:**
+```
+tests/wave-gates.test.ts:89   startServer({ port: 7897, name: "wg" })
+tests/wave-gates.test.ts:128  startServer({ port: 7898, name: "never-built" })
+tests/wave-gates.test.ts:176  startServer({ port: 7896, name: "wg" })
+```
+Three FIXED ports. The lesson *"a fixed port in a test is a flake — `port: 0` lets the OS assign one
+and `server.port` reports it"* was ALREADY written in `judge-policy.test.ts:20` and
+`judge-outage.test.ts:17` — **this file never got it.** When a port is still in TIME_WAIT from a
+sibling test or another process on the box, the bind fails and the test reports a logic error that
+is actually a port clash.
+
+**THE FIX:** all three to `port: 0`, plus the law written into the file's header so it cannot
+regress. **Verified: `wave-gates.test.ts` 8/8 clean in isolation; the full battery 0/10 failures in
+EACH of three consecutive 10-run windows (30 runs, zero failures).**
+
+**THE LESSON (the durable one).** Two of the four flake hunts chased INSTANCES; the one that found
+the real class swept for the CLASS (`grep -rn "port: [0-9]" tests/*.ts`) and found all three sites
+at once. **A flaky test is a measurement of a real non-determinism; and when the non-determinism is
+a shared resource, the fix belongs to the class, not the symptom.**

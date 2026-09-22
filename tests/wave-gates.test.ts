@@ -12,6 +12,11 @@ import { openDb, indexPathFor, saveTargets, indexExists } from "../src/store/db.
 import { ingestAll } from "../src/targets.ts";
 import { filterIndex } from "../src/verbs/filter.ts";
 import { calibrate, recordCalibration, recordTruth } from "../src/calibrate.ts";
+// A FIXED PORT IN A TEST IS A FLAKE — `port: 0` lets the OS assign one and `server.port`
+// reports it (the same law `judge-policy.test.ts:20` and `judge-outage.test.ts:17` already carry).
+// FOUND BY MEASURING THE BASELINE: three hardcoded ports (7896/7897/7898) in THIS file were the
+// residual flake — ~1 in 10 full-battery runs failed when a port was still in TIME_WAIT from a
+// sibling test or another process, and the failure looked like a logic error, not a port clash.
 import { startServer } from "../src/serve.ts";
 
 /** A canned judge answering ONE question key with the given probabilities, one file per call.
@@ -86,7 +91,7 @@ describe("W6 test_serve_decide", () => {
     const { sb, db } = await seeded(1);
     const mock = mockNoul([0.97], "flag");   // the /decide body below asks `flag`
     process.env.JM_MOCK_DIR = mock;
-    const srv = startServer({ port: 7897, name: "wg" });
+    const srv = startServer({ port: 0, name: "wg" });
     try {
       const health = await fetch(`http://127.0.0.1:${srv.port}/health`);
       expect(health.status).toBe(200);
@@ -125,7 +130,7 @@ describe("W6 test_serve_decide", () => {
     try {
       process.env.JM_HOME = sb.home;
       saveTargets([]);
-      const srv = startServer({ port: 7898, name: "never-built" });
+      const srv = startServer({ port: 0, name: "never-built" });
       try {
         const res = await fetch(`http://127.0.0.1:${srv.port}/health`);
         expect(res.status).toBe(200);
@@ -173,7 +178,7 @@ describe("W7 test_calibrate_row", () => {
     // BLOCKED EVERYTHING — /health and /jobs stopped answering while it was in flight. A watchdog
     // would have judged the service dead. The cap refuses it in milliseconds and the surface lives.
     const { sb, db } = await seeded(1);
-    const srv = startServer({ port: 7896, name: "wg" });
+    const srv = startServer({ port: 0, name: "wg" });
     try {
       const big = JSON.stringify({ state: { pad: "y".repeat(2_000_000) }, questions: { m: { type: "noul", instructions: "?" } } });
       const res = await fetch(`http://127.0.0.1:${srv.port}/decide`, { method: "POST", body: big });
