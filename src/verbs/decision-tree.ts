@@ -43,7 +43,22 @@ export function validateRecipe(r: unknown): Recipe {
   if (o.policy !== undefined) {
     const p = o.policy as Partial<Policy>;
     for (const [k, v] of Object.entries(p)) {
-      if (k === "fail") continue;
+      if (k === "fail") {
+        // `fail` WAS THE ONE POLICY FIELD EXEMPTED FROM VALIDATION, and it is a raw string from a
+        // client-supplied recipe file. With a typo (`"Closed"`, `"closed "`, `"opne"`) NEITHER of
+        // the run's polarity checks matched, so it silently degraded to FAIL-OPEN — the opposite of
+        // the documented default, on the one field whose entire job is to decide what a failure
+        // MEANS. Measured before the fix: fail="closed" refused the run; fail="Closed" COMPLETED it
+        // with a marked row. In a decision engine that is the difference between an outage
+        // producing a refusal and an outage producing decisions. Found by the audit (H-5).
+        if (v !== "open" && v !== "closed") {
+          throw new Error(
+            `JM_RECIPE_INVALID: policy.fail must be exactly "open" or "closed" (got ${JSON.stringify(v)}) — ` +
+            `a value outside that set silently degrades the run to FAIL-OPEN`,
+          );
+        }
+        continue;
+      }
       if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) throw new Error(`JM_RECIPE_INVALID: policy.${k} must be a number in [0,1]`);
     }
     if (p.act !== undefined && p.flag !== undefined && p.flag > p.act) throw new Error("JM_RECIPE_INVALID: policy.flag must not exceed policy.act");

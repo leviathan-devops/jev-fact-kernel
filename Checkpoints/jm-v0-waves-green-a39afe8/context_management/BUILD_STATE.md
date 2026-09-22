@@ -1,45 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `2e46897a85f0f51811492ad9c5af0623` (git 6bb880a)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+**TREE SHA: `a432303a88d9a3cad724ae20ca68b966` (git 47b4d7c)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -61,7 +22,7 @@ sealed copy does not belong here.
 | `src/adapters/jsonl.ts` | 38 |
 | `src/adapters/sqlite.ts` | 62 |
 | `src/calibrate.ts` | 61 |
-| `src/cli.ts` | 600 |
+| `src/cli.ts` | 604 |
 | `src/job/indexJob.ts` | 40 |
 | `src/job/queue.ts` | 83 |
 | `src/job/run.ts` | 71 |
@@ -91,7 +52,7 @@ sealed copy does not belong here.
 | `src/verbs/report.ts` | 192 |
 | `src/verbs/route.ts` | 150 |
 | `src/verbs/scan.ts` | 93 |
-| `src/watch.ts` | 90 |
+| `src/watch.ts` | 105 |
 
 ## THE TEST INVENTORY (tests/, 37 files)
 
@@ -132,7 +93,7 @@ sealed copy does not belong here.
 | `tests/resume.test.ts` | 100 |
 | `tests/retrieve.test.ts` | 192 |
 | `tests/store.test.ts` | 37 |
-| `tests/watch.test.ts` | 107 |
+| `tests/watch.test.ts` | 133 |
 | `tests/wave-gates.test.ts` | 192 |
 
 ## WHAT EACH MODULE OWNS (one line each, so a reader knows where to look)

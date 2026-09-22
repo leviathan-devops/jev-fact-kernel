@@ -6,6 +6,15 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 CP="${1:-Checkpoints/jm-v0-waves-green-a39afe8}"
+# THE DESTRUCTIVE PATH IS GUARDED, and the guard is a NAMED REFUSAL, not a warning. Step 1 below
+# runs `rm -rf "$CP/$d"` for src/tests/context_management/artifacts/recipes/packages, so a caller who
+# passes a path resolving to the LIVE TREE (`./scripts-seal.sh .`, `..`, `/`) would delete the source
+# tree and then fail at the copy, with `set -e` aborting and the tree already gone. Validating only
+# `[ -d "$CP" ]` accepted every one of those. Found by the audit (H-1).
+case "$CP" in
+  Checkpoints/*) : ;;
+  *) echo "REFUSING: the seal writes only under Checkpoints/ (got '$CP'); it removes each subtree before copying it" >&2; exit 1 ;;
+esac
 [ -d "$CP" ] || { echo "no such checkpoint: $CP" >&2; exit 1; }
 
 # 1. trees: remove then copy — never copy INTO a surviving directory
@@ -43,8 +52,16 @@ for f in sorted(root.glob("*.md")):
     if "TREE SHA:" not in s:
         continue
     s = re.sub(r"\*\*TREE SHA: .*\n", "", s)
-    parts = s.split("\n")
-    out = [parts[0], "", line] + parts[1:]
+    # IDEMPOTENT INSERTION. The old form was `[parts[0], "", line] + parts[1:]`, which re-emitted the
+    # doc's ORIGINAL blank line 2 as well as the new one, so every run added a blank between the TREE
+    # SHA line and the body: the script was documented as idempotent and was not. It is visible in the
+    # tree — CURRENT_STATE.md had accumulated 42 leading blanks and NEXT_STEPS.md 43. Strip EVERY
+    # leading blank, then insert exactly one. Found by the audit (H-4).
+    lines = s.split("\n")
+    body = lines[1:]
+    while body and body[0].strip() == "":
+        body.pop(0)
+    out = [lines[0], "", line] + body
     f.write_text("\n".join(out), encoding="utf-8")
     n += 1
 print(f"  canon docs re-synced to {sha}: {n}")

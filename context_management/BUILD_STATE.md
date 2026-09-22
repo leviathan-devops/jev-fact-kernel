@@ -1,46 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `a432303a88d9a3cad724ae20ca68b966` (git df904c9)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+**TREE SHA: `c6fa375a6362820914ff842f80c5e515` (git 47b4d7c)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -60,7 +20,7 @@ sealed copy does not belong here.
 | file | lines |
 |------|-------|
 | `src/adapters/jsonl.ts` | 38 |
-| `src/adapters/sqlite.ts` | 62 |
+| `src/adapters/sqlite.ts` | 75 |
 | `src/calibrate.ts` | 61 |
 | `src/cli.ts` | 604 |
 | `src/job/indexJob.ts` | 40 |
@@ -81,7 +41,7 @@ sealed copy does not belong here.
 | `src/store/schema.ts` | 69 |
 | `src/targets.ts` | 180 |
 | `src/verbs/cluster.ts` | 93 |
-| `src/verbs/decision-tree.ts` | 158 |
+| `src/verbs/decision-tree.ts` | 173 |
 | `src/verbs/evaluate.ts` | 141 |
 | `src/verbs/excerpt.ts` | 54 |
 | `src/verbs/extract.ts` | 88 |
@@ -94,7 +54,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 105 |
 
-## THE TEST INVENTORY (tests/, 37 files)
+## THE TEST INVENTORY (tests/, 38 files)
 
 | file | lines |
 |------|-------|
@@ -102,12 +62,13 @@ sealed copy does not belong here.
 | `tests/adversarial.test.ts` | 101 |
 | `tests/adversarial2.test.ts` | 230 |
 | `tests/adversarial3.test.ts` | 242 |
+| `tests/audit-findings.test.ts` | 56 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |
 | `tests/calibrate-unknown.test.ts` | 66 |
 | `tests/cli-contract.test.ts` | 153 |
 | `tests/concurrency.test.ts` | 95 |
-| `tests/container/harness.ts` | 329 |
+| `tests/container/harness.ts` | 347 |
 | `tests/decide.test.ts` | 209 |
 | `tests/decision.test.ts` | 112 |
 | `tests/find-excerpt.test.ts` | 91 |

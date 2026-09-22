@@ -117,7 +117,12 @@ async function T4(): Promise<void> {
   let msg = "";
   try { await decisionTree({ db, rowsPath: rows, recipe, concurrency: 1 }); }
   catch (e) { exit = 2; msg = String(e); }
-  process.env.TYPESAFE_API_KEY = savedKey; process.env.HOME = savedHome;
+  // RESTORE BY DELETE WHEN IT WAS UNSET. `process.env.X = undefined` stores the literal string
+  // "undefined", and `resolveKey()` treats any non-empty trimmed value as a present key — so this
+  // line handed T5–T10 a bogus key and silently defeated every keyless expectation downstream. A
+  // rig that runs keyless must be able to PROVE it is keyless. Found by the audit (H-6).
+  if (savedKey === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = savedKey;
+  if (savedHome === undefined) delete process.env.HOME; else process.env.HOME = savedHome;
   const written = (db.query("SELECT COUNT(*) AS n FROM decisions").get() as { n: number }).n;
   db.close();
   rmSync(home, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true });
@@ -251,7 +256,12 @@ async function T10(): Promise<void> {
     const r = Bun.spawnSync({
       cmd: [launcher], stdin: Buffer.from(lines.join("\n") + "\n"),
       cwd: "/",                                   // THE POINT: a foreign working directory
-      env: { ...process.env, JM_HOME: home, HOME: home, PATH: process.env.PATH ?? "", JM_JUDGE_KEY: "" },
+      // TYPESAFE_API_KEY IS THE KEY ENV VAR (`src/judge/key.ts`). The first draft blanked
+      // `JM_JUDGE_KEY`, which grep shows is read NOWHERE in src/ — so a real key from the host
+      // environment (or the "undefined" leaked by T4) was inherited by the child and the keyless
+      // assertion could pass for the wrong reason. HOME is redirected too, so the key FILE cannot
+      // resolve either: "no key" has to mean NO KEY. Found by the audit (H-7).
+      env: { ...process.env, JM_HOME: home, HOME: home, PATH: process.env.PATH ?? "", TYPESAFE_API_KEY: "" },
       timeout: 20000,
     });
     return r.stdout.toString();
@@ -295,9 +305,17 @@ async function T10(): Promise<void> {
   const gotRow = q.n === 1 && q.text.includes("a.md");
 
   // (c) THE NEGATIVE HALF: no key -> a NAMED refusal, never an empty success
-  const denied = call([IN, NOTE, '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"jm_find","arguments":{"index":"ct8","query":"notes about packaging"}}}']);
+  // THE ARGUMENT IS `phrase`, WHICH IS WHAT `jm_find` READS (`src/mcp.ts`: `const phrase = args.phrase`).
+  // The first draft sent `query`, so the call threw `JM_ARGS: phrase required` BEFORE any key
+  // resolution — and because that arrives as `isError: true`, the assertion below passed on it. The
+  // angle proved a missing argument, not a missing key: the vacuous pass this whole rig exists to
+  // catch, inside the rig. Found by the audit (H-8).
+  const denied = call([IN, NOTE, '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"jm_find","arguments":{"index":"ct8","phrase":"notes about packaging"}}}']);
   const d = toolPayload(denied, 4);
-  const namedRefusal = (d.isError === true || /JM_JUDGE|JM_KEY|missing key|no key/i.test(d.text)) && d.n !== 0;
+  // AND THE REFUSAL MUST NAME THE KEY. `isError` alone is not evidence of a KEY refusal — any error
+  // satisfies it. This is the same discipline the session applies everywhere else: the assertion
+  // names the thing it is testing.
+  const namedRefusal = d.isError === true && /JEV_NO_KEY|TYPESAFE_API_KEY/i.test(d.text);
 
   rmSync(home, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true });
   const ok = four && gotRow && namedRefusal;
