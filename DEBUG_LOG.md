@@ -3199,3 +3199,15 @@ green that means nothing.
 **THE LESSON.** Three flakes, three different discriminators. "It usually passes" would have hidden
 all three, and the third one — env leakage between concurrent test files — is the class that makes
 a whole suite's green untrustworthy rather than one test's.
+
+## EN-111 (verified) — the env-race fix holds: 0/20 with `concurrency = 1`
+The measurement, ONE loop, no contention (the duplicate jobs cancelled — F-22):
+```
+run1..run20  PASS   ->  DONE: 0/20 failures
+```
+Wall clock 29s -> ~44s. The three flake classes and their discriminators, complete:
+| class | found by | fixed |
+|---|---|---|
+| an fd released on a later tick | intermittent IN ISOLATION | `jsonl.ts:41` awaits 'close' |
+| a fixed port in TIME_WAIT | the failing test CHANGED between windows | `port: 0` x3 |
+| `process.env` raced between files | passed 0/20 ALONE, failed in the SUITE | `bunfig.toml` concurrency = 1 |
