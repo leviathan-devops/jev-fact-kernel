@@ -16,11 +16,17 @@ export async function* streamJsonl(path: string, opts: { maxLineBytes?: number; 
   // this generator, so an index run over many sources accumulates handles.
   const stream = createReadStream(path, { encoding: "utf8" });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
-  let n = 0;
+  let physical = 0;      // the physical line NUMBER, which the yielded row reports
+  let yielded = 0;       // the ROW count, which `limit` bounds
   try {
     for await (const raw of rl) {
-      if (n >= limit) break;
-      n++;
+      // `limit` BOUNDS ROWS, NOT PHYSICAL LINES (audit jsonl.ts:18). The counter was incremented
+      // BEFORE the blank-line skip, so a file with blank lines returned fewer records than asked —
+      // MEASURED: a file with a 5-blank-line prefix and two records, read with `limit: 2`, yielded
+      // **ZERO** rows, because the blanks consumed the budget. And it disagreed with `streamJson`,
+      // where `limit` IS a row count, while `src/targets.ts` passes the SAME `{ limit }` to both.
+      physical++;
+      if (yielded >= limit) break;
       const line = raw;                        // PARSE THE WHOLE LINE, THEN BOUND THE STORED TEXT.
       if (line.trim().length === 0) continue;
       // Truncating BEFORE the parse turned every VALID line wider than `maxLine` into invalid JSON,
@@ -29,7 +35,8 @@ export async function* streamJsonl(path: string, opts: { maxLineBytes?: number; 
       // valid 70,038-byte line became `{"__malformed":true,...}`. Found by the audit (M-A).
       let value: unknown = null;
       try { value = JSON.parse(line); } catch { value = { __malformed: true, raw: line.slice(0, 200) }; }
-      yield { line: n, text: typeof value === "string" ? value.slice(0, maxLine) : JSON.stringify(value).slice(0, maxLine), value };
+      yielded++;
+      yield { line: physical, text: typeof value === "string" ? value.slice(0, maxLine) : JSON.stringify(value).slice(0, maxLine), value };
     }
   } finally { rl.close(); stream.destroy(); }
 }

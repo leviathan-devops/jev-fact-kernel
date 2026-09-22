@@ -2380,3 +2380,20 @@ resource released on the happy path and not on the other one.** A store closed i
 (decision-tree.ts:121), a stream closed when fully consumed but not when abandoned (jsonl.ts:11).
 Each was invisible to a test that took the happy path, and each is the reason the phrase "the happy
 path is the LAST confirmation" exists in this build's contract.
+
+## EN-090 — `limit` bounded physical lines, so a blank prefix produced ZERO rows
+**jsonl.ts:18 · LOW-CONFIRMED, and the impact was larger than "low".**
+The counter was incremented BEFORE the blank-line skip, so `limit` bounded *physical lines* rather
+than *yielded rows*. **MEASURED:** a file with a five-blank-line prefix and three records, read with
+`limit: 2`, yielded **ZERO rows** — the blanks consumed the whole budget. A leading blank run yields
+nothing at any small limit. And it **disagreed with `streamJson`**, where `limit` IS a row count,
+while `src/targets.ts` passes the SAME `{ limit }` to both adapters — so one option meant two things
+on two code paths. *Fix:* two counters — `physical` (the line number, which the row reports) and
+`yielded` (the row count, which `limit` bounds). **Verified:** `limit: 2` → 2 rows, `limit: 5` → 3
+rows (all there are), and the physical line numbers stay honest at `[6,7,8]` past the blanks.
+
+**WHY A "LOW" FINDING MATTERED:** the severity was low because the failure is small in the common
+case — a corpus of JSONL files with no leading blanks behaves identically. The failure is NOT small
+in the case that matters: `--limit` is how an operator bounds a sample, and a file whose first blank
+line appears before its data silently returns fewer rows than asked, or none. **Severity is a claim
+about frequency, not about whether the code does what it says** — and this one did not.

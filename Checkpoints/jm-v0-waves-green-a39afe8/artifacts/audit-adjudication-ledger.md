@@ -140,3 +140,28 @@ Three from the densest file (`src/store/schema.ts`, 6 findings) were settled as 
 **THE REMAINING ~90 medium/low findings are OPEN.** They are listed by file in PART 2. None is
 claimed clean, and none is dismissed: the ten highs all confirmed, so the prior is that these are
 real too.
+
+## PART 7 — THE MEDIUM TIER, ADJUDICATED (the third pass's 57 mediums, worked in order)
+
+Each finding is a hypothesis until a probe settles it. Tally so far: **8 confirmed and fixed, 1
+measured NARROWER than reported, 0 refuted outright.**
+
+| finding | verdict | the measured mechanism |
+|---------|---------|------------------------|
+| `job/queue.ts:22` | **CONFIRMED** | a re-enqueued FAILED row adopted its payload and stayed `state='failed'`, and `claim()` selects only `pending` — so **the retry silently never ran** while reporting the success-shaped `updated: 1`. Measured: claim → 0 rows |
+| `job/store.ts:9` | **CONFIRMED, wider than reported** | the audit named the collision (`a/b` and `a b` → `a_b`); the probe found the EMPTY and `.` cases resolve to the **shared jobs root** itself, putting every job's `queue.sqlite` in ONE directory. Measured after the fix: **zero** ids resolve to the root across ten inputs |
+| `jsonl.ts:11` | **CONFIRMED** | `rl.close()` relinquishes the interface but does not destroy the stream, so an early abandon leaked the handle. Measured: **40 abandoned generators → 40 open fds**, exactly 1:1. After: delta=**0** |
+| `judge/cache.ts:21` | **CONFIRMED (marker, not leak)** | `sk-`+40 hex matches BOTH patterns, so hex-first won and the marker read `sk-[hex]`. The body was still erased — a MARKER defect, fixed because a redactor saying `[hex]` about a token misreports what it found |
+| `cli.ts:383/423` | **CONFIRMED, narrow** | `scan` and `cluster` returned from `catch` without `db.close()`, unlike every sibling. Bounded: the CLI exits, so the impact is one handle per failed invocation |
+| `cli.ts:504` | **NARROWER than reported** | real defect (the store handed to `jobReport` is never closed by anyone), but the audit's implication of a per-request server leak is wrong: `jobReport` is reached only from `main`'s `report --job` branch |
+| `calibrate.ts:44` | **OPEN** | inline `0.5` floor and `0.1` margin with no stated derivation — naming them without a measurement for the right values would be cosmetic |
+
+**THE SHAPE SHARED BY THREE OF THEM:** a resource released on the happy path and not on the other
+one — a store closed in `try` but not `catch`; a budget claim settled on success but not on
+degradation; a stream closed on completion but not on abandonment. Each was invisible to a test that
+took the happy path, which is why the contract says *the happy path is the LAST confirmation*.
+
+**AND ONE OF MY OWN TESTS WAS WRONG ABOUT THE DESIGN** (`cache.ts:21`'s pin): I asserted two
+different secrets must hash apart, and they must **not** — erasing a secret's body from the key is
+the PRIVACY property (a low-entropy secret would be brute-forceable out of a bare sha256). The failure
+made the distinction visible, and the corrected pin asserts both sides.

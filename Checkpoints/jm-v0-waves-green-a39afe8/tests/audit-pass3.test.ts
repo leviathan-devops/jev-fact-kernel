@@ -324,3 +324,30 @@ describe("jsonl.ts:11 — an abandoned stream must not leak its file handle", ()
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("jsonl.ts:18 — `limit` bounds ROWS, not physical lines", () => {
+  test("test_jsonl_limit_counts_rows_not_blank_lines", async () => {
+    // MEASURED BEFORE THE FIX: the counter incremented BEFORE the blank-line skip, so a file with a
+    // five-blank-line prefix and two records, read with `limit: 2`, yielded **ZERO** rows — the
+    // blanks consumed the budget. And it disagreed with `streamJson`, where `limit` IS a row count,
+    // while `src/targets.ts` passes the SAME `{ limit }` to both.
+    const home = mkdtempSync(join(tmpdir(), "jm-jlim-"));
+    const f = join(home, "lead.jsonl");
+    writeFileSync(f, "\n\n\n\n\n" + JSON.stringify({ i: 1 }) + "\n" + JSON.stringify({ i: 2 }) + "\n" + JSON.stringify({ i: 3 }) + "\n");
+    try {
+      const { streamJsonl } = await import("../src/adapters/jsonl");
+      const take = async (limit?: number) => {
+        const rows: unknown[] = [];
+        const lines: number[] = [];
+        for await (const r of streamJsonl(f, limit === undefined ? {} : { limit })) { rows.push(r.value); lines.push(r.line); }
+        return { rows, lines };
+      };
+      const two = await take(2);
+      expect(two.rows.length).toBe(2);                       // the budget is ROWS
+      expect(two.rows).toEqual([{ i: 1 }, { i: 2 }]);
+      const all = await take();
+      expect(all.rows.length).toBe(3);                       // everything past the blanks
+      expect(all.lines).toEqual([6, 7, 8]);                  // and the physical line NUMBERS stay honest
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
