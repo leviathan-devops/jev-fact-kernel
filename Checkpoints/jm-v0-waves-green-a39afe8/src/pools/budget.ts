@@ -7,7 +7,17 @@ export class Budget {
   private pending = 0;   // in-flight claims: counted by roomLeft(), settled by settle()
 
   constructor(private caps: { calls?: number; usd?: number } = {}) {
+    // THE KEYS ARE VALIDATED, NOT JUST THE VALUES (audit budget.ts:10). The loop below checked
+    // `Number.isFinite(v)` and threw on a bad VALUE — while an unknown KEY was accepted in silence.
+    // MEASURED: `new Budget({ call: 5 })` (the natural typo for `calls`) produced `roomLeft: true`
+    // with `caps: {call: 5}` — **the cap did nothing, and nothing said so**. A budget is the guard
+    // that stops a runaway loop from spending; a guard that a typo can switch off is not a guard.
+    // Same class as H-5 (`policy.fail` typo -> fail-OPEN) and the body-cap override.
+    const KNOWN = ["calls", "usd"];
     for (const [k, v] of Object.entries(caps)) {
+      if (!KNOWN.includes(k)) {
+        throw new Error(`JM_BUDGET_INVALID: unknown cap "${k}" (known: ${KNOWN.join(", ")}) — a misspelled cap would silently not apply`);
+      }
       if (v === undefined) continue;
       if (!Number.isFinite(v) || v < 0) throw new Error(`JM_BUDGET_INVALID: ${k}=${v} (must be a finite number >= 0)`);
     }

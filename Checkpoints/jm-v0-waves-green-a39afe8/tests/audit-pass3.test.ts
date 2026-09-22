@@ -537,3 +537,51 @@ describe("query.ts — the FTS chain must reach CHUNKED text and a bare identifi
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("budget.ts:10 — a misspelled CAP must not silently not apply", () => {
+  test("test_unknown_budget_key_is_refused", async () => {
+    // MEASURED BEFORE THE FIX: the constructor validated every cap's VALUE and no cap's KEY, so
+    // `new Budget({ call: 5 })` — the natural typo for `calls` — was accepted and produced
+    // `roomLeft: true` with `caps: {call: 5}`. **The cap did nothing, and nothing said so.** A budget
+    // is the guard that stops a runaway loop from spending; a guard a typo can switch off is not a
+    // guard. Same class as H-5 (`policy.fail` typo -> fail-OPEN) and the body-cap override.
+    const { Budget } = await import("../src/pools/budget");
+    expect(() => new Budget({ call: 5 } as never)).toThrow(/JM_BUDGET_INVALID: unknown cap "call"/);
+    expect(() => new Budget({ calls: 2, tokenz: 9 } as never)).toThrow(/unknown cap "tokenz"/);
+    // the real dimensions still work, and an empty cap set is legitimate (no cap)
+    expect(new Budget({ calls: 5 }).roomLeft()).toBe(true);
+    expect(new Budget({ usd: 0.5 }).roomLeft()).toBe(true);
+    expect(new Budget({}).roomLeft()).toBe(true);
+    // and a bad VALUE is still refused, as before
+    expect(() => new Budget({ calls: -1 })).toThrow(/JM_BUDGET_INVALID/);
+  });
+});
+
+describe("store/db.ts:79 — a VALID JSON file that is not a registry is corrupt", () => {
+  test("test_registry_shape_is_validated_and_written_atomically", () => {
+    // MEASURED BEFORE THE FIX: `JSON.parse(...) as Target[]` cast the result straight through, so
+    // `{}`, `null` and `"x"` — all valid JSON — sailed past and the failure surfaced far away as
+    // `undefined is not a function` on `.find()`/`.filter()`. A file whose SHAPE is wrong is as
+    // corrupt as one whose syntax is, and it is now named the same way.
+    const home = mkdtempSync(join(tmpdir(), "jm-reg-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { loadTargets, saveTargets, targetsPath } = require("../src/store/db") as typeof import("../src/store/db");
+      const p = targetsPath();
+      for (const bad of ["{}", "null", '"x"', '[{"name":"ok"}]', '[{"name":"a","kind":"fs"}]']) {
+        writeFileSync(p, bad);
+        expect(() => loadTargets()).toThrow(/JM_TARGETS_CORRUPT/);
+      }
+      // a well-formed registry round-trips, and the write leaves no temp file behind
+      saveTargets([{ name: "t1", kind: "fs", root: "/tmp" }] as never);
+      expect(loadTargets().length).toBe(1);
+      const strays = readdirSync(home).filter((f) => f.includes(".tmp-"));
+      expect(strays).toEqual([]);                    // write-then-rename cleans up after itself
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

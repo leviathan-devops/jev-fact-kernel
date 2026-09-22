@@ -2594,3 +2594,37 @@ The file that was completely invisible two turns ago is now the top hit.
 **AND THE DELIVERABLE IT PRODUCED:** `artifacts/GI_FAILURE_CORPUS.md` (227 lines) — 7 enforcement
 firings verbatim, all 43 operator messages, a 7-pattern detector table, and analysis — built **by the
 tool**, which is the operator's stated requirement demonstrated end to end.
+
+## EN-096 — the MEDIUM tier, continued: two more guards that a typo could switch off
+Working the 113 unadjudicated mediums in the densest files. Both of these are the class this build has
+now met five times: **a guard whose off-switch exists.**
+
+**budget.ts:10 · MEDIUM · a misspelled CAP was accepted and did nothing.**
+The constructor validated every cap's **value** and no cap's **key**.
+```
+MEASURED: new Budget({ call: 5 })   ->  caps: {call: 5}  roomLeft: true
+                                      ^ the typo for `calls`: the cap silently does NOT apply
+          new Budget({ calls: 2, tokenz: 9 })  ->  accepted, both stored, only `calls` enforced
+```
+A budget is the guard that stops a runaway loop from spending. *Fix:* unknown keys are refused by
+name. **Verified:** `{call:5}` → `JM_BUDGET_INVALID: unknown cap "call" (known: calls, usd)`;
+`{calls:5}`, `{usd:0.5}`, `{}` still accepted; a bad VALUE still refused.
+**SAME CLASS AS H-5** (`policy.fail` typo → fail-OPEN) and the judge body-cap override — three
+independent guards, three separate typo-able off-switches. **When the guard's job is to stop
+something, the case that stops the guard from stopping is the case to test.**
+
+**store/db.ts:76/79/86 · MEDIUM · the registry accepted garbage and wrote it non-atomically.**
+- **No shape validation:** `JSON.parse(...) as Target[]` cast straight through, so `{}`, `null` and
+  `"x"` — all **valid JSON** — passed and the failure surfaced far away as `undefined is not a
+  function` on `.find()`. *Fix:* a non-array, or an entry without `{name,kind,root}` strings, is named
+  `JM_TARGETS_CORRUPT` at the point of reading. **Verified:** all five malformed shapes refused by
+  name; a well-formed registry round-trips.
+- **Non-atomic write:** `writeFileSync(p, …)` truncates and rewrites the LIVE registry in place, so a
+  crash or a killed process mid-write loses **every target the operator defined** — and the callers do
+  read-modify-write, widening the window. *Fix:* write-then-`rename`, which is atomic on one
+  filesystem. **Verified:** the write lands and leaves no temp file behind.
+
+**AND THE LESSON THAT KEEPS RECURRING IN THIS TIER:** neither defect was a wrong answer. Both were a
+guard that *appeared present*. `{call: 5}` looks like a budget. A registry file that parses looks
+like a registry. **The check that matters is not "does it run" but "does it stop the thing it exists
+to stop".**

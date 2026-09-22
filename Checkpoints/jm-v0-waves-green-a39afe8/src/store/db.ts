@@ -1,6 +1,6 @@
 // src/store/db.ts — open/init the index store; resolve index paths + targets.
 import { Database } from "bun:sqlite";
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, basename, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
@@ -76,14 +76,37 @@ export function indexExists(name: string): boolean {
 export function loadTargets(): Target[] {
   const p = targetsPath();
   if (!existsSync(p)) return [];
-  try { return JSON.parse(readFileSync(p, "utf8")) as Target[]; }
+  let parsed: unknown;
+  try { parsed = JSON.parse(readFileSync(p, "utf8")); }
   catch { throw new Error(`JM_TARGETS_CORRUPT: ${p} is not valid JSON`); }   // LOUD: never a silent empty registry
+  // VALID JSON IS NOT A VALID REGISTRY (audit db.ts:79). The parse result was cast straight to
+  // `Target[]`, so `{}`, `null` or `"x"` — all valid JSON — sailed through and the failure surfaced
+  // far away as `undefined is not a function` on `.find()` or `.filter()`. A file whose SHAPE is
+  // wrong is as corrupt as one whose syntax is, and it is named the same way.
+  if (!Array.isArray(parsed)) {
+    throw new Error(`JM_TARGETS_CORRUPT: ${p} must be a JSON ARRAY of targets (found ${parsed === null ? "null" : typeof parsed})`);
+  }
+  for (const [i, t] of parsed.entries()) {
+    const ok = t !== null && typeof t === "object"
+      && typeof (t as Target).name === "string" && (t as Target).name.length > 0
+      && typeof (t as Target).kind === "string"
+      && typeof (t as Target).root === "string";
+    if (!ok) throw new Error(`JM_TARGETS_CORRUPT: ${p} entry ${i} is not {name,kind,root} strings`);
+  }
+  return parsed as Target[];
 }
 
 export function saveTargets(list: Target[]): void {
   const p = targetsPath();
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(list, null, 2) + "\n");   // sync write: errors throw to the caller, never swallowed
+  // WRITE-THEN-RENAME (audit db.ts:76/86). `writeFileSync(p, …)` truncates the live file and rewrites
+  // it in place, so a crash, an ENOSPC, or a killed process mid-write leaves a TRUNCATED or EMPTY
+  // registry — and every target the operator defined is gone. Callers do read-modify-write
+  // (`loadTargets()` → mutate → `saveTargets()`), which widens the window. `rename(2)` is atomic on
+  // the same filesystem, so a reader sees either the old file or the new one, never a half-written one.
+  const tmp = `${p}.tmp-${process.pid}`;
+  writeFileSync(tmp, JSON.stringify(list, null, 2) + "\n");   // sync: errors throw, never swallowed
+  renameSync(tmp, p);
 }
 
 /** Resolve an argument to {name, root}: `@name` via the registry, else a path. */
