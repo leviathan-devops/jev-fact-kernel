@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `a53e98d57aa8b7c443db06500059ec33` (git 2db4a64)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `e5b7942f68b8d9d652993580f245dfbb` (git bb3930f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -47,7 +47,7 @@ sealed copy does not belong here.
 | `src/verbs/extract.ts` | 105 |
 | `src/verbs/filter.ts` | 58 |
 | `src/verbs/find.ts` | 163 |
-| `src/verbs/index.ts` | 221 |
+| `src/verbs/index.ts` | 286 |
 | `src/verbs/query.ts` | 77 |
 | `src/verbs/report.ts` | 217 |
 | `src/verbs/route.ts` | 150 |
@@ -81,7 +81,7 @@ sealed copy does not belong here.
 | `tests/guard-query.test.ts` | 46 |
 | `tests/guards.test.ts` | 100 |
 | `tests/helpers.ts` | 43 |
-| `tests/index.test.ts` | 57 |
+| `tests/index.test.ts` | 71 |
 | `tests/job-report.test.ts` | 107 |
 | `tests/judge-answer-shape.test.ts` | 79 |
 | `tests/judge-outage.test.ts` | 77 |

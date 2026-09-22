@@ -1,6 +1,6 @@
 // src/verbs/index.ts — the index verb: walk · hash · incremental · tombstones.
 // Deterministic op: NO network, NO key (bible L4 / T9). Ledger row written by the CLI.
-import { readdirSync, statSync, readFileSync } from "node:fs";
+import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
@@ -9,7 +9,8 @@ import { loadTargets } from "../store/db.ts";
 export interface IndexOpts {
   include?: string[];
   exclude?: string[];
-  maxTextBytes?: number;   // text indexed into FTS5 only under this size
+  maxTextBytes?: number;   // the CHUNK size for FTS5 text (a larger file is SPLIT, not skipped)
+  maxChunkSourceBytes?: number;   // a text file above this is not read at all (bounded work)
   maxHashBytes?: number;   // content hashed only under this size
   limit?: number;          // stop after N files (testing)
   // The store's `files.path` is UNIQUE. Two targets with the same relative path (README.md,
@@ -29,6 +30,43 @@ export interface IndexStats {
 
 const DEFAULT_EXCLUDE = ["node_modules", ".git", ".venv", "dist", "target", "__pycache__"];
 const TEXT_EXT = new Set([".md", ".txt", ".json", ".jsonl", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".toml", ".yml", ".yaml", ".sh", ".sql", ".csv", ".c", ".h", ".cpp", ".hpp", ".java", ".go", ".rb", ".php", ".html", ".css", ".scss", ".xml", ".mdx", ".vue", ".svelte", ".kt", ".swift"]);
+
+// THE CLASSIFIER SNIFFS; IT DOES NOT TRUST A WHITELIST (the second half of the capability gap).
+// `TEXT_EXT` alone made every unrecognised extension BINARY, and a whitelist is always incomplete —
+// MEASURED on the Graph Intelligence session directory: **63 `.log` files were unindexed and
+// unsearchable**, which is exactly the content an operator pointing at a session tree wants to grep.
+// So the rule is inverted: a file is TEXT unless it is a known binary container OR its first bytes
+// carry a NUL (the reliable binary signal for everything else). The whitelist is kept as a fast path
+// and as the authority for extensions that are text despite looking odd.
+// A static string-keyed lookup table is a `Record`, not a `Set` (the project's ts-set-map rule).
+const BINARY_EXT: Record<string, true> = {
+  ".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".ico": true,
+  ".bmp": true, ".tiff": true, ".svgz": true, ".zip": true, ".gz": true, ".tgz": true,
+  ".bz2": true, ".xz": true, ".zst": true, ".7z": true, ".rar": true, ".jar": true,
+  ".war": true, ".pdf": true, ".doc": true, ".docx": true, ".xls": true, ".xlsx": true,
+  ".ppt": true, ".pptx": true, ".odt": true, ".ods": true, ".mp3": true, ".mp4": true,
+  ".mov": true, ".avi": true, ".mkv": true, ".webm": true, ".wav": true, ".flac": true,
+  ".ogg": true, ".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true,
+  ".so": true, ".dylib": true, ".dll": true, ".exe": true, ".o": true, ".a": true,
+  ".class": true, ".pyc": true, ".wasm": true, ".bin": true, ".dat": true, ".db": true,
+  ".sqlite": true, ".sqlite3": true, ".gguf": true, ".pt": true, ".onnx": true,
+  ".safetensors": true, ".npy": true, ".npz": true, ".parquet": true, ".avro": true,
+};
+
+/** Is this file text? Extension first (fast, authoritative for the known cases), then a NUL sniff. */
+function isTextFile(abs: string, ext: string): boolean {
+  if (TEXT_EXT.has(ext)) return true;
+  if (BINARY_EXT[ext] === true) return false;
+  try {
+    const fd = openSync(abs, "r");
+    try {
+      const buf = Buffer.alloc(8192);
+      const n = readSync(fd, buf, 0, 8192, 0);
+      for (let i = 0; i < n; i++) if (buf[i] === 0) return false;   // a NUL byte: binary
+      return true;
+    } finally { closeSync(fd); }
+  } catch { return false; }        // unreadable is not text
+}
 
 function globToRe(g: string): RegExp {
   const esc = g.replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -100,28 +138,55 @@ export function indexFile(db: Database, root: string, abs: string, opts: IndexOp
   }
   // a tombstoned file with IDENTICAL bytes must REACTIVATE (the skip must not respect the tombstone)
   const ext = extname(rel).toLowerCase();
-  const kind = TEXT_EXT.has(ext) ? "text" : "binary";
+  const kind = isTextFile(abs, ext) ? "text" : "binary";
   let digest: string | null = null, text: string | null = null, bytesHashed = 0, truncated = false;
   if (st.size <= maxHash) {
     const buf = readFileSync(abs);
     bytesHashed = buf.byteLength;
     digest = sha(buf);
-    if (kind === "text" && st.size <= maxText) text = buf.toString("utf8"); else if (kind === "text") truncated = true;
   } else truncated = true;
+  // A LARGE TEXT FILE IS CHUNKED, NOT DROPPED (the capability gap this tool was pointed at a
+  // 37.9 MB session to find). The old rule was `size <= maxText ? index : truncated`, so EVERY text
+  // file over the cap had `text_indexed=0` and was INVISIBLE to `query --fts` while still appearing
+  // in `files` — a silent, total loss of searchability. MEASURED on the Graph Intelligence session
+  // directory: **86 of 124 files unindexed, including the 37.9 MB transcript itself** — the one file
+  // the operator wanted to search. The `files` row is unchanged (one per file, the identity); the
+  // CONTENT is split into `maxText`-sized docs, so the FTS bound holds while nothing is lost.
+  // A file larger than `maxChunkSource` is still skipped, and says so via `truncated`.
+  const maxChunkSource = opts.maxChunkSourceBytes ?? 64 * 1024 * 1024;
+  if (kind === "text" && st.size <= maxChunkSource) {
+    text = readFileSync(abs).toString("utf8");
+    if (st.size > maxText) truncated = true;     // still REPORTED: the file was chunked, not whole
+  } else if (kind === "text") truncated = true;
   const ti = text !== null ? 1 : 0;
   if (prev) {
     db.query("UPDATE files SET size=?, mtime=?, sha256=?, kind=?, text_indexed=?, state=?, indexed_at=? WHERE path=?")
       .run(st.size, Math.floor(st.mtimeMs), digest, kind, ti, "changed", now, rel);
+    // PURGE BY THE DOC'S OWN PATHS, not by `rel`: a chunked file's fts rows carry `rel#c0`, `rel#c1`, …
+    // so a `WHERE path = rel` delete would leave every chunk behind in the FTS index — searchable text
+    // for a file that no longer has a doc. The docs rows are the authority on which paths belong to
+    // this file, so the FTS delete is driven by them.
+    db.query("DELETE FROM docs_fts WHERE path IN (SELECT path FROM docs WHERE file_id = ?)").run(prev.id);
     db.query("DELETE FROM docs WHERE file_id = ?").run(prev.id);
-    db.query("DELETE FROM docs_fts WHERE path = ?").run(rel);
   } else {
     db.query("INSERT INTO files(path, size, mtime, sha256, kind, text_indexed, state, indexed_at) VALUES (?,?,?,?,?,?,?,?)")
       .run(rel, st.size, Math.floor(st.mtimeMs), digest, kind, ti, "new", now);
   }
   if (text !== null) {
     const row = db.query("SELECT id FROM files WHERE path = ?").get(rel) as { id: number };
-    db.query("INSERT INTO docs(file_id, path, text) VALUES (?,?,?)").run(row.id, rel, text);
-    db.query("INSERT INTO docs_fts(text, path) VALUES (?,?)").run(text, rel);
+    // CHUNK THE CONTENT. One doc per `maxText` slice, each with its own path (`rel#c0`, `rel#c1`, …), so
+    // the FTS5 bound is respected per-doc while the WHOLE file is searchable. A single-chunk file keeps
+    // the bare `rel`, so existing indexes and every `query` result are unchanged.
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; i += maxText) chunks.push(text.slice(i, i + maxText));
+    if (chunks.length === 0) chunks.push("");
+    const insDoc = db.query("INSERT INTO docs(file_id, path, text) VALUES (?,?,?)");
+    const insFts = db.query("INSERT INTO docs_fts(text, path) VALUES (?,?)");
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const cpath = chunks.length === 1 ? rel : `${rel}#c${ci}`;
+      insDoc.run(row.id, cpath, chunks[ci]);
+      insFts.run(chunks[ci], cpath);
+    }
   }
   return { rel, changed: true, textIndexed: text !== null, bytesHashed, truncated };
 }
