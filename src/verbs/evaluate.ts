@@ -27,7 +27,11 @@ export interface EvalMetrics {
 export interface EvalResult { cases: CaseResult[]; metrics: EvalMetrics; ms: number; }
 
 /** Answers may be a probability or a label; both are normalised to a number for scoring. */
-function pOf(answered: unknown, threshold: number): number {
+// No `threshold` PARAMETER: it was `void threshold;` — accepted, documented, and never read, so every
+// caller passed a value with no effect on the result. The cut is applied AT THE CALL SITE (agreement is
+// `p >= threshold`), which is where it belongs: the cut is a scoring decision, and `pOf` only reads a
+// probability out of an answer.
+function pOf(answered: unknown): number {
   // `probabilities` IS THE CANONICAL FIELD (`policy.ts:17`, `policy.ts:92`, `JudgeResponse`), and
   // this reader only knew `probs` — so a choice-shaped answer fell through every branch and scored
   // **0**, a confident "no", for EVERY case. The Brier score and the agreement rate were then
@@ -46,7 +50,6 @@ function pOf(answered: unknown, threshold: number): number {
   }
   if (typeof a.answer === "string" && /^none$/i.test(a.answer)) return 0;
   if (typeof a.answer === "string") return /^(yes|true|act|1)$/i.test(a.answer) ? 1 : 0;
-  void threshold;
   return 0;
 }
 
@@ -61,12 +64,20 @@ export async function evaluate(db: Database, opts: EvalOpts): Promise<EvalResult
     for (let r = 0; r < k; r++) {
       const s = Date.now();
       const res = await judge.ask(c.state, opts.questions, opts.schema ?? "eval@v1");
+      // THE USAGE GAP IS CHECKED, AS IN EVERY SIBLING (audit evaluate.ts:57). `filter`, `find` and
+      // `decision-tree` all treat a response with no `usage` block as a fatal judge failure (D-046: a
+      // budget cannot be enforced against an unmeasured cost). `evaluate` ignored the flag entirely,
+      // so a run could score an entire corpus and account for none of the spend — the exact hole
+      // D-046 closed on the other three verbs, left open here.
+      if (res.usageMissing) {
+        throw new Error("JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)");
+      }
       // RESOLVE BY SHAPE (D-042): reading `answers[questionKey]` directly meant a renamed key made
       // every case score 0 — and a metric computed from fabricated zeros still LOOKS like a
       // measurement. An answer with no usable signal throws instead.
       const resolved = answerFrom(res.answers, opts.questionKey);
       const answered = resolved.answer;
-      const p = pOf(answered, threshold);
+      const p = pOf(answered);
       const truth = typeof c.oracle === "number" ? c.oracle : /^(yes|true|act|1)$/i.test(String(c.oracle)) ? 1 : 0;
       cases.push({
         id: c.id, oracle: c.oracle, p,
@@ -133,12 +144,32 @@ export async function evaluate(db: Database, opts: EvalOpts): Promise<EvalResult
 
 /** --replay: diff two runs' routes per case. Any changed route is a finding, printed. */
 export function replayDiff(a: EvalResult, b: EvalResult): { id: string; from: number; to: number; flipped: boolean }[] {
-  const byId = new Map(a.cases.map((c) => [`${c.id}`, c]));
+  // THE COMPARISON IS PER (id, REPETITION), NOT PER id (audit evaluate.ts:130). `new Map(a.cases.map((c) => [c.id, c]))`
+  // keyed by id alone, and `cases` holds `k` REPETITIONS per id — so the Map kept only the LAST
+  // repetition's probability, and every one of `b`'s k entries was compared against that single
+  // stored value. MEASURED: `replayDiff` of two IDENTICAL runs (k=2, p=0.9 then 0.2) reported a
+  // finding — `{from: 0.2, to: 0.9, flipped: true}` — a change that did not happen, in the one
+  // function whose entire job is to report what changed. A replay diff that fires on identical
+  // input cannot be used to detect drift.
+  //
+  // The probabilities are grouped per id IN ORDER, and b's i-th repetition is compared against a's
+  // i-th — which is the same comparison the single-repetition case always made, and the only one
+  // with a defined meaning when repetitions are independent samples of the same case.
+  const byId = new Map<string, number[]>();
+  for (const c of a.cases) {
+    const arr = byId.get(c.id);
+    if (arr) arr.push(c.p); else byId.set(c.id, [c.p]);
+  }
   const out: { id: string; from: number; to: number; flipped: boolean }[] = [];
+  const seenPerId = new Map<string, number>();
   for (const c of b.cases) {
-    const prev = byId.get(c.id);
-    if (!prev) continue;
-    if (prev.p !== c.p) out.push({ id: c.id, from: prev.p, to: c.p, flipped: (prev.p >= 0.5) !== (c.p >= 0.5) });
+    const prevs = byId.get(c.id);
+    if (!prevs) continue;
+    const n = seenPerId.get(c.id) ?? 0;
+    seenPerId.set(c.id, n + 1);
+    const prev = prevs[n];
+    if (prev === undefined) continue;                // b has more repetitions than a: nothing to compare
+    if (prev !== c.p) out.push({ id: c.id, from: prev, to: c.p, flipped: (prev >= 0.5) !== (c.p >= 0.5) });
   }
   out.sort((x, y) => (x.id < y.id ? -1 : 1));
   return out;

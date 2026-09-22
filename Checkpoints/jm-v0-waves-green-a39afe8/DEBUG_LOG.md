@@ -2594,3 +2594,80 @@ The file that was completely invisible two turns ago is now the top hit.
 **AND THE DELIVERABLE IT PRODUCED:** `artifacts/GI_FAILURE_CORPUS.md` (227 lines) — 7 enforcement
 firings verbatim, all 43 operator messages, a 7-pattern detector table, and analysis — built **by the
 tool**, which is the operator's stated requirement demonstrated end to end.
+
+## EN-096 — the MEDIUM tier, continued: two more guards that a typo could switch off
+Working the 113 unadjudicated mediums in the densest files. Both of these are the class this build has
+now met five times: **a guard whose off-switch exists.**
+
+**budget.ts:10 · MEDIUM · a misspelled CAP was accepted and did nothing.**
+The constructor validated every cap's **value** and no cap's **key**.
+```
+MEASURED: new Budget({ call: 5 })   ->  caps: {call: 5}  roomLeft: true
+                                      ^ the typo for `calls`: the cap silently does NOT apply
+          new Budget({ calls: 2, tokenz: 9 })  ->  accepted, both stored, only `calls` enforced
+```
+A budget is the guard that stops a runaway loop from spending. *Fix:* unknown keys are refused by
+name. **Verified:** `{call:5}` → `JM_BUDGET_INVALID: unknown cap "call" (known: calls, usd)`;
+`{calls:5}`, `{usd:0.5}`, `{}` still accepted; a bad VALUE still refused.
+**SAME CLASS AS H-5** (`policy.fail` typo → fail-OPEN) and the judge body-cap override — three
+independent guards, three separate typo-able off-switches. **When the guard's job is to stop
+something, the case that stops the guard from stopping is the case to test.**
+
+**store/db.ts:76/79/86 · MEDIUM · the registry accepted garbage and wrote it non-atomically.**
+- **No shape validation:** `JSON.parse(...) as Target[]` cast straight through, so `{}`, `null` and
+  `"x"` — all **valid JSON** — passed and the failure surfaced far away as `undefined is not a
+  function` on `.find()`. *Fix:* a non-array, or an entry without `{name,kind,root}` strings, is named
+  `JM_TARGETS_CORRUPT` at the point of reading. **Verified:** all five malformed shapes refused by
+  name; a well-formed registry round-trips.
+- **Non-atomic write:** `writeFileSync(p, …)` truncates and rewrites the LIVE registry in place, so a
+  crash or a killed process mid-write loses **every target the operator defined** — and the callers do
+  read-modify-write, widening the window. *Fix:* write-then-`rename`, which is atomic on one
+  filesystem. **Verified:** the write lands and leaves no temp file behind.
+
+**AND THE LESSON THAT KEEPS RECURRING IN THIS TIER:** neither defect was a wrong answer. Both were a
+guard that *appeared present*. `{call: 5}` looks like a budget. A registry file that parses looks
+like a registry. **The check that matters is not "does it run" but "does it stop the thing it exists
+to stop".**
+
+## EN-097 — the medium tier: three in `evaluate.ts`, one of them a FALSE POSITIVE in the change detector
+Working the 113 mediums. `evaluate.ts` carried six findings; three are adjudicated here, all confirmed.
+
+**evaluate.ts:130 · MEDIUM · the replay diff reported changes that did not happen.**
+`--replay` is the function whose ENTIRE JOB is to report what changed between two runs:
+```
+export function replayDiff(a, b) {
+  const byId = new Map(a.cases.map((c) => [`${c.id}`, c]));
+```
+But `cases` holds **`k` REPETITIONS per id** (the `for (const c …) for (let r = 0; r < k; r++)` loop
+builds them), and a `Map` keyed by **id alone** keeps only the LAST repetition. Every one of `b`'s
+entries was then compared against that single stored value.
+**MEASURED: two IDENTICAL runs (k=2, p=0.9 then 0.2) reported `{from: 0.2, to: 0.9, flipped: true}`
+— a change that did not happen.** A drift detector that fires on identical input cannot detect drift.
+*Fix:* group `a`'s probabilities per id **in order**, compare `b`'s i-th repetition against `a`'s i-th.
+**Verified, seven cases:** identical runs (k=2) → `[]`; a real change at repetition 1 AND at
+repetition 2 → one finding; single-repetition unchanged → `[]`; single-repetition changed → one
+finding; two ids with only `c2` changed → `[c2]`; `b` with more repetitions than `a` → `[]` (nothing
+to compare). The pin was proven to bite by temporarily restoring the id-only Map (FAILS) and back
+(PASSES).
+
+**evaluate.ts:49 · MEDIUM · a documented PARAMETER that was never read.**
+`pOf(answered, threshold)` accepted a threshold and did `void threshold;` — so every caller passed a
+value with **no effect on the result**. The cut is applied at the CALL SITE (`p >= threshold`), which
+is where it belongs: the cut is a scoring decision, and `pOf` only reads a probability out of an
+answer. *Fix:* the parameter is gone. **A parameter that is accepted and ignored is a lie in the
+signature.**
+
+**evaluate.ts:57 · MEDIUM · the D-046 usage guard was missing on the FIFTH judged verb.**
+`filter`, `find` and `decision-tree` all treat a response with no `usage` block as a fatal judge
+failure (D-046: *a budget cannot be enforced against an unmeasured cost*). `evaluate` **ignored the
+flag entirely**, so a run could score an entire corpus and account for **none** of the spend.
+*Fix:* the same check as its siblings. **This is the fourth time a guard has been present on N−1 of N
+sites** — the `?? 0` family, the phantom invariant, the safeName injectivity, and now the usage gap.
+
+**AND ONE FLAKE, RECORDED AS OPEN RATHER THAN EXPLAINED AWAY:** one full-battery run reported
+`220 pass / 1 fail` with **no failing test name printed**, and three subsequent runs plus five more
+were `221 pass / 0 fail`. The count was 220 at the time, so the failing test was PRE-EXISTING, not one
+added here. **Not reproducible in 8 attempts.** Consistent with the T5-style timing window found in
+EN-082 (a claim lease / sweep interaction under load). **State: OPEN, one occurrence in 8 runs, no
+name captured — the resume condition is the next occurrence, and the runner now prints failing rows
+(EN-070) so it will name itself.**

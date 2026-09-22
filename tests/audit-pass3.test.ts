@@ -585,3 +585,25 @@ describe("store/db.ts:79 — a VALID JSON file that is not a registry is corrupt
     }
   });
 });
+
+describe("evaluate.ts — the replay diff, the dead parameter, and the unchecked usage gap", () => {
+  test("test_replay_diff_of_identical_runs_is_empty", async () => {
+    // MEASURED BEFORE THE FIX: `new Map(a.cases.map((c) => [c.id, c]))` keyed by id alone, while
+    // `cases` holds `k` REPETITIONS per id — so the Map kept only the LAST repetition and every one of
+    // b's entries was compared against that single value. A replay of two IDENTICAL runs (k=2,
+    // p=0.9 then 0.2) reported `{from: 0.2, to: 0.9, flipped: true}` — a change that did not happen,
+    // in the ONE function whose entire job is to report what changed.
+    const { replayDiff } = await import("../src/verbs/evaluate");
+    const mk = (...ps: number[]) => ({ cases: ps.map((p) => ({ id: "c1", p, latencyMs: 1, costUsd: 0 })) } as never);
+    const two = (p1: number, p2: number) => ({ cases: [
+      { id: "c1", p: p1, latencyMs: 1, costUsd: 0 }, { id: "c2", p: p2, latencyMs: 1, costUsd: 0 }] } as never);
+
+    expect(replayDiff(mk(0.9, 0.2) as never, mk(0.9, 0.2) as never)).toEqual([]);        // identical -> nothing
+    expect(replayDiff(mk(0.7) as never, mk(0.7) as never)).toEqual([]);                  // the common case
+    // real changes are still caught, at EITHER repetition position
+    expect(replayDiff(mk(0.9, 0.2) as never, mk(0.9, 0.8) as never).length).toBe(1);
+    expect(replayDiff(mk(0.9, 0.2) as never, mk(0.1, 0.2) as never).length).toBe(1);
+    expect(replayDiff(mk(0.7) as never, mk(0.3) as never).length).toBe(1);
+    expect(replayDiff(two(0.9, 0.1) as never, two(0.9, 0.8) as never).map((d) => d.id)).toEqual(["c2"]);
+  });
+});

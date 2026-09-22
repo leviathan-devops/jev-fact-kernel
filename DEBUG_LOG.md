@@ -2628,3 +2628,46 @@ something, the case that stops the guard from stopping is the case to test.**
 guard that *appeared present*. `{call: 5}` looks like a budget. A registry file that parses looks
 like a registry. **The check that matters is not "does it run" but "does it stop the thing it exists
 to stop".**
+
+## EN-097 — the medium tier: three in `evaluate.ts`, one of them a FALSE POSITIVE in the change detector
+Working the 113 mediums. `evaluate.ts` carried six findings; three are adjudicated here, all confirmed.
+
+**evaluate.ts:130 · MEDIUM · the replay diff reported changes that did not happen.**
+`--replay` is the function whose ENTIRE JOB is to report what changed between two runs:
+```
+export function replayDiff(a, b) {
+  const byId = new Map(a.cases.map((c) => [`${c.id}`, c]));
+```
+But `cases` holds **`k` REPETITIONS per id** (the `for (const c …) for (let r = 0; r < k; r++)` loop
+builds them), and a `Map` keyed by **id alone** keeps only the LAST repetition. Every one of `b`'s
+entries was then compared against that single stored value.
+**MEASURED: two IDENTICAL runs (k=2, p=0.9 then 0.2) reported `{from: 0.2, to: 0.9, flipped: true}`
+— a change that did not happen.** A drift detector that fires on identical input cannot detect drift.
+*Fix:* group `a`'s probabilities per id **in order**, compare `b`'s i-th repetition against `a`'s i-th.
+**Verified, seven cases:** identical runs (k=2) → `[]`; a real change at repetition 1 AND at
+repetition 2 → one finding; single-repetition unchanged → `[]`; single-repetition changed → one
+finding; two ids with only `c2` changed → `[c2]`; `b` with more repetitions than `a` → `[]` (nothing
+to compare). The pin was proven to bite by temporarily restoring the id-only Map (FAILS) and back
+(PASSES).
+
+**evaluate.ts:49 · MEDIUM · a documented PARAMETER that was never read.**
+`pOf(answered, threshold)` accepted a threshold and did `void threshold;` — so every caller passed a
+value with **no effect on the result**. The cut is applied at the CALL SITE (`p >= threshold`), which
+is where it belongs: the cut is a scoring decision, and `pOf` only reads a probability out of an
+answer. *Fix:* the parameter is gone. **A parameter that is accepted and ignored is a lie in the
+signature.**
+
+**evaluate.ts:57 · MEDIUM · the D-046 usage guard was missing on the FIFTH judged verb.**
+`filter`, `find` and `decision-tree` all treat a response with no `usage` block as a fatal judge
+failure (D-046: *a budget cannot be enforced against an unmeasured cost*). `evaluate` **ignored the
+flag entirely**, so a run could score an entire corpus and account for **none** of the spend.
+*Fix:* the same check as its siblings. **This is the fourth time a guard has been present on N−1 of N
+sites** — the `?? 0` family, the phantom invariant, the safeName injectivity, and now the usage gap.
+
+**AND ONE FLAKE, RECORDED AS OPEN RATHER THAN EXPLAINED AWAY:** one full-battery run reported
+`220 pass / 1 fail` with **no failing test name printed**, and three subsequent runs plus five more
+were `221 pass / 0 fail`. The count was 220 at the time, so the failing test was PRE-EXISTING, not one
+added here. **Not reproducible in 8 attempts.** Consistent with the T5-style timing window found in
+EN-082 (a claim lease / sweep interaction under load). **State: OPEN, one occurrence in 8 runs, no
+name captured — the resume condition is the next occurrence, and the runner now prints failing rows
+(EN-070) so it will name itself.**
