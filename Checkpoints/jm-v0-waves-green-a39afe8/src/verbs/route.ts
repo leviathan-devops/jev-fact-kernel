@@ -9,7 +9,7 @@
 // against the real judge for the whole build — every test passed against a mock, which is exactly
 // how the defect survived. The shipping shape is one `noul` per CANDIDATE ("does this capability
 // apply to the task?"), which discriminates for real: on a find-a-phrase task the live API rated
-// tool:jm_find 0.77 and skill:ascii-diagrams 0.10.
+// tool:jev_find 0.77 and skill:ascii-diagrams 0.10.
 //
 // A 456-entry catalogue cannot afford 456 calls, so a deterministic LEXICAL pre-score chooses the
 // shortlist and the judge ranks it: deterministic-first, judged-second, the same shape as the rest
@@ -69,7 +69,7 @@ export function buildCatalogue(indexName?: string): Catalogue {
     }
   }
 
-  for (const t of ["jm_query", "jm_find", "jm_decide", "jm_index"]) {
+  for (const t of ["jev_query", "jev_find", "jev_decide", "jev_index"]) {
     entries.push({ id: `tool:${t}`, kind: "tool", name: t, hint: "JM engine tool" });
   }
   void indexName;

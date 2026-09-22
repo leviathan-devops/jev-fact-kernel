@@ -18,7 +18,7 @@ export interface McpTool {
 
 export const TOOLS: McpTool[] = [
   {
-    name: "jm_query",
+    name: "jev_query",
     description: "Search the JM index (literal FTS or a WHERE predicate). Returns matching rows with paths and sizes. Keyless.",
     inputSchema: {
       type: "object",
@@ -32,7 +32,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "jm_find",
+    name: "jev_find",
     description: "The 9-stage find chain: seeds -> candidates -> cluster -> patterns. Every pattern carries n + exemplar ids. Judged (needs a key) except the seed stages.",
     inputSchema: {
       type: "object",
@@ -46,7 +46,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "jm_decide",
+    name: "jev_decide",
     description: "Ask the shared Jev judge: state + questions -> typed answers with probabilities. Cached by (provider, model, schema, state).",
     inputSchema: {
       type: "object",
@@ -60,7 +60,7 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
-    name: "jm_index",
+    name: "jev_index",
     description: "Index targets through their adapters (`--in all` or a comma list). Keyless, incremental by content sha.",
     inputSchema: {
       type: "object",
@@ -83,7 +83,7 @@ export async function handle(req: JsonRpcRequest): Promise<Record<string, unknow
   // it can then mis-parse as the answer to a LATER request. Probed: M7.
   //
   // The method still RUNS: `callTool` is awaited BEFORE `ok`/`err` is built, so a fire-and-forget
-  // `jm_index` still indexes. Only the reply is suppressed — which is what fire-and-forget means.
+  // `jev_index` still indexes. Only the reply is suppressed — which is what fire-and-forget means.
   // `id: null` (present but null) stays a REQUEST per the spec, and the parse-error path below
   // keeps its mandatory `id: null` frame.
   const notification = req.id === undefined;
@@ -125,25 +125,25 @@ export async function handle(req: JsonRpcRequest): Promise<Record<string, unknow
 }
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
-  const indexName = typeof args.index === "string" ? args.index : (name === "jm_decide" ? "decisions" : "all");
+  const indexName = typeof args.index === "string" ? args.index : (name === "jev_decide" ? "decisions" : "all");
   // ARGUMENTS BEFORE THE STORE (audit mcp:134). `openDb` CREATES, and it ran before each branch
-  // validated its arguments — so a REFUSED call still left an index behind: `jm_index` with no `in`
+  // validated its arguments — so a REFUSED call still left an index behind: `jev_index` with no `in`
   // created `all.sqlite` and then threw `JM_ARGS: in required`. MEASURED. The CLI's version of this
   // invariant was fixed (D-054/D-055/D-056: "a run that refuses its input must not have touched the
   // disk"); this surface kept the old order, which is exactly the failure the same-semantics claim
   // (§18.8) exists to prevent.
-  if (name === "jm_index" && (typeof args.in !== "string" || args.in.length === 0)) throw new Error("JM_ARGS: in required");
-  if (name === "jm_find" && (typeof args.phrase !== "string" || args.phrase.length === 0)) throw new Error("JM_ARGS: phrase required");
+  if (name === "jev_index" && (typeof args.in !== "string" || args.in.length === 0)) throw new Error("JM_ARGS: in required");
+  if (name === "jev_find" && (typeof args.phrase !== "string" || args.phrase.length === 0)) throw new Error("JM_ARGS: phrase required");
   // SAME SEMANTICS AS THE CLI (D-028): a READ tool refuses a missing index, a WRITE tool creates
-  // one. This surface used openDb() for everything, so `jm_query` on a typo'd index returned
+  // one. This surface used openDb() for everything, so `jev_query` on a typo'd index returned
   // `{"rows": [], "n": 0}` at exit 0 AND materialised a phantom index file - the D-009 defect,
   // still live here after the CLI was fixed. (§18.8's "same semantics" claim was what exposed it.)
-  const READ_TOOLS = new Set(["jm_query", "jm_find"]);
+  const READ_TOOLS = new Set(["jev_query", "jev_find"]);
   const db = READ_TOOLS.has(name)
     ? openIndexExisting(indexName, indexPathFor(indexName))
     : openDb(indexPathFor(indexName));
   try {
-    if (name === "jm_query") {
+    if (name === "jev_query") {
       const rows = queryIndex(db, {
         fts: args.fts as string | undefined,
         where: args.where as string | undefined,
@@ -152,7 +152,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       });
       return JSON.stringify({ rows, n: rows.length }, null, 2);
     }
-    if (name === "jm_find") {
+    if (name === "jev_find") {
       const phrase = args.phrase;
       if (typeof phrase !== "string" || phrase.length === 0) throw new Error("JM_ARGS: phrase required");
       const res = await find(db, {
@@ -162,13 +162,13 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       });
       return JSON.stringify({ trend: res.trend, patterns: res.patterns, calls: res.calls, cost_usd: res.costUsd }, null, 2);
     }
-    if (name === "jm_decide") {
+    if (name === "jev_decide") {
       if (!args.state || !args.questions) throw new Error("JM_ARGS: state + questions required");
       const judge = new Judge(db, {});
       const res = await judge.ask(args.state, args.questions as Record<string, unknown>, (args.schema as string) ?? "mcp@v1");
       return JSON.stringify({ answers: res.answers, cached: res.cached, model: res.model, cost_usd: res.costUsd }, null, 2);
     }
-    if (name === "jm_index") {
+    if (name === "jev_index") {
       const spec = args.in;
       if (typeof spec !== "string" || spec.length === 0) throw new Error("JM_ARGS: in required");
       targetsIn(spec);                                  // resolve first: an unknown name fails BEFORE any write

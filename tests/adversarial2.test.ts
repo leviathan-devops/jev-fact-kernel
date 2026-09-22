@@ -192,7 +192,7 @@ describe("ADV-2 mcp / watch / report", () => {
       expect(bad!.error).toBeTruthy();                              // no name -> an error, not a crash
       const noparams = await handle({ jsonrpc: "2.0", id: 2, method: "tools/call" });
       expect(noparams!.error).toBeTruthy();
-      const wrongType = await handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "jm_query", arguments: { limit: "not-a-number" } } });
+      const wrongType = await handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "jev_query", arguments: { limit: "not-a-number" } } });
       expect(wrongType!.result).toBeTruthy();                        // a coercion, not a throw
       const nullid = await handle({ jsonrpc: "2.0", id: null, method: "ping" });
       expect(nullid!.id).toBeNull();

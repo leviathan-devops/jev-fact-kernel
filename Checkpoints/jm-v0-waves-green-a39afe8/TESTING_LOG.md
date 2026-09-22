@@ -924,3 +924,286 @@ COVERAGE      every selected file reviewed in all three passes
 OPEN          the medium/low tiers — named by file in artifacts/audit-adjudication-ledger.md
 NOT CLAIMED   completeness: no run reaches `complete` on this host's lane
 ```
+
+---
+
+# THE FULL TEST CAMPAIGN — plan and results, all three categories
+
+**Scope.** Every test executed across the build, in both zones (the plan and the results), for all
+three categories (SCRIPT, CONTAINER, HOST). The operator asked for the covered ground at full
+density; this is the test half of it.
+
+## ZONE 1 — THE TEST PLAN (the contract, written before the runs)
+
+### PLAN-T1 — L0 the type boundary  `[SCRIPT]`
+- **What:** the whole tree type-checks with no errors.
+- **How:** `bunx tsc --noEmit` at the repo root.
+- **PASS criteria:** `exit 0` with zero output lines.
+- **FAIL criteria:** any `error TS…` line.
+- **Status:** PASSED
+
+### PLAN-T2 — L2 the battery  `[SCRIPT]`
+- **What:** every unit and integration test passes.
+- **How:** `bun test` at the repo root.
+- **PASS criteria:** `N pass` with `0 fail`.
+- **FAIL criteria:** any `(fail)` row.
+- **Status:** PASSED
+
+### PLAN-T3 — the independent gate runner  `[SCRIPT]`
+- **What:** 41 mechanical checks over L0/L2/L4 plus the wave gates, the key polarity, the exit-code
+  contract and C8 — exiting non-zero on any failure so a red state cannot be mistaken for green.
+- **How:** `./scripts-gates.sh`.
+- **PASS criteria:** `GATES: 41 passed / 0 failed`, exit 0.
+- **FAIL criteria:** any `FAIL` row, or a non-zero exit.
+- **Status:** PASSED
+
+### PLAN-T4 — the container rig, spec §9  `[CONTAINER]`
+- **What:** eight angles (T1–T7 + T10) proving indexing, incremental re-index, cache determinism,
+  fail-closed decisions, crash-resume, budget enforcement, adversarial survival, and the registered
+  MCP launcher invoked from a foreign cwd.
+- **How:** `bun run tests/container/harness.ts`, on the host AND inside a container seeded from
+  `omp-ct:master` (Debian 12).
+- **PASS criteria:** `JM_CONTAINER_RIG PASS — 8/8 angles`, exit 0, with each angle's token present.
+- **FAIL criteria:** any `FAIL` row, or a missing token.
+- **Status:** PASSED
+
+### PLAN-T5 — the real-corpus rig  `[HOST]`
+- **What:** the W2 gate proven against the host's ACTUAL corpora rather than fixtures.
+- **How:** `./scripts-real-corpus.sh` — @shadow (11,832 files) + @ocdb (4 SQLite databases).
+- **PASS criteria:** one query spanning fs + sqlite; the four source databases byte-for-byte
+  UNCHANGED after the run.
+- **FAIL criteria:** a source database mutated, or the cross-kind query failing.
+- **Status:** PASSED
+
+### PLAN-T6 — the runtime seat  `[HOST]`
+- **What:** a live identified instance (`jm-live-01`) operated first-person, with each of OPS 01–12
+  carrying a PRE-REGISTERED expectation and an evidence channel.
+- **How:** the live CLI + `jm serve` on this host, pushed with N=4 concurrent, a mid-operation kill,
+  the legit path twice, starvation (no key), and hostile input.
+- **PASS criteria:** every op's expectation met or its BREAK recorded with op#/expected/actual
+  verbatim/mechanism/fix/retest, and a NON-EMPTY runtime ledger.
+- **FAIL criteria:** an empty ledger ("zero bugs found is a red flag"), or an unrecorded break.
+- **Status:** PASSED (17 defects found by running)
+
+### PLAN-T7 — the zero-context second operator  `[HOST]`
+- **What:** a subagent given ONLY the operating docs must operate the tool end to end.
+- **How:** dispatch with the logs forbidden; the operator works from README + MASTER_PROMPT alone.
+- **PASS criteria:** the documented operations complete, and every friction reported.
+- **FAIL criteria:** the operator cannot complete the documented workflow.
+- **Status:** PASSED (12/12 operations, 2 defects, 9 doc mismatches)
+
+### PLAN-T8 — the independent code audit  `[SCRIPT]`
+- **What:** an independent reviewer reads the code and reports findings; every finding adjudicated
+  by probe before any fix.
+- **How:** `ocr review` (diff shapes) + `ocr scan` (full-file), on the verboo lane.
+- **PASS criteria:** every high/critical finding CONFIRMED by probe and fixed, with zero false
+  positives surviving, and the `AUDIT GATE:` line written into this log.
+- **FAIL criteria:** an unadjudicated high/critical, or a fabricated PASS.
+- **Status:** **BLOCKED** (see the verdict at the end — the findings were adjudicated; the RUN
+  never reaches `complete` on this lane)
+
+## ZONE 2 — THE TEST RESULTS (what was observed)
+
+### RESULT-T1 — L0, the type boundary  `[SCRIPT]`
+
+```
+$ cd /home/leviathan/JARVIS_WORKSPACE/Shared_Workspace/JevManager
+$ bunx tsc --noEmit
+$ echo $?
+0
+```
+
+**Verdict: PASS.** Zero output lines at exit 0 — the whole tree type-checks.
+
+### RESULT-T2 — L2, the battery  `[SCRIPT]`
+
+```
+$ bun test
+228 pass
+ 0 fail
+Ran 228 tests across 45 files. [24.18s]
+```
+
+**Verdict: PASS.** 228/0 across 45 files. The battery grew from 6/0 (W0) to 228/0 through the build;
+every count is a real run, never an estimate.
+
+**THE BATTERY'S GROWTH, as evidence of the campaign:**
+
+| when | count | what added it |
+|------|-------|---------------|
+| W0 | 6/0 | the store, FTS, the incremental index |
+| W1 | 10/0 | the job runtime, the resume sweep |
+| post-wave | 18/0 | the scoped runner + typed fixtures |
+| audit 1–3 | 24–30/0 | six frontier pins (sanitisation, collisions, guards) |
+| W2/W6/W3 | 47–69/0 | the adapters, MCP, retrieval, route/evaluate |
+| the drill | 71/0 | six silent defects from the zero-context operator |
+| audit 4–7 | 84–116/0 | concurrency, redaction, the wave gates |
+| D-030..D-046 | 124–163/0 | the decision/answer/policy family |
+| the audit-driven pins | 163–228/0 | the phantom family, the launcher, the protocol surfaces, the tail |
+
+### RESULT-T3 — the gate runner  `[SCRIPT]`
+
+```
+$ ./scripts-gates.sh
+GATES: 41 passed / 0 failed   (JM_HOME=/tmp/jm-gates, log /tmp/jm-gates-run.log)
+$ echo $?
+0
+```
+
+**Verdict: PASS**, three consecutive runs. The runner was itself a subject of the campaign:
+
+- it began at **33 checks** and grew to **41** as the audit found unguarded surfaces;
+- its FIRST run corrected its own bad check;
+- it leaked a server for weeks because its cleanup used `pkill`, which on this host is **v0.2.0,
+  not procps** — exit 2, kills nothing (EN-067/D-050). The orphan was found ALIVE holding port
+  7877. Fixed with `pgrep`+`kill` and a wait for the port to free, verified by **0 orphans after
+  two consecutive runs**;
+- it now LOGS its full output and **re-prints the failing rows**, because a one-off
+  `40 passed / 1 failed` with **no failing row** is undiagnosable by construction.
+
+### RESULT-T4 — the container rig  `[CONTAINER]`
+
+**The rig inside the container (seeded from `omp-ct:master`):**
+
+```
+$ cat /etc/os-release
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+```
+
+```
+$ bun run tests/container/harness.ts
+PASS  T1  JM_INDEX_OK files=500
+PASS  T2  JM_INDEX_DELTA=3
+PASS  T3  JM_CACHE_HITS=100 JM_JUDGE_CALLS=0
+PASS  T4  JM_EXIT=2 JM_DECISIONS_WRITTEN=0
+PASS  T5  JM_RESUME_OK dup=0
+PASS  T6  JM_BUDGET_STOPPED calls=5
+PASS  T7  JM_ADVERSARIAL_SURVIVED
+PASS  T10 JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED
+JM_CONTAINER_RIG PASS — 8/8 angles
+```
+
+**Verdict: PASS, 8/8 on the HOST and 8/8 in the CONTAINER.** The same harness, two environments,
+run six times directly with no failure.
+
+**AND THE CONTAINER FOUND THE SUITE WAS NOT HERMETIC — the single most valuable container result:**
+
+```
+host        ~/.config/typesafe/key present   ->  228 pass / 0 fail
+container   no key file, no env var          ->  208 pass / 9 fail   (JEV_NO_KEY)
+```
+
+Six test files pointed the judge at a LOCAL endpoint but still needed a key PRESENT (the
+`requireKey()` gate runs before any network). On this machine that key came from an AMBIENT FILE,
+so **the suite passed here and failed anywhere else.** *A green battery that depends on the author's
+home directory is a claim about the author's machine, not about the code.* Fixed with
+`tests/preload.ts` + `bunfig.toml`; **container and host now both 228/0.**
+
+**Two more instrument defects the container exposed:** `retrieve.test.ts` deleted the key with **no
+restore** (the D-059 leak class, MASKED on the host by the key file); and `cli-contract.test.ts`'s
+positive half made a **REAL network call** decided by the home directory.
+
+### RESULT-T5 — the real-corpus rig  `[HOST]`
+
+```
+$ ./scripts-real-corpus.sh
+=== lane probe ===
+lane: failed 0
+... @shadow 11,832 files indexed ...
+... 2,309 rows sampled from four opencode DBs ...
+... one query spanning fs + sqlite ...
+REAL-CORPUS RIG PASS
+```
+
+**Verdict: PASS.** The sources verified byte-for-byte unchanged. **And the operator caught a claim
+defect here:** an earlier report said "11,832 files (~33 GB)" — the 33 GB belongs to the four
+DATABASES; the 11,832 files are 9.8 GB. The conflation was recorded and corrected.
+
+### RESULT-T6 — the runtime seat  `[HOST]`
+
+**The instance:** `jm-live-01` — the live CLI + `jm serve` on this host, at a named commit SHA,
+with a live process and a reachable surface.
+
+**The pushes, and what RUNNING taught that READING could not:**
+
+| push | expectation | what happened |
+|------|-------------|---------------|
+| 4 concurrent HTTP requests | no lost writes | met |
+| **a 2 MB body to a live surface** | a 413 or a clean rejection | **THE WHOLE SURFACE BLOCKED** — `/health` included, until the body was consumed (D-036) |
+| 12 concurrent HTTP requests | all answered or cleanly rejected | met, after the cap |
+| a 5 MB MCP line | the parser survives or refuses by name | survived; recorded so silence is not proof |
+| a 2 MB ledger burst | the append stays atomic | met; no torn lines |
+| **`kill -9` mid-operation** | the row is left `running`; resume loses nothing | `orphaned > 0` observed, then `done=400 distinct=400` |
+| **starve it (no key)** | exit 2 with a named refusal | met — and this exposed that only ONE error type was recognised while two verbs returned silent empties |
+
+**The daemon as a service, and the two things only that boundary shows:**
+- `bun run` is a **wrapper plus a child** — signalling the wrapper orphans the daemon;
+- `PrivateTmp` gives the unit **its own `/tmp`**, so a target under `/tmp` is INVISIBLE to it.
+
+**Verdict: PASS with 17 defects found by RUNNING** — the ledger non-empty, which the contract makes
+mandatory. *"ZERO BUGS FOUND IS A RED FLAG."*
+
+### RESULT-T7 — the second operator  `[HOST]`
+
+**A zero-context subagent, docs only, the project's own logs forbidden.**
+
+```
+COMMANDS DONE     12/12 documented operations
+DEFECTS FOUND     2  (D-054 a refused index left a phantom; D-055 a keyless run created decisions.sqlite)
+DOC MISMATCHES    9  (the fs path shape, the usage dump hiding 3 of 17 verbs, the fail-closed claim, …)
+```
+
+**And probing the FAMILY of its two defects found two WORSE ones (D-056):** `filter` and `find` were
+READ verbs using a create-on-open and answered at **exit 0** over a phantom index — the D-009/D-028
+defect, fixed on the MCP surface and missed on the CLI.
+
+**Verdict: PASS.** *An operator who could not read the code found what four adversarial sweeps and a*
+*full runtime seat had missed — because it followed the DOCS, and the docs are what a new operator*
+*has.*
+
+### RESULT-T8 — the independent audit  `[SCRIPT]`
+
+See CAMPAIGN 1 in BUILD_REPORT for the full record. The verdict line:
+
+```
+AUDIT GATE: BLOCKED
+  artifact:  artifacts/scan-2026-09-22-src-completed.json
+             artifacts/audit-2026-09-22-full-lane.json
+             artifacts/audit-2026-09-22-complete-attempt.json
+  verdict:   BLOCKED — every high/critical finding across THREE passes was adjudicated by probe,
+             confirmed, fixed and pinned, with ZERO false positives surviving; but no run reaches
+             `complete` on this lane (the per-item rounds time out), and 89 medium + 123 low
+             findings remain UNADJUDICATED. A `partial` artifact cannot stand for a complete review.
+  retry:     a lane whose per-item rounds all complete, or per-subsystem scoped reviews
+```
+
+**This line BLOCKS every ship-ready / production-grade / merge claim until it reads PASS.**
+
+## THE ADVERSARIAL SWEEPS — results
+
+| sweep | probes | found | verified |
+|-------|--------|-------|----------|
+| ADV-1/2/3 (the post-wave surfaces) | 12 | D-015, D-016, D-027 | each pinned |
+| ADV-4 (the launcher as an entry point) | 7 | D-048, D-049 | both pinned; 5 probes behaved and are recorded |
+| the MCP protocol surface | 7 | D-051 | pinned (5 cases, both halves) |
+| the HTTP surface | 13 | the phantom family, the stack-shaped 500 | pinned |
+| the watch daemon | 4 | D-058 | pinned |
+
+**AND THE NEGATIVE RESULTS, which the contract requires recording:**
+- the five launcher probes that **behaved** (both resolution rungs, a non-executable `JM_BUN`, an
+  unwritable `JM_HOME`, extra argv ignored) — recorded so silence is not read as proof;
+- the six MCP protocol probes that behaved (`-32700`, `-32601`, `-32602`, a named
+  `JM_INDEX_MISSING`, empty stdin producing nothing);
+- the three watch probes that behaved (a vanished root, two concurrent ticks, a traversal name).
+
+## THE FLAKES — named, not explained away
+
+| flake | rate | state |
+|-------|------|-------|
+| the rig T1–T7 through the GATE RUNNER | 1 in ~10 runs | **OPEN** — never reproduced in 3 subsequent gate runs nor 6 direct runs; its label was misleading (T-5) and is now honest |
+| the full battery, one un-named failure | 1 in 8 runs | **OPEN** — 0 in 7 further runs; the runner now prints failing rows so the next occurrence names itself |
+
+**Both are timing-shaped and neither is understood.** Recording them as OPEN rather than
+"probably fine" is the contract: a flaky gate erodes the gate's value, and a flake explained away
+is a defect deferred.
+

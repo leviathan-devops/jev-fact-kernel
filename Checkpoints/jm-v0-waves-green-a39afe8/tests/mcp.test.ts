@@ -19,7 +19,7 @@ describe("W6 MCP surface", () => {
   test("test_mcp_tools_list", async () => {
     const r = await handle({ jsonrpc: "2.0", id: 1, method: "tools/list" });
     const names = (r!.result as { tools: { name: string }[] }).tools.map((t) => t.name);
-    expect(names).toEqual(["jm_query", "jm_find", "jm_decide", "jm_index"]);
+    expect(names).toEqual(["jev_query", "jev_find", "jev_decide", "jev_index"]);
     for (const t of TOOLS) expect(t.inputSchema.type).toBe("object");
   });
 
@@ -45,14 +45,14 @@ describe("W6 MCP surface", () => {
   });
 
   test("test_mcp_query_returns_rows", async () => {
-    // C14-ish: an agent calls jm_query and gets rows back through the MCP content block.
+    // C14-ish: an agent calls jev_query and gets rows back through the MCP content block.
     const sb = makeSandbox();
     try {
       seed(sb.home, sb.root);
       const db = openDb(indexPathFor("all"));
       await ingestAll(db, "all");
       db.close();
-      const r = await handle({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "jm_query", arguments: { fts: "tombstone", index: "all" } } });
+      const r = await handle({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "jev_query", arguments: { fts: "tombstone", index: "all" } } });
       const text = (r!.result as { content: { text: string }[] }).content[0].text;
       const parsed = JSON.parse(text) as { n: number; rows: { path: string }[] };
       expect(parsed.n).toBe(1);
@@ -67,7 +67,7 @@ describe("W6 MCP surface", () => {
     try {
       process.env.JM_HOME = sb.home;
       saveTargets([]);
-      const r = await handle({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "jm_find", arguments: {} } });
+      const r = await handle({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "jev_find", arguments: {} } });
       expect(r!.error).toBeUndefined();
       const res = r!.result as { isError: boolean; content: { text: string }[] };
       expect(res.isError).toBe(true);
@@ -80,7 +80,7 @@ describe("W6 MCP surface", () => {
     try {
       process.env.JM_HOME = sb.home;
       saveTargets([]);
-      const r = await handle({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "jm_index", arguments: { in: "ghost" } } });
+      const r = await handle({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "jev_index", arguments: { in: "ghost" } } });
       const res = r!.result as { isError: boolean; content: { text: string }[] };
       expect(res.isError).toBe(true);
       expect(res.content[0].text).toMatch(/JM_TARGET_UNKNOWN/);

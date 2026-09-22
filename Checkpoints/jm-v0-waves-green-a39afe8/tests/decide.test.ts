@@ -36,13 +36,13 @@ function mockNoul(vals: number[], key = "flag"): string {
 const CAT: Catalogue = { sources: ["test"], entries: [
   { id: "skill:alpha", kind: "skill", name: "alpha" },
   { id: "skill:beta", kind: "skill", name: "beta" },
-  { id: "tool:jm_query", kind: "tool", name: "jm_query" },
+  { id: "tool:jev_query", kind: "tool", name: "jev_query" },
 ]};
 
 describe("W5 route", () => {
   test("test_route_act_injects", async () => {
     const sb = makeSandbox();
-    const mock = mockRoute({ "skill:alpha": 0.91, "skill:beta": 0.05, "tool:jm_query": 0.04 });
+    const mock = mockRoute({ "skill:alpha": 0.91, "skill:beta": 0.05, "tool:jev_query": 0.04 });
     process.env.JM_MOCK_DIR = mock;
     try {
       const db = openDb(indexPathFor("route"));
@@ -61,7 +61,7 @@ describe("W5 route", () => {
 
   test("test_route_escalates_below_the_cut", async () => {
     const sb = makeSandbox();
-    const mock = mockRoute({ "skill:beta": 0.60, "skill:alpha": 0.39, "tool:jm_query": 0.01 });
+    const mock = mockRoute({ "skill:beta": 0.60, "skill:alpha": 0.39, "tool:jev_query": 0.01 });
     process.env.JM_MOCK_DIR = mock;
     try {
       const db = openDb(indexPathFor("route"));

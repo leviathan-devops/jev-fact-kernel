@@ -246,3 +246,179 @@ commit. **The gate had failed** (`GATES: 40 passed / 1 failed`).
 - **THE THIRD INSTANCE OF ONE SHAPE:** T-07 (`;` after `tsc`), T-10 (`tail` hiding the counts),
   T-12 (`;` after the gate runner). In every case the gate was NAMED in the command and joined by
   the wrong operator. **The rule is formatting, not motivation.**
+
+---
+
+# THE FULL THEATRICALITY JOURNAL
+
+**The definition this log runs on.** *Theatrical = an artifact whose FORM is verification standing*
+*in for verification.* Not a bug (DEBUG_LOG) and not a derailment (FAILURE_LOG) — the class where
+the SHAPE of proof is present and the SUBSTANCE is not.
+
+**The actors:** subagents AND the agent itself. The self-reported rows are the ones that matter.
+
+## THE METRIC
+
+| disposition | count | meaning |
+|-------------|-------|---------|
+| **SELF-CORRECTED** | **19** | the producer caught it and said so — the system working |
+| **OPERATOR-CAUGHT** | **1** | it survived to the operator, who asked — **THE EXPENSIVE CLASS** |
+| **BLOCKED-OPEN** | **2** | noticed, not yet corrected, with the reason |
+
+**THE OPERATOR-CAUGHT COUNT IS THE NUMBER TO DRIVE TO ZERO. This session's is 1.**
+
+The single operator-caught item, quoted verbatim because the operator's words ARE the evidence:
+> *"make sure all commits are labelled w/ semantic context tokens so we can tell what they are."*
+
+**WHAT IT REVEALED:** the commit log was a wall of unlabelled one-liners. A reader could not tell a
+fix from a doc update from a wave landing without opening every diff. **The operator had to ASK what
+the commits were, which means the log was not doing a log's job.**
+
+**WHAT CHANGED:** every message carries a type (`fix:` `feat:` `docs:` `test:` `build:` `refactor:`
+`blueprint:` `goal:` `chore:` `spec:` `perf:`), a scope qualifier when the change targets a named
+thing (`fix(judge):`, `docs(ship):`), and the EVIDENCE in the body — test counts, SHA references,
+verdicts. It was wired into the plans and the append surface so future sessions inherit it.
+
+**AND A SECOND OPERATOR-CAUGHT ITEM, in the same session** (recorded here because it cost real
+credibility): the status report published **"11,832 files (~33 GB)"** — a conflation of the file
+corpus (9.8 GB) with the four databases (31 GB). The operator asked *"what 33gb wtf are you talking
+about."* **A number published beside the wrong thing is a false number even when both numbers are
+real.** Raised to 2 in the corrected tally below.
+
+## THE SELF-CORRECTED ENTRIES (19)
+
+Each of these was caught BY THE BUILD'S OWN INSTRUMENTS before any claim was made. Grouped by what
+caught them, because **the instrument that catches you is the finding.**
+
+### Caught by the SEAL's own battery (3)
+
+**T-S1 · a commit landed with the pin's two phases sharing a fingerprint.** The D-046 pin asserted
+the fail-open phase produced a marked row; it shared `recipe: "u"@v1` and one rows file with the
+fail-closed phase, so the second phase **CACHE-HIT** — no call, therefore no `usageMissing`, so it
+decided normally. *That is correct engine behaviour and a wrong test.* The seal's battery ran from
+the copy and went red. **The pin now gives each phase its own state.**
+
+**T-S2 · the seal shipped STALE docs.** It copied `context_management/` into the checkpoint and
+THEN rewrote the live copies' TREE SHA lines — so the sealed copy kept the PREVIOUS sha. Measured:
+live `d387f989`, sealed `f579c3cc`. **The checkpoint shipped docs disagreeing with the tree they
+describe, and the seal's own gate passed because it reads the live copies.** Now re-copied after
+the rewrite; `live == sealed` verified on both docs.
+
+**T-S3 · my own H-1 fix had a SECOND hole and the copy's battery found it.** `readlink -f` returns
+EMPTY for a non-existent path, and the `|| echo "$CP"` fallback restored the RAW string — which the
+glob then matched again, **re-opening the destructive bypass in exactly the environment a fresh
+clone starts in.** Caught because the guard's own test ran from the seal's COPY, where
+`Checkpoints/` does not exist.
+
+### Caught by the GATE RUNNER (3)
+
+**T-G1 · the gate's own concurrency check was DEAD CODE.** Two consecutive `FAILS=` assignments;
+the second overwrote the first, so the `UNIQUE constraint` half — the D-038 race the check was
+added to catch — was never evaluated. Found by the independent audit (C-1). `-lh` was also
+contradictory (`-h` suppresses the filenames `-l` produces). Now `-lE` with the alternation, and the
+stricter check still passes 41/0.
+
+**T-G2 · the runner leaked a server and the NEXT run paid for it.** Its cleanup used `pkill`, which
+on this host is **v0.2.0, not procps** — exit 2, kills nothing (the runner's OWN daemon check
+carries a comment saying exactly that; the serve check had never been converted). The orphan was
+**found alive holding port 7877.** Fixed; **0 orphans after two consecutive runs.**
+
+**T-G3 · the runner could not report its own failure.** A one-off `GATES: 40 passed / 1 failed` with
+**no failing row** is undiagnosable by construction. The runner now tees its output to a log and
+**re-prints the failing rows at the end.**
+
+### Caught by the CONTAINER (2)
+
+**T-C1 · the suite was not HERMETIC and the container proved it.** `228 pass / 0 fail` on the host,
+`208 pass / 9 fail` in a fresh container — `JEV_NO_KEY`. Six test files needed a key PRESENT (the
+`requireKey()` gate runs before any network), and on this machine it came from an **ambient file.**
+**A green battery that depends on the author's home directory is a claim about the author's machine,
+not about the code.** Fixed with a preload; both environments now 228/0.
+
+**T-C2 · a test deleted a process-global key with NO restore.** `retrieve.test.ts` proved the
+keyless path and removed `TYPESAFE_API_KEY` without putting it back — so every later file inherited
+a keyless environment. **Masked on the host by the key FILE; exposed by the container, where the env
+var is the only source.**
+
+### Caught by MY OWN PROBES (8)
+
+**T-P1 · the rig's keyless assertion had been passing for the WRONG REASON.** T10's negative half
+asserted "a keyless `jm_find` is refused" and PASSED — **on `JM_ARGS: phrase required`.** The angle
+sent `query`; `jm_find` reads `phrase`. The call threw BEFORE any key resolution, and
+`isError: true` satisfied the assertion. **A missing-argument error read as a key refusal: the
+vacuous pass the whole rig exists to catch, inside the rig.** Found by the audit (H-8).
+
+**T-P2 · my first pin for the D-046 refund was VACUOUS.** It passed `budget:` — a property the verb
+does not accept (the parameter is `budgetCalls`). It was IGNORED, so the assertion ran with no cap
+at all and passed for no reason. **tsc caught it** ("'budget' does not exist in type") — which is
+what a typed boundary is for.
+
+**T-P3 · my first D-046 refund was WRONG.** `settle(0, false)` calls `spend(0)`, which INCREMENTS the
+call count — so a FAILED call was billed as a spend, and a run of degraded rows exhausted a calls
+cap on calls that never happened. Measured: cap=3 over 6 failing rows stopped at 3. **A refund is
+not a purchase.**
+
+**T-P4 · my own test leaked `HOME` — the D-059 class, reproduced minutes after writing the rule.**
+The first `audit-judge.test.ts` set `process.env.HOME` and restored only `JM_HOME`/`JM_LEDGER`/KEY/
+URL — so the sandbox home (a DELETED temp dir by cleanup time) leaked into every later test, and
+the launcher tests began failing with **exit 127 = no bun found**, in a run where they pass alone.
+**Reproduced with TWO files, minutes after writing the rule.**
+
+**T-P5 · my T8 write used the wrong ARGUMENT NAME.** The first version sent `query` where `jm_find`
+reads `phrase` — a missing-argument error read as a key refusal (the same class as T-P1, in my own
+new angle).
+
+**T-P6 · my first pin for the replay-diff fix was WRONG ABOUT THE DESIGN.** I asserted two DIFFERENT
+secrets must hash apart; they must **not** — erasing a secret's body from the key is the PRIVACY
+property (a low-entropy secret would be brute-forceable out of a bare sha256). The failure made
+the distinction visible.
+
+**T-P7 · my first pin for the budget-claim refund locked an ALREADY-INDEXED file.** The incremental
+fast path saw (size, mtime) unchanged and never re-read it, so the test proved nothing. **A correct
+optimisation and a wrong probe.** The locked file is now created AFTER the first index.
+
+**T-P8 · I applied `find`'s fix to `filter` and DESTROYED a real signal.** `filter`'s `judged` counts
+judgements PRODUCED (vs `kept` passing `--min-p`) — the D-041 outage signal. Applying `find`'s fix
+would have made every outage report `judged=candidates`. **`test_filter_refuses_a_judge_outage`
+caught it and I reverted.** *The same audit note, read as one rule, was wrong for one of the two*
+*verbs.*
+
+### Caught by the COMMIT CHAIN (3) + the ANSWER-READER sweep (1)
+
+**T-K1 · a commit landed with `tsc` RED** because the chain used `;` between the type check and
+`git commit`. **T-K2 · a commit ran on a FAILING SUITE** because `bun test 2>&1 | tail -2` printed
+the expect-count line instead of pass/fail. **T-K3 · a commit landed after a FAILED GATE** because
+the chain used `;` after the gate runner. **In all three the gate was NAMED in the command and
+joined by the wrong operator.** *The rule is formatting, not motivation.*
+
+**T-K4 · the answer-reader sweep found FOUR verbs on the `?? 0` idiom** (the D-039/D-042 family),
+each fixed individually before the FAMILY was swept. The fourth was found only by grepping for the
+idiom after fixing the third.
+
+## THE BLOCKED-OPEN ENTRIES (2)
+
+**B-1 · `AUDIT GATE: BLOCKED`.** Three passes, no `complete`. Every high/critical adjudicated; the
+run never finishes on this lane. **Recorded BLOCKED, never upgraded.** The retry condition is named.
+
+**B-2 · two FLAKES, named and unexplained.** The rig through the gate runner (1 in ~10) and the full
+battery (1 in 8). Both timing-shaped, neither reproduced. **A flake explained away is a defect
+deferred.**
+
+## THE ROOT-PATTERN PASS
+
+**Read the entries together and ONE mechanism explains all of them:**
+
+> **In every case, the FORM of a check was present and had never been MADE TO FAIL.** A pin whose
+> phases shared a fingerprint. A gate whose second assignment shadowed the first. A runner whose
+> cleanup signalled nothing. A suite that depended on a file on one machine. An assertion satisfied
+> by a missing argument. A test that accepted a parameter the verb ignores. A refund that purchased.
+> A fix applied to the wrong sibling. **Not one of these would have been found by reading the code**;
+> every one was found by making the thing demonstrate itself.
+
+**THE COUNTERMEASURE, and it is already in the standing rules:** force the demonstration. Run it.
+Cross the boundary. Revert the fix and watch the pin go red. Break the guard and see whether
+anything notices. **The revert-and-watch is the single highest-yield technique of this session:** it
+was used on the queue attempt guard, the replay-diff, the FTS join, the chunked-query, the ledger
+refund, the policy agreement, and the indexJob `failed` count — and it distinguished a REAL pin from
+a decorative one every time.
+

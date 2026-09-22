@@ -16,15 +16,15 @@ import { join } from "node:path";
 const REPO = join(import.meta.dir, "..");
 const LAUNCHER = join(REPO, "scripts-jm-mcp.sh");
 
-describe("mcp:134 — a REFUSED jm_index must create no index", () => {
+describe("mcp:134 — a REFUSED jev_index must create no index", () => {
   test("test_mcp_refused_tool_call_leaves_no_artifact", () => {
-    // MEASURED BEFORE THE FIX: `tools/call jm_index` with NO arguments created `all.sqlite` and then
+    // MEASURED BEFORE THE FIX: `tools/call jev_index` with NO arguments created `all.sqlite` and then
     // threw `JM_ARGS: in required` — the store was opened before the branch validated its arguments.
     const home = mkdtempSync(join(tmpdir(), "jm-mcpi-"));
     const lines = [
       '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}',
       '{"jsonrpc":"2.0","method":"notifications/initialized"}',
-      '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"jm_index","arguments":{}}}',
+      '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"jev_index","arguments":{}}}',
     ].join("\n") + "\n";
     const r = Bun.spawnSync({
       cmd: [LAUNCHER],

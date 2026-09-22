@@ -242,14 +242,14 @@ async function T7(): Promise<void> {
 // W8 layer. Reusing the number would make this rig's count read as covering an angle it does not
 // touch — the same class of error as a test that passes for the wrong reason.
 //
-// C14's remaining half is "an OMP session calls jm_find". The protocol is already proven; what this
+// C14's remaining half is "an OMP session calls jev_find". The protocol is already proven; what this
 // angle adds is the part a registration can actually get WRONG: the launcher an MCP client invokes
 // by ABSOLUTE PATH is started with an arbitrary working directory. A server whose entry point
 // resolves its own files relative to the CALLER's cwd works perfectly in the author's shell and
 // fails inside every client. This angle starts it from `/`, far from the tree, and asserts:
 //   (a) tools/list answers with the four tools                    -- the launcher resolves its own root
-//   (b) tools/call jm_query returns a real row                    -- a real stdio round trip
-//   (c) tools/call jm_find with NO key is a NAMED refusal         -- the negative half, never a silent empty
+//   (b) tools/call jev_query returns a real row                    -- a real stdio round trip
+//   (c) tools/call jev_find with NO key is a NAMED refusal         -- the negative half, never a silent empty
 async function T10(): Promise<void> {
   const { home, root } = sandbox();
   const dir = join(root, "corpus");
@@ -278,9 +278,9 @@ async function T10(): Promise<void> {
 
   // (a) the launcher resolves its own root from a foreign cwd
   const listed = call([IN, NOTE, '{"jsonrpc":"2.0","id":2,"method":"tools/list"}']);
-  const four = ["jm_query", "jm_find", "jm_decide", "jm_index"].every((t) => listed.includes(t));
+  const four = ["jev_query", "jev_find", "jev_decide", "jev_index"].every((t) => listed.includes(t));
 
-  // index the corpus so jm_query has something to read.
+  // index the corpus so jev_query has something to read.
   // NOTE FOR THE NEXT READER: `jm index` takes a PATH, and a REGISTERED target needs the `@`
   // prefix (`jm index @name`). The first draft of this angle used `targets add` (plural) — the
   // verb is `target add` (singular) — and spent a cycle chasing a probe bug that looked like a
@@ -296,7 +296,7 @@ async function T10(): Promise<void> {
   //   draft 2 regexed `"n": 1` against bytes where every quote is ESCAPED (`\"n\": 1`), so it
   //           could never match.
   // Parse the envelope, parse the tool's text payload, assert the VALUE.
-  const queried = call([IN, NOTE, '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"jm_query","arguments":{"index":"ct8","fts":"ledger"}}}']);
+  const queried = call([IN, NOTE, '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"jev_query","arguments":{"index":"ct8","fts":"ledger"}}}']);
   const toolPayload = (raw: string, id: number): { n?: number; isError?: boolean; text: string } => {
     const line = raw.split("\n").find((l) => l.includes(`"id":${id}`));
     if (!line) return { text: "" };
@@ -312,12 +312,12 @@ async function T10(): Promise<void> {
   const gotRow = q.n === 1 && q.text.includes("a.md");
 
   // (c) THE NEGATIVE HALF: no key -> a NAMED refusal, never an empty success
-  // THE ARGUMENT IS `phrase`, WHICH IS WHAT `jm_find` READS (`src/mcp.ts`: `const phrase = args.phrase`).
+  // THE ARGUMENT IS `phrase`, WHICH IS WHAT `jev_find` READS (`src/mcp.ts`: `const phrase = args.phrase`).
   // The first draft sent `query`, so the call threw `JM_ARGS: phrase required` BEFORE any key
   // resolution — and because that arrives as `isError: true`, the assertion below passed on it. The
   // angle proved a missing argument, not a missing key: the vacuous pass this whole rig exists to
   // catch, inside the rig. Found by the audit (H-8).
-  const denied = call([IN, NOTE, '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"jm_find","arguments":{"index":"ct8","phrase":"notes about packaging"}}}']);
+  const denied = call([IN, NOTE, '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"jev_find","arguments":{"index":"ct8","phrase":"notes about packaging"}}}']);
   const d = toolPayload(denied, 4);
   // AND THE REFUSAL MUST NAME THE KEY. `isError` alone is not evidence of a KEY refusal — any error
   // satisfies it. This is the same discipline the session applies everywhere else: the assertion

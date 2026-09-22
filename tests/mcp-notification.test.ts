@@ -20,7 +20,7 @@ const INIT = { jsonrpc: "2.0" as const, id: 1, method: "initialize", params: {} 
 describe("D-051 — the JSON-RPC notification rule", () => {
   test("test_mcp_notification_gets_no_reply — the negative half", async () => {
     // A tools/call with NO id member: a notification. No frame may be produced.
-    const out = await handle({ jsonrpc: "2.0", method: "tools/call", params: { name: "jm_query", arguments: {} } } as never);
+    const out = await handle({ jsonrpc: "2.0", method: "tools/call", params: { name: "jev_query", arguments: {} } } as never);
     expect(out).toBeNull();
   });
 
@@ -47,7 +47,7 @@ describe("D-051 — the JSON-RPC notification rule", () => {
 
   test("test_mcp_notification_STILL_EXECUTES — fire-and-forget means processed, not ignored", async () => {
     // The half that a naive fix breaks: a notification's method must run. Probed live: a
-    // notification-shaped jm_index created the index file while emitting no frame.
+    // notification-shaped jev_index created the index file while emitting no frame.
     // NOTE: the argument is `index`, which the tool's schema declares. This test first passed
     // `name` — an undeclared key, silently ignored, so the write landed in `all.sqlite` and the
     // assertion failed. Standard JSON-Schema semantics (unknown keys ignored), and a reminder that
@@ -59,7 +59,7 @@ describe("D-051 — the JSON-RPC notification rule", () => {
     const prev = process.env.JM_HOME;
     process.env.JM_HOME = home;
     try {
-      const out = await handle({ jsonrpc: "2.0", method: "tools/call", params: { name: "jm_index", arguments: { in: corpus, index: "notif" } } } as never);
+      const out = await handle({ jsonrpc: "2.0", method: "tools/call", params: { name: "jev_index", arguments: { in: corpus, index: "notif" } } } as never);
       expect(out).toBeNull();                                     // no reply…
       expect(existsSync(join(home, "index", "notif.sqlite"))).toBe(true);   // …but the work happened
     } finally {

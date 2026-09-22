@@ -98,7 +98,7 @@ function usage(): void {
   jm evaluate --cases F --questions F --key K [--k N]         metrics + --replay diff
   jm report [index] [--json]                                  status over the store + ledger
   jm report --job <id|last> [--name I] [--json]               per-job reconciliation (queue vs ledger)
-  jm mcp                                           MCP tool surface on stdio (jm_query, jm_find, jm_decide, jm_index)
+  jm mcp                                           MCP tool surface on stdio (jev_query, jev_find, jev_decide, jev_index)
   jm watch [--once] [--interval MS] [--in a,b] [--name I]   the reconcile daemon (journal per tick)
   jm journal [--limit N] [--json]                  the watch journal
   jm serve [--port N] [--name I]                   the HTTP surface (POST /decide, /find)
