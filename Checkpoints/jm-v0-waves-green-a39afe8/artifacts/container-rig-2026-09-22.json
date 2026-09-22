@@ -22,5 +22,18 @@
     "T7": "JM_ADVERSARIAL_SURVIVED (7 hostile inputs)",
     "T10": "JM_LAUNCHER_FOREIGN_CWD_OK tools=4 row=1 keyless=NAMED"
   },
-  "T10_note": "the registered launcher invoked by ABSOLUTE PATH from cwd=/ \u2014 tools/list answers 4 tools, a real tools/call jm_query returns n=1, and a keyless jm_find is a NAMED isError refusal rather than an empty success. This angle (named T10, NOT the spec's reserved T8) found D-047."
+  "T10_note": "the registered launcher invoked by ABSOLUTE PATH from cwd=/ \u2014 tools/list answers 4 tools, a real tools/call jm_query returns n=1, and a keyless jm_find is a NAMED isError refusal rather than an empty success. This angle (named T10, NOT the spec's reserved T8) found D-047.",
+  "reruns": [
+    {
+      "when": "2026-09-22 ~04:15",
+      "tree": "post D-054..D-057 (the phantom family + the usage dump)",
+      "host": "PASS 8/8",
+      "container": "PASS 8/8 (jm-ct-rig, bun 1.4.2)"
+    }
+  ],
+  "real_corpus_rerun": {
+    "when": "2026-09-22 ~04:18",
+    "result": "PASS",
+    "detail": "@shadow + @ocdb indexed together, sources unchanged, one query spanning both, find chain 12 -> 12 -> 10 -> 1 with quotes starting at the match (3 of 3)"
+  }
 }
