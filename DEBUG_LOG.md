@@ -3004,3 +3004,57 @@ correct patterns are now proven, not assumed:
 (`changed=5` detected exactly) · **no-change re-index 0.17 s** (`changed=0`). Store 163 MB for a
 120 MB source (1.36x). The 11,832-file / 9.8 GB source indexed at **105 MB/s** (92.8 s after the
 batching fix, vs 285.6 s before). Incremental re-indexing is genuinely incremental at scale.
+
+## EN-107 — THE BATCH PATH: the engine made 98 requests where the API takes hundreds in ONE
+**The operator's correction: "you can send hundreds of inputs in 1 batch and it costs the same."**
+Right, and the engine was not doing it.
+
+**THE API CONTRACT (docs.typesafe.ai/api, fetched):**
+```
+ questions : map<string, Question>   "You choose each key; answers come back under the same keys"
+ state     : ONE state per request
+ LIMIT     : NONE on the number of questions (Choice caps at 255 OPTIONS, Score at 10 levels)
+ usage     : ONE {input_tokens, output_tokens} for the WHOLE request
+```
+So N inputs = **N QUESTIONS IN ONE REQUEST**. `state` can even be a plain string, so each question's
+material goes in its own structured `instructions` field, referenced by backticked name — the
+documented shape ("Put the question in one field and the data in the others").
+
+**MEASURED AGAINST THE LIVE API, one request per size:**
+```
+ n= 50   0.92s    2143 in /  894 out        n=200   1.16s    7793 in / 3694 out
+ n=100   2.13s    4028 in / 1794 out        n=400   2.39s   15328 in / 7494 out
+```
+**Time is FLAT in n; tokens are LINEAR (~38 input per question).** And a wrapped batch agreed with the
+same questions asked serially on **8/8** cases at **9.0x** the speed.
+
+**WHAT THE ENGINE DID.** `filter` and `find` ran `runPool(candidates, …)` with ONE `judge.ask` per
+candidate: 98 candidates = **98 HTTP requests**. The pool is gone — one call does the chunk.
+
+**THE FIX.** `askMany()` in `judge/client.ts`: per-(item, question) cache identity, misses chunked at
+200 (well inside the measured 400 ceiling and the 256 KB outbound cap), ONE request per chunk, the
+chunk's cost SHARED across its asked items so the sum reproduces the real cost. `filter` and `find` both
+moved to it. **MEASURED ON THE REAL API:**
+```
+ filter mount --limit 40   -> candidates=40 judged=40 kept=40 calls=40 requests=1   wall=1.72s
+ find "containers and evidence" --in r -> 38 candidates, 1 request                   wall=2.08s
+```
+
+**FOUR DEFECTS THE CHANGE SURFACED, all fixed:**
+1. **The cache stored/read the wrong key.** `askMany` wrote the answer under the caller's flattened
+   `id__question` key and read a HIT by assigning the whole stored map to one key — which nested it
+   (`{c1__match: {c1__match: {...}}}`) and produced
+   `JM_JUDGE_ANSWER_INVALID: no usable answer — expected "match", received [match]`. Both sides now key
+   by the QUESTION's own name, exactly as `ask()` does, so a batched pair and a single `ask()` share a
+   cache row.
+2. **A missing ANSWER was counted as a missing USAGE.** Different events: an absent `usage` block is an
+   ACCOUNTING failure (D-046); an absent answer means the question was not judged. A short response is
+   now `JM_JUDGE_ANSWER_COUNT` (loud, named) — never a silent skip.
+3. **The usage check ran AFTER the key check**, so a usage-less response that also did not echo the
+   keys reported the wrong token and MASKED the accounting failure. D-046's law is "an unmeasured cost
+   is fatal REGARDLESS of fail polarity" — so the usage check now comes FIRST and throws.
+4. **The test doubles were not faithful** — two of them (the `JM_MOCK_DIR` transport and the
+   `judge-policy` stub server) returned ONE answer or a FIXED key set, which modelled the pre-batch
+   engine. Both now echo the requested keys and return one answer per question, exactly as the wire
+   does. The suite caught this immediately, which is why the boundary fake must be faithful rather
+   than convenient.

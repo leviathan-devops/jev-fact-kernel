@@ -2964,3 +2964,43 @@ end of one giant commit — the same work, spread, with the WAL repeatedly trunc
 run while a transaction is open**. A transaction spanning the whole walk therefore suppresses every
 checkpoint and lets the WAL grow to the run's total write volume. A 1.8 GB corpus → a 4 GB db + a 7 GB
 WAL. Batching restores the autocheckpoint boundary every 500 files.
+
+## EN-104 — THE RENDERED SIGNAL: `errors=1` with the message thrown away
+**Found by driving the watch daemon with a bad target.**
+
+**THE SAME TICK, THREE RENDERINGS, ONE MESSAGE:**
+```
+ stdout            [jm watch] ... errors=1
+ jm journal        ... no errors column at all
+ journal.jsonl     "errors": ["Error: JM_TARGET_UNKNOWN: nosuchtarget (have: rows)"]
+```
+The message was captured by design (`watch.ts:20,52`) and printed by NEITHER surface — `watch.ts:115`
+emitted only `errors.length`, and `cli.ts:606` had no errors column. **A count with no message is the
+failure mode this engine exists to kill:** a signal an operator cannot act on.
+
+**FIXED:** the live tick prints one `! <message>` line per error (`watch.ts:115`), and the journal
+render carries an `errors=` column with the messages joined (`cli.ts:606` — joined into one field so
+the TSV stays one-row-per-tick; a newline inside a message would break the shape). Verified live:
+```
+ [jm watch] ... errors=1
+ [jm watch]   ! Error: JM_TARGET_UNKNOWN: nosuchtarget (have: rows)
+ journal: ... errors=Error: JM_TARGET_UNKNOWN: nosuchtarget (have: rows)
+```
+
+## EN-105 — THE CONCURRENCY CONTRACT, MEASURED (not inferred)
+Three writers were pointed at ONE index. **One succeeded; two were REFUSED** —
+`JM_INDEX_ROOTS_CHANGED: namespace "(bare)" was rooted at /tmp/cc1`. That is the guard doing its job:
+three unrelated roots cannot share one bare namespace without recreating the duplication bug. The
+correct patterns are now proven, not assumed:
+
+| shape | result |
+|---|---|
+| 3 concurrent writers → one BARE namespace | **REFUSED** (correct — one index names one namespace) |
+| 3 targets → one index (`--in cc1,cc2,cc3`) | **900 rows, 3 namespaces recorded** (the sanctioned multi-source) |
+| 3 concurrent writers → 3 DIFFERENT indexes | **all three OK** (disjoint files) |
+
+## EN-106 — SCALE AND INCREMENTAL, MEASURED
+30,000 files / 120 MB: **cold 1.92 s** (maxrss **84 MB**, flat) · **5 files touched → 0.42 s**
+(`changed=5` detected exactly) · **no-change re-index 0.17 s** (`changed=0`). Store 163 MB for a
+120 MB source (1.36x). The 11,832-file / 9.8 GB source indexed at **105 MB/s** (92.8 s after the
+batching fix, vs 285.6 s before). Incremental re-indexing is genuinely incremental at scale.

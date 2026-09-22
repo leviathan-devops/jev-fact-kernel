@@ -39,6 +39,18 @@ export class Judge {
     return this.key;
   }
 
+  /** THE BATCH ENTRY — `ask()` for ONE item, this for N. Keeps `requireKey`'s fail-closed contract
+   *  (a missing key refuses, and the mock transport still short-circuits) and delegates the rest. */
+  async askManyBatch(
+    items: AskItem[],
+    questions: Record<string, { type: string; instructions: unknown; criteria?: unknown }>,
+    schemaVersion = "v1",
+    batchSize = 200,
+  ): Promise<AskManyResult> {
+    const key = this.requireKey();
+    return askMany(this.db, key, this.model(), items, questions, schemaVersion, batchSize);
+  }
+
   /** A response with NO `usage` block cannot be costed (D-046). Measured: the client billed such a
    *  call at 0, and a $0.0001 usd cap never fired across 50 of them — an absent accounting field
    *  silently disabled a budget guard. The CALLER decides what that means (the verbs treat it like
@@ -71,4 +83,142 @@ export class Judge {
     const costUsd = usageMissing ? 0 : tokens * USD_PER_INPUT_TOKEN;
     return { answers: resp.answers, model: resp.model, cached: false, inputTokens: usageMissing ? 0 : tokens, costUsd, usageMissing, fingerprint: fp };
   }
+}
+
+/** ONE ITEM of a batch: an id (the caller's handle) and the payload to judge. */
+export interface AskItem { id: string; state: unknown; }
+
+export interface AskManyResult {
+  /** Answers keyed by `${item.id}__${questionName}`, exactly as the caller named them. */
+  answers: Record<string, JudgeResponse["answers"][string]>;
+  model: string;
+  /** How many HTTP REQUESTS were made (the whole point: N items, ~N/batchSize requests). */
+  requests: number;
+  /** How many (item, question) pairs were served from the cache without a request. */
+  cached: number;
+  /** WHICH pairs were cached, by `${item.id}__${questionName}` — the caller settles per item and a
+   *  count alone cannot tell it which item consumed budget. */
+  cachedKeys: string[];
+  /** How many (item, question) pairs were asked. */
+  asked: number;
+  inputTokens: number;
+  costUsd: number;
+  /** Pairs whose answer carried no `usage` — the caller's fail polarity decides what that means. */
+  usageMissing: number;
+}
+
+/** ASK MANY — THE BATCH PATH, and why it exists (MEASURED, not assumed).
+ *
+ *  THE API'S CONTRACT: `questions` is a `map<string, Question>` and **you choose every key**
+ *  (docs.typesafe.ai/api — "You choose each key; answers come back under the same keys"). ONE
+ *  `state` per request, but an UNBOUNDED NUMBER OF QUESTIONS. `usage` is ONE block for the request.
+ *
+ *  MEASURED against api.typesafe.ai this session, one request each:
+ *      n= 50   0.92s    2143 in /  894 out        n=200   1.16s   7793 in / 3694 out
+ *      n=100   2.13s    4028 in / 1794 out        n=400   2.39s  15328 in / 7494 out
+ *  Time is FLAT in n; tokens are LINEAR (~38 input per question). And a wrapped batch AGREES with
+ *  the serial answers on 8/8 cases at 9x the speed.
+ *
+ *  SO `ask()` PER CANDIDATE IS THE DEFECT. `find` made 98 requests for 98 candidates; at n=400 that
+ *  is ONE request. The per-item question carries the item in structured `instructions` and the
+ *  caller's question TEXT references that field by backticked name — the documented shape
+ *  (docs.typesafe.ai/api: "Put the question in one field and the data in the others, and refer to
+ *  the data fields by name in backticks").
+ *
+ *  THE CACHE STAYS PER-ITEM. Each (item, question) pair keeps the identity it would have had if
+ *  asked alone, so a re-run is served from cache regardless of how the pairs were batched. Only the
+ *  MISSES go on the wire. That is what keeps batching correct for incremental work. */
+export async function askMany(
+  db: Database,
+  key: string | null,
+  model: string,
+  items: AskItem[],
+  questions: Record<string, { type: string; instructions: unknown; criteria?: unknown }>,
+  schemaVersion: string,
+  batchSize = 200,
+): Promise<AskManyResult> {
+  // 1 · EVERY (item, question) PAIR, WITH ITS OWN CACHE IDENTITY.
+  const pairs: { key: string; fp: string; item: AskItem; qname: string }[] = [];
+  const answers: AskManyResult["answers"] = {};
+  const cachedKeys: string[] = [];
+  let cached = 0;
+  for (const it of items) {
+    for (const [qname, q] of Object.entries(questions)) {
+      const qHash = createHash("sha256").update(JSON.stringify({ qname, q })).digest("hex").slice(0, 16);
+      const fp = fingerprint(model, `${schemaVersion}#${qHash}#${judgeUrl()}`, it.state);
+      const hit = cacheGet(db, fp);
+      const key2 = `${it.id}__${qname}`;
+      // THE CACHE STORES ONE ANSWER UNDER THE QUESTION'S OWN NAME — not the caller's flattened
+      // `id__name` key. `ask()` caches `resp.answers`, a map keyed by the question name, so a hit
+      // for one pair is `hit.answers[qname]`. Reading the WHOLE map into one key nested it
+      // (`{c1__match: {c1__match: {...}}}`) and `noulFrom` reported
+      // `JM_JUDGE_ANSWER_INVALID: expected "match", received [match]` — found by the replay test.
+      const stored = hit ? (hit.answers as Record<string, unknown>)[qname] : undefined;
+      if (stored !== undefined) { answers[key2] = stored as JudgeResponse["answers"][string]; cached++; cachedKeys.push(key2); }
+      // a cached map WITHOUT this question is a miss: it must still be asked.
+      else pairs.push({ key: key2, fp, item: it, qname });
+    }
+  }
+  if (pairs.length === 0) return { answers, model, requests: 0, cached, cachedKeys, asked: 0, inputTokens: 0, costUsd: 0, usageMissing: 0 };
+
+  // 2 · THE MISSES, IN CHUNKS. 200 keeps the payload well under the 256 KB outbound cap while
+  //     staying inside the measured 400-question ceiling.
+  let inputTokens = 0, costUsd = 0, usageMissing = 0, requests = 0, asked = 0;
+  let lastModel = model;
+  for (let i = 0; i < pairs.length; i += batchSize) {
+    const chunk = pairs.slice(i, i + batchSize);
+    const qs: Record<string, unknown> = {};
+    for (const p2 of chunk) {
+      const q = questions[p2.qname];
+      // THE WRAPPER: the item's payload in a named field, and the caller's text told to judge it.
+      // `instructions` may be a string, object, or array (api docs), so a string is wrapped into the
+      // structured form rather than concatenated into the text.
+      qs[p2.key] = {
+        type: q.type,
+        instructions: { item: p2.item.state, question: `${String(q.instructions)} Judge the value of \`item\`.` },
+        ...(q.criteria !== undefined ? { criteria: q.criteria } : {}),
+      };
+    }
+    // the mock transport needs no real key (same contract as requireKey)
+    const resp = await callSystemOne(key ?? "mock", { state: "batch", model, questions: qs });
+    requests++; lastModel = resp.model;
+    const tok = resp.usage?.input_tokens;
+    const chunkUsageMissing = typeof tok !== "number" || !Number.isFinite(tok);
+    // THE USAGE CHECK COMES FIRST, AND IT IS FATAL HERE (D-046). "An unmeasured cost is fatal
+    // REGARDLESS of fail polarity" — so a response with no `usage` block ends the run before any
+    // answer is read. Checking keys first was WRONG ORDERING: a usage-less response that also did not
+    // echo the keys reported `JM_JUDGE_ANSWER_COUNT`, masking the accounting failure the caller's
+    // policy must act on. `fatalJudgeError` recognises this token and rethrows under BOTH polarities,
+    // which is exactly how the suite asserts it (audit-judge.test.ts:102).
+    if (chunkUsageMissing) {
+      throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);
+    }
+      // (usage is present and finite past this point, so the tokens are credited here)
+      inputTokens += tok; costUsd += tok * USD_PER_INPUT_TOKEN;
+    // A MISSING ANSWER IS NOT A MISSING USAGE (found by the D-041 suite). This counted an absent
+    // answer as `usageMissing`, so a response that simply did not echo a key was reported as an
+    // uncostable one — the wrong token for the wrong failure. They are different events: an absent
+    // `usage` block is an ACCOUNTING failure (D-046); an absent ANSWER means the question was not
+    // judged. The API promises one answer per question ("answers come back under the same keys"), so
+    // a short response is a LOUD, NAMED failure — never a silent skip that reads as a considered no.
+    let missing = 0;
+    for (const p2 of chunk) {
+      const a = resp.answers[p2.key];
+      if (a === undefined) { missing++; continue; }
+      answers[p2.key] = a;
+      asked++;
+      if (!chunkUsageMissing) {
+        // stored under the QUESTION's name, matching `ask()` — so a later batch (or a single `ask`)
+        // hits the same row regardless of how the pairs were grouped.
+        cachePut(db, p2.fp, "typesafe", resp.model, schemaVersion, p2.fp, { [p2.qname]: a } as JudgeResponse["answers"]);
+      }
+    }
+    if (missing > 0) {
+      throw new Error(
+        `JM_JUDGE_ANSWER_COUNT: asked ${chunk.length}, received ${chunk.length - missing} — the response did ` +
+        `not answer every question (returned keys: ${Object.keys(resp.answers).slice(0, 5).join(", ") || "none"})`,
+      );
+    }
+  }
+  return { answers, model: lastModel, requests, cached, cachedKeys, asked, inputTokens, costUsd, usageMissing };
 }

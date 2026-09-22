@@ -16,7 +16,9 @@ export interface FilterOpts {
 }
 
 export interface FilterRow { path: string; size: number; p: number; keep: boolean; reason: string; cached: boolean; }
-export interface FilterResult { candidates: number; judged: number; kept: number; kept_rows: FilterRow[]; calls: number; costUsd: number; budgetStopped: boolean; }
+export interface FilterResult { candidates: number; judged: number; kept: number; kept_rows: FilterRow[]; calls: number; costUsd: number; budgetStopped: boolean;
+  /** HTTP REQUESTS made. `calls` counts judged items; this counts round trips — the batching proof. */
+  requests: number; }
 
 export async function filterIndex(db: Database, opts: FilterOpts): Promise<FilterResult> {
   const candidates = queryIndex(db, { fts: opts.fts, where: opts.where, limit: opts.limit ?? 200 });
@@ -28,44 +30,55 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
   let calls = 0, costUsd = 0, budgetStopped = false;
   const rows: FilterRow[] = [];
 
-  const { errors } = await runPool(candidates, async (c) => {
-    if (budgetStopped) return null;
-    if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)
-    // EVERY CLAIM IS RELEASED ON EVERY EXIT (audit find.ts:93, swept here). `claim()` increments
-    // `pending`, which `roomLeft()` counts, and only `settle()` releases it — so a worker that THROWS
-    // (a judge outage, or `noulFrom` refusing an unusable answer) exited with the claim held, leaking
-    // one budget slot per failed row and then reporting a FALSE "budget exhausted". This is the same
-    // defect fixed in `decision-tree.ts`, and the sweep that should have followed it was the point.
-    let settled = false;
-    try {
+  // ── THE BATCH JUDGING PATH (MEASURED: 400 questions in ONE request, 2.39s, time FLAT in n) ──
+  //
+  // WHAT THIS REPLACED: `runPool(candidates, …, {concurrency:6})` with one `judge.ask` per candidate —
+  // 98 candidates meant 98 HTTP requests. The API's `questions` is a map the CALLER keys ("You choose
+  // each key; answers come back under the same keys" — docs.typesafe.ai/api), so N candidates are N
+  // questions in ONE request. Measured this session: n=400 in one request at 2.39s with time flat in
+  // n, and a wrapped batch agreeing with the serial answers 8/8 at 9x the speed. The pool is gone —
+  // there is nothing to parallelize when one call does the whole chunk.
+  const metaByPath = new Map<string, { path: string; size: number }>();
+  const items: { id: string; state: unknown }[] = [];
+  for (const c of candidates) {
+    if (!budget.claim()) { budgetStopped = true; break; }   // SYNC claim before the await (D-024)
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
-    // THE EXCERPT MUST CONTAIN THE MATCH (D-032): the head slice sent the judge text that did not
-    // contain the phrase that matched the row — measured on the real corpus, 4 of 6 candidates had
-    // their hit OUTSIDE a 1500-char head slice, one of them at char 58,842. The seeds are the
-    // phrase's tokens when the candidates came from --fts; a --where-only run has none, and the
-    // helper falls back to the head, which is the best available answer for that case.
+    // THE EXCERPT MUST CONTAIN THE MATCH (D-032) — unchanged; the seed-aware helper still runs per row.
     const excerpt = excerptAround(doc?.text ?? "", seeds, cap);
-    const res = await judge.ask({ candidate: { path: c.path, size: c.size, excerpt } },
-      { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
-    const p = noulFrom(res.answers, "match");   // by SHAPE, never a bare `?? 0` (D-042)
-    budget.settle(res.costUsd, res.cached);
-    settled = true;
-    if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
-    if (!res.cached) { calls++; costUsd += res.costUsd; }
+    items.push({ id: c.path, state: { candidate: { path: c.path, size: c.size, excerpt } } });
+    metaByPath.set(c.path, { path: c.path, size: c.size });
+  }
+  let batch: Awaited<ReturnType<typeof judge.askManyBatch>>;
+  try {
+    batch = await judge.askManyBatch(items, { match: { type: "noul", instructions: opts.question } }, "is-x@v1");
+  } catch (err) {
+    for (let i = 0; i < items.length; i++) budget.settle(0, true);   // a batch that did not answer judged nothing
+    // FAIL-CLOSED FOR EVERY JUDGE FAILURE, not just a missing key (D-041): under a 500 this verb
+    // returned `kept=0 judged=0` — an empty result indistinguishable from a considered answer.
+    const fatal = fatalJudgeError([{ error: err instanceof Error ? err.message : String(err) }], { failOpen: opts.failOpen });
+    if (fatal) throw new Error(fatal);
+    return { candidates: candidates.length, judged: 0, kept: 0, kept_rows: [], calls: 0, costUsd: 0, budgetStopped, requests: 0 };
+  }
+  if (batch.usageMissing > 0) {
+    for (let i = 0; i < items.length; i++) budget.settle(0, true);
+    throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);
+  }
+  const cachedSet = new Set(batch.cachedKeys);
+  // THE COST IS SHARED, NOT DUPLICATED: one request billed `usage`, so each asked item carries its
+  // share, and summing the shares reproduces the batch's real cost exactly.
+  const share = batch.asked > 0 ? batch.costUsd / batch.asked : 0;
+  for (const it of items) {
+    const k = `${it.id}__match`;
+    const cached = cachedSet.has(k);
+    budget.settle(cached ? 0 : share, cached);        // a cached pair REFUNDS (EN-083); an asked pair converts
+    const a = batch.answers[k];
+    if (a === undefined) continue;                    // no answer is not an answer
+    if (!cached) { calls++; costUsd += share; }
+    const p = noulFrom({ match: a }, "match");        // by SHAPE, never a bare `?? 0` (D-042)
     const keep = p >= minP;
-    rows.push({ path: c.path, size: c.size, p, keep, reason: keep ? "kept" : `p<${minP}`, cached: res.cached });
-    return rows[rows.length - 1];
-    } finally {
-      // A refund is not a purchase: `settle(0, true)` releases WITHOUT spending (EN-083 measured that
-      // `settle(0, false)` calls `spend(0)`, incrementing the call count and billing a failed call).
-      if (!settled) budget.settle(0, true);
-    }
-  }, { concurrency: opts.concurrency ?? 6 });
-
-  // FAIL-CLOSED FOR EVERY JUDGE FAILURE, not just a missing key (D-041): under a 500 this verb
-  // returned `kept=0 judged=0` — an empty result indistinguishable from a considered answer.
-  const fatal = fatalJudgeError(errors, { failOpen: opts.failOpen });
-  if (fatal) throw new Error(fatal);
+    const m = metaByPath.get(it.id)!;
+    rows.push({ path: m.path, size: m.size, p, keep, reason: keep ? "kept" : `p<${minP}`, cached });
+  }
   const kept = rows.filter((r) => r.keep).sort((a, b) => b.p - a.p);
   // `judged` = candidates that PRODUCED A JUDGEMENT; `kept` = those that passed `--min-p`. **The
   // distinction is real and must survive**: under a complete outage a healthy run shows
@@ -79,5 +92,5 @@ export async function filterIndex(db: Database, opts: FilterOpts): Promise<Filte
   // same audit note, read as one rule, was wrong for one of the two verbs.** The pin that caught it
   // was `test_filter_refuses_a_judge_outage`, asserting `candidates > judged` — an assertion that
   // encodes the distinction, and that my "fix" broke.
-  return { candidates: candidates.length, judged: rows.length, kept: kept.length, kept_rows: kept, calls, costUsd, budgetStopped };
+  return { candidates: candidates.length, judged: rows.length, kept: kept.length, kept_rows: kept, calls, costUsd, budgetStopped, requests: batch.requests };
 }

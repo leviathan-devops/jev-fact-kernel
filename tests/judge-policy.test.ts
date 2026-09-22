@@ -23,14 +23,24 @@ let server: ReturnType<typeof Bun.serve>;
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
-    fetch(req) {
+    async fetch(req) {
       const u = new URL(req.url);
       if (u.pathname === "/err500") return new Response('{"detail":"boom"}', { status: 500 });
-      return Response.json({
-        model: "flaky",
-        answers: { match: { type: "noul", noul: 0.9 }, is_instance: { type: "noul", noul: 0.9 }, flag: { type: "noul", noul: 0.9 } },
-        usage: { input_tokens: 10, output_tokens: 2 },
-      });
+        // ECHO THE REQUESTED KEYS. The API returns one answer per question "under the same keys"
+        // (docs.typesafe.ai/api). This stub returned a FIXED key set — fine while the engine asked one
+        // question per request, but once `filter` BATCHES its keys are `"<path>__match"`, and a
+        // fixed-key response answers none of them. The stub now mirrors the real contract, so a
+        // batched request gets N answers and the suite still exercises the POLICY it is about.
+        const body = await req.json().catch(() => ({})) as { questions?: Record<string, unknown> };
+        const keys = Object.keys(body.questions ?? {});
+        const answers: Record<string, unknown> = {};
+        for (const k of keys) answers[k] = { type: "noul", noul: 0.9 };
+        if (keys.length === 0) {
+          answers.match = { type: "noul", noul: 0.9 };
+          answers.is_instance = { type: "noul", noul: 0.9 };
+          answers.flag = { type: "noul", noul: 0.9 };
+        }
+        return Response.json({ model: "flaky", answers, usage: { input_tokens: 10, output_tokens: 2 } });
     },
   });
 });

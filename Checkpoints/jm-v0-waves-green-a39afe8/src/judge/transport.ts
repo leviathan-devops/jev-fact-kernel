@@ -37,12 +37,38 @@ export async function callSystemOne(key: string, body: unknown, timeoutMs = 30_0
   const mockDir = process.env.JM_MOCK_DIR;
   if (mockDir) {
     // deterministic test transport: the Nth call reads call-<n>.json (counter in a sidecar file)
+    // A FAITHFUL MOCK: ONE CANNED ANSWER PER QUESTION, RE-KEYED TO THE REQUEST, IN ORDER.
+    //
+    // It used to return one canned file per CALL, as-is — which modelled the pre-batch engine where
+    // one request carried one question. The REAL API returns an answer for EVERY question in ONE
+    // request (docs.typesafe.ai/api: "you choose each key; answers come back under the same keys"),
+    // so a request of N questions must consume N canned answers and merge them into one response with
+    // ONE `usage` block — exactly as the wire does. For a single-question `ask()` this is
+    // byte-identical to the old behaviour (one file consumed, its value re-keyed to the request's own
+    // key, which for every fixture is the same key).
+    //
+    // FOUND BY BATCHING `filter` AND RUNNING THE SUITE: with the old mock a 3-candidate batch got ONE
+    // answer and two rows silently vanished. The tests caught it immediately, which is exactly why
+    // the boundary fake must be faithful rather than convenient.
+    const qs = (body as { questions?: Record<string, unknown> })?.questions ?? {};
+    const keys = Object.keys(qs);
+    const nQ = Math.max(1, keys.length);
     const ctrPath = join(mockDir, ".counter");
-    const n = existsSync(ctrPath) ? Number(readFileSync(ctrPath, "utf8")) : 0;
-    Bun.write(ctrPath, String(n + 1));
-    const p = join(mockDir, `call-${n}.json`);
-    if (!existsSync(p)) throw new Error(`JM_MOCK_MISSING: ${p}`);
-    return JSON.parse(readFileSync(p, "utf8")) as JudgeResponse;
+    const start = existsSync(ctrPath) ? Number(readFileSync(ctrPath, "utf8")) : 0;
+    Bun.write(ctrPath, String(start + nQ));
+    const answers: Record<string, unknown> = {};
+    let model = "mock", inTok = 0, outTok = 0;
+    for (let i = 0; i < nQ; i++) {
+      const p = join(mockDir, `call-${start + i}.json`);
+      if (!existsSync(p)) throw new Error(`JM_MOCK_MISSING: ${p}`);
+      const r = JSON.parse(readFileSync(p, "utf8")) as JudgeResponse;
+      const vals = Object.values(r.answers ?? {});
+      answers[keys[i] ?? Object.keys(r.answers ?? {})[0] ?? "answer"] = vals[0];
+      model = r.model ?? model;
+      inTok += r.usage?.input_tokens ?? 0;
+      outTok += r.usage?.output_tokens ?? 0;
+    }
+    return { model, answers, usage: { input_tokens: inTok, output_tokens: outTok } } as unknown as JudgeResponse;
   }
   // REFUSE AN OVERSIZED PAYLOAD HERE, not at the far side: measured, a 4 MB body neither returned
   // nor errored (the abort below did not fire), so the caller saw nothing at all.

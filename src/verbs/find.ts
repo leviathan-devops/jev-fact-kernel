@@ -24,6 +24,8 @@ export interface Pattern {
 export interface FindResult {
   phrase: string; seeds: string[]; fetched: number; narrowed: number; judged: number;
   kept: number; clusters: number; calls: number; costUsd: number; budgetStopped: boolean;
+  /** HTTP REQUESTS made. `calls` counts judged candidates; this counts ROUND TRIPS — the batching proof. */
+  requests: number;
   patterns: Pattern[]; out?: string; trend: string;
   /** Patterns dropped for having support below `common` (observable, never silent). */
   belowCommon: number;
@@ -36,7 +38,7 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   const judge = new Judge(db, {});
   const minP = opts.minP ?? 0.8;
   const maxExcerpt = opts.maxExcerpt ?? 1200;
-  let calls = 0, costUsd = 0, budgetStopped = false;
+  let calls = 0, costUsd = 0, budgetStopped = false, requests = 0;
 
   // 2 SEEDS — deterministic tokenisation (no model)
   const seeds = seedsOf(opts.phrase);
@@ -73,50 +75,57 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
   // 4 NARROW — cap the judge surface (the ≥100× cut lives here in aggregate use)
   const candidates = Array.from(seen.values()).slice(0, limit);
 
-  // 5 JUDGE — one Noul per candidate over a bounded excerpt
+  // 5 JUDGE — THE BATCH PATH. (MEASURED: `find` made 98 REQUESTS for 98 candidates; the API's
+  // `questions` map is caller-keyed, so that is ONE request. Measured this session: n=400 questions in
+  // one request at 2.39s with time FLAT in n.) The excerpt logic is unchanged — D-031's "excerpt must
+  // contain the match" still governs, because the judged text is still computed per candidate.
   const judged: { row: QueryRow; p: number; quote: string }[] = [];
-  const { errors: poolErrors } = await runPool(candidates, async (c) => {
-    if (budgetStopped) return null;
-    if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)
-    // EVERY CLAIM IS RELEASED ON EVERY EXIT (audit find.ts:93 — the SAME leak I fixed in
-    // `decision-tree.ts` and did not sweep for here). `claim()` increments `pending`, which
-    // `roomLeft()` counts, and only `settle()` releases it. Without a `finally`, a worker that
-    // THROWS — a judge outage (`judge.ask` rejects), or `noulFrom` refusing an unusable answer —
-    // exits with the claim held, so the budget leaks one slot per failed row and then reports a
-    // FALSE "budget exhausted". Instance count of this class: **eight.**
-    let settled = false;
-    try {
+  const items: { id: string; state: unknown }[] = [];
+  const textByPath = new Map<string, string>();
+  for (const c of candidates) {
+    if (budgetStopped) break;
+    if (!budget.claim()) { budgetStopped = true; break; }   // SYNC claim before the await (D-024)
     const doc = db.query("SELECT text FROM docs WHERE path = ?").get(c.path) as { text: string } | null;
-    // THE EXCERPT MUST CONTAIN THE MATCH (D-031). Taking the document HEAD meant the judge was
-    // asked "is this an instance of X?" while being shown text that did not contain X — measured
-    // on the real corpus: the three seeded documents held the phrase at char 1267, 1267 and 9224,
-    // all OUTSIDE a 1200-char head slice, so every true positive was judged `no` and the chain
-    // returned `209 -> 100 -> 0 -> 0` for EVERY phrase. For a structured corpus (JSON session
-    // logs) the head is metadata noise, which is exactly the corpus R2 targets.
     const text = doc?.text ?? "";
     const excerpt = excerptAround(text, seeds, maxExcerpt);
-    const res = await judge.ask({ target_phrase: opts.phrase, candidate: { path: c.path, excerpt } },
-      { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } }, "find@v1");
-    const p = noulFrom(res.answers, "is_instance");   // by SHAPE, never a bare `?? 0` (D-042)
-    budget.settle(res.costUsd, res.cached);
-    settled = true;
-    if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
-    if (!res.cached) { calls++; costUsd += res.costUsd; }
-    if (p >= minP) judged.push({ row: c, p, quote: quoteAround(text, seeds, 160) });
-    } finally {
-      // A refund is not a purchase: `settle(0, true)` is the release-WITHOUT-spend branch, which is
-      // exactly what "this claim produced no measured call" means (measured in EN-083: `settle(0,
-      // false)` calls `spend(0)` — INCREMENTING the call count and billing a call that failed).
-      if (!settled) budget.settle(0, true);
+    textByPath.set(c.path, text);
+    items.push({ id: c.path, state: { target_phrase: opts.phrase, candidate: { path: c.path, excerpt } } });
+  }
+  let batch: Awaited<ReturnType<typeof judge.askManyBatch>>;
+  try {
+    batch = await judge.askManyBatch(
+      items,
+      { is_instance: { type: "noul", instructions: `Is this an instance of "${opts.phrase}" given the excerpt?` } },
+      "find@v1",
+    );
+  } catch (err) {
+    for (let i = 0; i < items.length; i++) budget.settle(0, true);   // nothing was judged
+    // FAIL-CLOSED FOR EVERY JUDGE FAILURE, not just a missing key (D-041).
+    const fatal = fatalJudgeError([{ error: err instanceof Error ? err.message : String(err) }], { failOpen: opts.failOpen });
+    if (fatal) throw new Error(fatal);
+    batch = { answers: {}, model: "", requests: 0, cached: 0, cachedKeys: [], asked: 0, inputTokens: 0, costUsd: 0, usageMissing: 0 } as Awaited<ReturnType<typeof judge.askManyBatch>>;
+  }
+  if (batch.usageMissing > 0) {
+    for (let i = 0; i < items.length; i++) budget.settle(0, true);
+    throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);
+  }
+  requests = batch.requests;
+  const cachedSet = new Set(batch.cachedKeys);
+  const share = batch.asked > 0 ? batch.costUsd / batch.asked : 0;   // one request's cost, split across its items
+  const byPath = new Map(candidates.map((c) => [c.path, c]));
+  for (const it of items) {
+    const k = `${it.id}__is_instance`;
+    const cached = cachedSet.has(k);
+    budget.settle(cached ? 0 : share, cached);        // a cached pair REFUNDS (EN-083)
+    const a = batch.answers[k];
+    if (a === undefined) continue;                    // no answer is not an answer
+    if (!cached) { calls++; costUsd += share; }
+    const p = noulFrom({ is_instance: a }, "is_instance");   // by SHAPE, never a bare `?? 0` (D-042)
+    if (p >= minP) {
+      const row = byPath.get(it.id)!;
+      judged.push({ row, p, quote: quoteAround(textByPath.get(it.id) ?? "", seeds, 160) });
     }
-    return null;
-  }, { concurrency: opts.concurrency ?? 6 });
-
-  // FAIL-CLOSED FOR EVERY JUDGE FAILURE, not just a missing key (D-041): under a 500 this verb
-  // returned `0 patterns` with a plausible trend — an empty search indistinguishable from a
-  // completed one.
-  const fatal = fatalJudgeError(poolErrors, { failOpen: opts.failOpen });
-  if (fatal) throw new Error(fatal);
+  }
   // 6 RERANK — by probability (code sorts; no model)
   judged.sort((a, b) => b.p - a.p);
 
@@ -173,7 +182,7 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     // `judged` = how many candidates RECEIVED a judge call; `kept` = how many passed `--min-p`.
     // They are different numbers, and the type names them as numbers (audit find.ts:158).
     phrase: opts.phrase, seeds, fetched: seen.size, narrowed: candidates.length, judged: candidates.length,
-    kept: judged.length, clusters: patterns.length, calls, costUsd, budgetStopped, patterns, out,
+    kept: judged.length, clusters: patterns.length, calls, costUsd, budgetStopped, requests, patterns, out,
     belowCommon: dropped,
     // 9 THE TREND — the operator-facing chain. `judged` AND `kept` ARE SEPARATE NUMBERS
     // (audit find.ts:158): the field used to be `judged: judged.length`, and `judged` is populated
@@ -185,7 +194,10 @@ export async function find(db: Database, opts: FindOpts): Promise<FindResult> {
     // positionally parseable (`split(" → ").map(Number)`, which the find suite relies on), and the
     // labels are APPENDED after them. A trend that changes shape to become clearer breaks every
     // reader that was already parsing it.
+    // THE REQUEST COUNT IS IN THE TREND because it is the batching proof: with the batch path N
+    // candidates cost ceil(N/200) requests instead of N. A reader who sees `98 judged · 1 request`
+    // knows the batching is live; `98 judged · 98 requests` would mean it regressed.
     trend: `${union.size} → ${candidates.length} → ${judged.length} → ${patterns.length}` +
-      `   (seeds → candidates → KEPT → patterns; ${candidates.length} judged, ${judged.length} kept)`,
+      `   (seeds → candidates → KEPT → patterns; ${candidates.length} judged, ${judged.length} kept; ${requests} request${requests === 1 ? "" : "s"})`,
   };
 }

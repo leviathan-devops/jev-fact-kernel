@@ -368,7 +368,7 @@ async function main(): Promise<number> {
       });
       db.close();
       if (has("json")) console.log(JSON.stringify(res, null, 2));
-      else { console.log(`JM_FILTER candidates=${res.candidates} judged=${res.judged} kept=${res.kept}`); for (const r of res.kept_rows.slice(0, 10)) console.log(`  p=${r.p.toFixed(2)} ${r.path}`); }
+      else { console.log(`JM_FILTER candidates=${res.candidates} judged=${res.judged} kept=${res.kept} calls=${res.calls} requests=${res.requests} batch=${res.calls > 0 ? (res.calls / Math.max(1, res.requests)).toFixed(0) : 0}/req`); for (const r of res.kept_rows.slice(0, 10)) console.log(`  p=${r.p.toFixed(2)} ${r.path}`); }
       return res.budgetStopped ? 3 : 0;
     } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
   }
