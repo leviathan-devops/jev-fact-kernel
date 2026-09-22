@@ -209,11 +209,14 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
   let changed = 0, textIndexed = 0, bytesHashed = 0, truncated = false, skipped = 0, lastError: string | undefined;
   const seen = new Set<string>();
 
-  // the sweep is a TRANSACTION BODY, so anything it decides to skip is recorded here and folded
-  // into the returned stats after the commit.
-  let sweepSkipped: string | undefined;
-  const tx = db.transaction(() => {
-    for (const full of paths) {
+  // THE WALK IS COMMITTED IN BATCHES, NOT AS ONE TRANSACTION. FOUND BY MEASURING THE STORE: a 1.8 GB
+  // corpus produced an 11 GB index — a 4 GB db plus a **7 GB WAL**. SQLite's `wal_autocheckpoint`
+  // (1000 pages ~= 4 MB) CANNOT run while a transaction is open, so ONE transaction spanning the whole
+  // walk lets the WAL grow to the size of every write the run makes. `ingestTarget` already batches at
+  // 500 (targets.ts:169); this path — the one that walks the LARGE corpora — did not. Batching also
+  // makes the walk RESUMABLE after a crash instead of all-or-nothing, which is the same contract.
+  const ixBatch = db.transaction((batch: string[]) => {
+    for (const full of batch) {
       const base = relative(root, full);
       const rel = prefix + (base === "" ? (full.split("/").pop() ?? full) : base);
       seen.add(rel);
@@ -225,6 +228,19 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
         if (r.truncated) truncated = true;
       } catch (err) { skipped++; lastError = String(err).slice(0, 120); }   // one bad file never aborts the batch
     }
+  });
+  let batch: string[] = [];
+  for (const full of paths) {
+    batch.push(full);
+    if (batch.length >= 500) { ixBatch(batch); batch = []; }
+  }
+  if (batch.length) ixBatch(batch);
+
+  // THE SWEEP IS ITS OWN TRANSACTION, AFTER THE WALK. Its WRITE volume is proportional to the rows
+  // actually DELETED (normally zero), not to the corpus, so it does not carry the walk's cost — and
+  // running it in a separate transaction means a checkpoint can land between the two.
+  let sweepSkipped: string | undefined;
+  const sweepTx = db.transaction(() => {
     // THE SWEEP IS SCOPED, AND A TRUNCATED WALK NEVER TOMBSTONES (D-060/D-061).
     //
     // Two measured data-loss defects, both from the same over-broad rule "not seen this run means
@@ -276,7 +292,7 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
         }
     }
   });
-  tx();
+  sweepTx();
 
   const total = (db.query("SELECT COUNT(*) AS n FROM files WHERE state != 'gone'").get() as { n: number }).n;
   const goneCount = (db.query("SELECT COUNT(*) AS n FROM files WHERE state = 'gone'").get() as { n: number }).n;
