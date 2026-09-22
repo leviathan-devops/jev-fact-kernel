@@ -243,3 +243,64 @@ only when all three report so; until then this file's §5 stands.
 Nine real defects were found by audit and fixed; six audit claims were refuted by probe and
 recorded; two of three scope chunks are complete and clean; the third is blocked by an external
 rate limit, so **no ship-ready claim is made** and the gate names its own retry condition.
+
+## §6 — THE GATE UNBLOCKED: a LIVE LANE, and the four defects it immediately found (2026-09-22)
+
+**THE BLOCK, AND HOW IT BROKE.** Twenty-eight attempts across five methods all returned 0 tokens —
+every tried lane was quota-dead, including `--concurrency 1`, which
+returned 62 requests / 62 failed and thereby disproved its own burst hypothesis. The unblock was not
+a retry but a **new lane**: probing the providers this host actually holds keys for, `GOOGLE_API_KEY`
+turned out to be rejected by its endpoint (`400 Please pass a valid API key`) while **Verboo's
+OpenAI-compatible router answered 200 with a real completion and a usage block.**
+
+```
+ocr config set custom_providers.verboo.url https://code.verboo.ai/router/v1
+ocr config set custom_providers.verboo.protocol openai
+ocr config set custom_providers.verboo.api_key <from bin/verboo-key.sh>
+```
+The lane the OMP session itself runs on is the lane that reviews the build. **The lesson is about
+search breadth, not persistence:** 28 retries of dead lanes produced nothing; one probe of an
+untried endpoint produced a complete review at 2.38M tokens.
+
+### §6.1 — THE FOUR FINDINGS, all in fixes made the same day
+
+**A-1 · high · `--truth` was grouped with `--apply` as a write.**
+`recordTruth` runs `UPDATE decisions SET context_ref …` (calibrate.ts:58-61) — it can NEVER insert
+the row it targets. So `jm calibrate --name <typo> --truth 5` created a schema-initialised
+`<typo>.sqlite` and THEN failed with `JM_TRUTH_MISSING`: **the exact phantom the D-054/D-055/D-056
+invariant forbids, re-introduced by the first version of that very fix.**
+*Fix:* only `--apply` may create. *Verified:* `calibrate --name typo --truth 5` → `JM_INDEX_MISSING`,
+no artifact.
+
+**A-2 · medium · `filter` never called `judgeKeyMissing()`.**
+A keyless run whose candidate query returned ZERO rows never reached the judge and **exited 0 with
+`kept=0`** — "no key" indistinguishable from "no matches", the D-009/D-028 class this change existed
+to close. *Fix:* guard added, hoisted above the store open. *Verified:* keyless `filter` → `JEV_NO_KEY`,
+exit 2.
+
+**A-3 · medium · `find` checked its key AFTER the `mkdir` and the open.**
+A keyless `find` still created `$JM_HOME/find` and mutated an existing store (WAL conversion / schema
+pass) before refusing, and reported `JM_INDEX_MISSING` ahead of `JEV_NO_KEY`, contradicting the
+"a keyless engine creates NO artifacts" comment. *Fix:* hoisted. *Verified:* no `find/` directory.
+
+**A-4 · medium · the guard broke `JM_MOCK_DIR`, a legitimate keyless mode.**
+`Judge.requireKey()` returns `"mock"` when `JM_MOCK_DIR` is set (client.ts:36) and the transport
+short-circuits to canned fixtures (transport.ts:37). A guard consulting only `resolveKey()` refused
+runs the judge would have served. **The suite missed it because its mock-transport tests also carry a
+real key in the environment** — the instrument had a blind spot exactly where the regression was.
+*Fix:* the guard mirrors the judge's own resolution. *Verified:* the mock path gets past the guard.
+
+### §6.2 — WHAT THE FIRST VERSION OF THE FIX GOT WRONG, and why the audit caught it
+
+All four findings are in code written THIS SESSION, and three of them are the same invariant one
+level deeper. The pattern is worth naming: **a fix applied to the reported sites is a patch; a fix
+applied to the invariant is a repair** — and only the second survives contact with the next reader.
+The audit read the fix, not the bug report, and found what the fix had missed.
+
+**Pinned:** `tests/phantom-artifacts.test.ts` now carries eight cases (30 expects), including all
+four, each with the mechanism in its comment.
+
+### §6.3 — THE FULL-RANGE RE-RUN
+
+With the lane live, `ocr review --from 7b7f7eb --to HEAD` was launched against the WHOLE build —
+the source chunk that had been `partial` in every one of the 28 blocked attempts.

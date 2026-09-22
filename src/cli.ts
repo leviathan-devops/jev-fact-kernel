@@ -38,6 +38,12 @@ const has = (name: string) => argv.includes(`--${name}`);
 // file, so the refusal used to leave an empty index behind that then reported healthy and answered
 // every query with zero rows. A keyless engine now creates NO artifacts.
 function judgeKeyMissing(): boolean {
+  // JM_MOCK_DIR IS A LEGITIMATE KEYLESS MODE, and a guard that forgot it is a regression: the judge
+  // itself returns "mock" as the key when JM_MOCK_DIR is set (judge/client.ts:36) and the transport
+  // short-circuits to canned fixtures (judge/transport.ts:37). A guard that consulted only
+  // resolveKey() refused runs the judge would have served. Found by the audit (A-4); the suite
+  // missed it because its mock-transport tests also carry a real key in the environment.
+  if (process.env.JM_MOCK_DIR) return false;
   if (resolveKey()) return false;
   console.error(`JM_ERROR: ${JEV_NO_KEY}: no TYPESAFE_API_KEY and no ~/.config/typesafe/key`);
   return true;
@@ -295,7 +301,20 @@ async function main(): Promise<number> {
     // A READ VERB REFUSES A MISSING INDEX (D-056): `openDb` created `typo.sqlite`, and the typo then
     // answered at EXIT 0 with zero rows — the D-009/D-028 class, fixed on the MCP surface and missed
     // here. `query` and `scan` already used the refusing open; `filter` and `find` did not.
-    const db = openIndexExisting(indexName.startsWith("@") ? indexName.slice(1) : indexName, indexPathFor(indexName.startsWith("@") ? indexName.slice(1) : indexName));
+    if (judgeKeyMissing()) return 2;
+    // `filter` IS A JUDGED VERB and must refuse a missing key like its siblings — and it must do so
+    // BEFORE the store is opened, for the same reason `find` does: the check is free, the store
+    // touch is not, and two judged verbs answering differently for one situation is its own defect
+    // (a keyless `filter` on a missing index said JM_INDEX_MISSING while `find` said JEV_NO_KEY).
+    // Without the guard at all, a keyless run whose candidate query returns ZERO rows never reached
+    // the judge and exited 0 with `kept=0` — "no key" indistinguishable from "no matches", the
+    // D-009/D-028 class this whole change exists to close. Found by the audit (A-2).
+    //
+    // THEN THE INDEX (D-056). `openDb` created `typo.sqlite`, and the typo then answered at EXIT 0
+    // with zero rows — the D-009/D-028 class, fixed on the MCP surface and missed here. `query` and
+    // `scan` already used the refusing open; `filter` and `find` did not.
+    const filterIdx = indexName.startsWith("@") ? indexName.slice(1) : indexName;
+    const db = openIndexExisting(filterIdx, indexPathFor(filterIdx));
     try {
       const res = await withLedger("filter", { index: indexName, question }, async () => {
         const r = await filterIndex(db, {
@@ -315,12 +334,16 @@ async function main(): Promise<number> {
   if (verb === "find") {
     const phrase = positional[0] ?? flag("phrase");
     if (!phrase) { console.error("JM_ARGS: jm find \"<phrase>\" --in <index> [--common N] [--structure md|json] [--out F]"); return 2; }
+    // THE KEY IS RESOLVED FIRST — before the mkdir and before the open. `resolveKey()` is
+    // side-effect-free, so hoisting it costs nothing; leaving it below meant a keyless `find`
+    // still created `$JM_HOME/find` and mutated an existing store (WAL conversion / schema pass)
+    // before refusing, and reported JM_INDEX_MISSING ahead of JEV_NO_KEY. Found by the audit (A-3).
+    if (judgeKeyMissing()) return 2;
     mkdirSync(join(process.env.JM_HOME ?? join(homedir(), ".jm"), "find"), { recursive: true });   // G13: the artifact home exists
     const indexArg = flag("in") ?? flag("index") ?? "shadow";
     const indexName = indexArg.startsWith("@") ? indexArg.slice(1) : indexArg;
     // A READ VERB REFUSES A MISSING INDEX (D-056): see `filter` above — same defect, same fix.
     const db = openIndexExisting(indexName, indexPathFor(indexName));
-    if (judgeKeyMissing()) { db.close(); return 2; }        // D-055: and the key is checked before any work
     try {
       const res = await withLedger("find", { phrase, index: indexName }, async () => {
         const r = await find(db, {
@@ -535,8 +558,13 @@ async function main(): Promise<number> {
     }
     // --apply RECORDS a row, so it may create the store; a plain calibrate READS it (D-056), and a
     // read that creates is the phantom class. `calibrate` with no store has zero rows, not a new file.
+    // ONLY --apply CREATES. `--truth` is NOT a write: `recordTruth` runs `UPDATE decisions SET
+    // context_ref …` (calibrate.ts:58-61), which can never insert the row it targets — so a
+    // `--truth` run against an absent store would create a schema-initialised file and then fail
+    // with JM_TRUTH_MISSING. That is the phantom the D-054/D-055/D-056 invariant forbids, and it
+    // was re-introduced by the first version of this very fix. Found by the audit (A-1).
     const calIdx = flag("name") ?? "decisions";
-    const db = has("apply") || rawId !== null ? openDb(indexPathFor(calIdx)) : openIndexExisting(calIdx, indexPathFor(calIdx));
+    const db = has("apply") ? openDb(indexPathFor(calIdx)) : openIndexExisting(calIdx, indexPathFor(calIdx));
     if (rawId !== null) {
       const id = truthId;
       const val = flag("truth-value") ?? "operator_confirmed";

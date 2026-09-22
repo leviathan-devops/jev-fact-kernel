@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `be8da9108fab375b694474ffc03b8710` (git d38d393)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `2e46897a85f0f51811492ad9c5af0623` (git 6bb880a)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -60,7 +61,7 @@ sealed copy does not belong here.
 | `src/adapters/jsonl.ts` | 38 |
 | `src/adapters/sqlite.ts` | 62 |
 | `src/calibrate.ts` | 61 |
-| `src/cli.ts` | 572 |
+| `src/cli.ts` | 600 |
 | `src/job/indexJob.ts` | 40 |
 | `src/job/queue.ts` | 83 |
 | `src/job/run.ts` | 71 |
@@ -103,7 +104,7 @@ sealed copy does not belong here.
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |
 | `tests/calibrate-unknown.test.ts` | 66 |
-| `tests/cli-contract.test.ts` | 147 |
+| `tests/cli-contract.test.ts` | 153 |
 | `tests/concurrency.test.ts` | 95 |
 | `tests/container/harness.ts` | 329 |
 | `tests/decide.test.ts` | 209 |
@@ -124,7 +125,7 @@ sealed copy does not belong here.
 | `tests/ledger.test.ts` | 26 |
 | `tests/mcp-notification.test.ts` | 70 |
 | `tests/mcp.test.ts` | 89 |
-| `tests/phantom-artifacts.test.ts` | 96 |
+| `tests/phantom-artifacts.test.ts` | 175 |
 | `tests/query.test.ts` | 37 |
 | `tests/redact-perf.test.ts` | 58 |
 | `tests/regression.test.ts` | 54 |

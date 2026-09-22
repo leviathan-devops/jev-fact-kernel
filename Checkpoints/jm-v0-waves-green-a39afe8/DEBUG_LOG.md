@@ -1788,3 +1788,22 @@ already declares a missing key fatal regardless of fail polarity, so a refused r
 its own shell calls, so `target add drill fs …` wrote into the **operator's real `~/.jmtargets.json`**
 — and nothing in the output ever named the file, so it was invisible without `cat`-ing JSON. `target
 add` and `target ls` now print `registry <path>`. One line, and the mistake cannot be missed.
+
+## EN-071 — THE AUDIT GATE UNBLOCKED: a live lane, and four defects in my own fixes
+- **THE BLOCK WAS BREADTH, NOT PERSISTENCE.** 28 attempts across 5 methods returned 0 tokens. The
+  unblock was a NEW LANE: `GOOGLE_API_KEY` is rejected by its endpoint (`400 Please pass a valid API
+  key`) but **Verboo's OpenAI-compatible router answered 200 with a real completion**. Registered as
+  an ocr custom provider, it returned a complete review at **2,380,457 tokens** with 8 comments.
+  The lane the OMP session itself runs on is the lane that reviews the build.
+- **A-1 (high):** my D-056 fix grouped `--truth` with `--apply` as a write — but `recordTruth` only
+  UPDATEs, so it created a phantom store and THEN failed. **The invariant broken by its own fix.**
+- **A-2 (medium):** `filter` never called the key guard, so a keyless run at ZERO candidates exited 0
+  with `kept=0` — "no key" indistinguishable from "no matches".
+- **A-3 (medium):** `find` checked its key after the `mkdir` and the open, leaving `$JM_HOME/find`
+  behind on a refused run.
+- **A-4 (medium):** the guard broke `JM_MOCK_DIR`, a legitimate keyless mode — and **the suite missed
+  it because its mock tests also carry a real key**: the instrument had a blind spot exactly where
+  the regression was.
+- **THE PATTERN:** a fix applied to the reported sites is a PATCH; a fix applied to the invariant is
+  a REPAIR. The audit read the fix rather than the bug report, and found what the fix had missed.
+- **Pinned:** `tests/phantom-artifacts.test.ts`, 8 cases / 30 expects.

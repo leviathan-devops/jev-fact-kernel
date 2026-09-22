@@ -136,7 +136,13 @@ describe("recipe validation (D-020)", () => {
         expect({ truth: bad, code: r.code }).toEqual({ truth: bad, code: 2 });
         expect(r.err).toMatch(/JM_ARGS: --truth/);
       }
-      const missing = await jm(["calibrate", "--truth", "99999"]);
+      // `--name c` TARGETS THE SEEDED INDEX. Without it this ran against the default `decisions`,
+      // which does not exist in the sandbox — and it passed only because the old `--truth` path
+      // CREATED that store on its way to failing, which is exactly the phantom the audit's A-1
+      // finding removed (a `--truth` run UPDATEs a row; it can never insert one, so it must not
+      // create the store). With the store present and the row absent, the refusal under test is the
+      // right one: the caller named a row that is not there.
+      const missing = await jm(["calibrate", "--name", "c", "--truth", "99999"]);
       expect(missing.code).toBe(2);                                 // a row that is not there: a CLIENT error
       expect(missing.err).toMatch(/JM_TRUTH_MISSING/);
       const help = await jm([]);
