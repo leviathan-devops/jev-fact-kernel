@@ -733,3 +733,58 @@ judge answers WITH usage                         -> unaffected
 unswept surface is named exactly: **the parked W8 layer** (no code exists to probe — `src/firegate/`
 is absent and `jef` is not installed) and **the OMP-session mount** (an MCP server mounts at session
 start, so a running session cannot observe its own registry; C14 records this).
+
+### THE AUDIT GATE — RE-RUN ON A LIVE LANE, AND ITS FINAL VERDICT (2026-09-22)
+
+**WHAT CHANGED:** the gate had been BLOCKED for 28 attempts because every lane returned 0 tokens.
+The block was **breadth, not persistence** — probing the providers this host holds keys for found
+**Verboo's [OI]-compatible router answering 200 with a real completion**, and Verboo is the provider
+this session itself runs on. Registered as an `ocr` custom provider it produced:
+
+```
+FULL RANGE    ocr review --from 7b7f7eb --to HEAD
+              status partial · 121 findings · 107 files · 17,607,299 tokens · 37m13s · 493 tool calls
+              artifact artifacts/audit-2026-09-22-full-lane.json
+              distinct after de-duplicating the Checkpoints copies: 103
+              (1 critical · 9 high · 50 medium · 43 low)
+
+SCOPED        ocr review --from 7b7f7eb --to HEAD --exclude 'Checkpoints/**'
+              status partial · 91 findings · 54 files · 13,061,643 tokens
+              the 5 failed items are ALL of src/judge/* — one subsystem's deeper round timed out
+```
+
+**THE TEN HIGH/CRITICAL FINDINGS: ALL CONFIRMED, NONE REFUTED, ALL FIXED.** Every one was a
+hypothesis until a probe settled it, and each probe is recorded in
+`artifacts/audit-adjudication-ledger.md`. They include:
+- **C-1 (critical)** — the gate runner's own concurrency check had TWO `FAILS=` assignments, the
+  second shadowing the first, so the `UNIQUE constraint` half (the D-038 race it was added to catch)
+  was **dead code**.
+- **H-1** — `scripts-seal.sh` validated its checkpoint directory only as "an existing directory" and
+  then `rm -rf`-ed each subtree, so `./scripts-seal.sh .` would have **deleted the live `src/` tree**.
+- **H-8** — the container rig's T10 passed `query` where `jm_find` reads `phrase`, so its "keyless
+  refusal" was satisfied by a **missing-argument error**: a vacuous pass inside the instrument that
+  certifies everything else.
+- **H-2** — a SQLite table without a PRIMARY KEY collapsed every row to `#table/0`: **5 rows became
+  1 file** while the ingest reported `rows=5 changed=5`.
+- **H-5** — `policy.fail` was the one unvalidated policy field, so a typo (`"Closed"`) silently
+  degraded a run to **fail-OPEN** — the opposite of the documented default.
+- **H-9** — the tombstone flipped `files.state` but never purged `docs`/`docs_fts`, so a deleted
+  file's text stayed in the store.
+
+**AUDIT GATE: BLOCKED.** Not FAIL — every high/critical finding was adjudicated, confirmed and fixed,
+with zero false positives, and the fixes are pinned. Not PASS — **no run reaches `complete`**: the
+lane's deeper review rounds time out on this host (`round 2: LLM completion error: context deadline
+exceeded`), leaving 23/107 items unreviewed in the full run and 5/54 (the judge subsystem) in the
+scoped run, and **93 medium/low findings remain UNADJUDICATED**. A `partial` artifact cannot stand
+for a complete review, so the frontier is NAMED rather than closed:
+
+```
+ADJUDICATED   the 10 high/critical findings — confirmed, fixed, pinned
+OPEN          93 medium/low findings (50 medium, 43 low) — named by file in the ledger
+UNREVIEWED    src/judge/* (the scoped run's failed group) + the Checkpoints copies
+RESUME        a lane whose deeper rounds complete; the ledger's PART 2 lists the open set by file
+```
+
+**AND THE GATE DID ITS JOB:** an independent review that finds a critical in the gate runner, a
+live-tree-deleting bug in the seal, and a vacuous pass in the verification rig is a gate worth
+having. The build makes **no ship-ready claim** while this line reads BLOCKED.

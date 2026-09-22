@@ -126,3 +126,17 @@ artifact cannot stand for a complete review. The frontier is named, not closed.
 6. **When the finding is in your own instrument, re-run the instrument.** H-8 meant T10's negative
    half passed for the wrong reason; the answer was not to explain it away but to tighten the
    assertion and re-run — which is what makes the remaining 8/8 worth anything.
+
+## PART 6 — THE MEDIUM/LOW FINDINGS ADJUDICATED SO FAR (the rest stay open)
+
+Three from the densest file (`src/store/schema.ts`, 6 findings) were settled as well:
+
+| sev | finding | verdict |
+|-----|---------|---------|
+| medium | `tags` is declared but **has no writer anywhere in `src/`** — the only references are readers (`query.ts:59` for the `--tag` filter, `report.ts:39` for the count) | **CONFIRMED** — `grep -rn "INTO tags" src/` returns nothing; `--tag anything=atall` matches zero rows and `report` always prints `tags: 0`. The `--tag` filter can never match. **Documented in README §18.3a** rather than left as a filter that silently cannot work |
+| low | `runs` has no writer either — `report` counts it, `ledger.jsonl` holds the real per-run record | **CONFIRMED** — `report` always prints `runs: 0`; the honest record is the ledger. Documented alongside `tags` |
+| medium | `docs_fts` is a standalone fts5 table with its own copy of the text, not linked to `docs`, with no sync triggers — so correctness depends on every writer issuing both statements | **CONFIRMED** — and it is exactly why H-9 needed TWO deletes to purge a tombstone (the fix deletes from `docs` AND `docs_fts`). The observation was right and the H-9 fix is its consequence |
+
+**THE REMAINING ~90 medium/low findings are OPEN.** They are listed by file in PART 2. None is
+claimed clean, and none is dismissed: the ten highs all confirmed, so the prior is that these are
+real too.

@@ -518,6 +518,17 @@ removed. The rule is now stated by category and pinned:
   fail polarity, so a refused run has no work to do;
 - only a verb that genuinely **WRITES** may create the store (`index`, `calibrate --apply`).
 
+### 18.3a THE `--tag` FILTER AND THE `runs` COUNTER ARE DECLARED BUT NOT POPULATED
+
+`jm query --tag name=value` filters against the `tags` table, and `jm report` prints a `runs` count.
+**Nothing in this build writes either table** — the audit found it (`grep -rn "INTO tags\|INTO runs"
+src/` returns nothing), and it is confirmed by behaviour: `--tag anything=atall` matches zero rows and
+`report` always prints `tags: 0 · runs: 0`. The per-run record that DOES exist is `ledger.jsonl`
+(written by `src/ledger.ts` and read by `report`'s ledger section).
+
+Stated here rather than removed, because the honest version is cheaper to reason about than a filter
+that silently cannot match. If a writer is added, this paragraph goes away.
+
 ### 18.4 Query returns POINTERS; the body comes from scan/extract (G11, G16)
 
 ```bash
