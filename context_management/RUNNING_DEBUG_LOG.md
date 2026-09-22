@@ -270,3 +270,25 @@ the source chunk of the independent audit.
   request; the parse-error path keeps its mandatory `id: null` frame.
 - **SIX OF SEVEN PROBES BEHAVED** — `-32700`, `-32601`, `-32602`, a named `JM_INDEX_MISSING`, and
   empty stdin producing nothing. Recorded so silence is not read as proof.
+
+## [2026-09-22] THE SECOND OPERATOR, ROUND 3 — two defects, and the family held two worse ones
+
+- **WHAT THE DRILL DID:** a zero-context subagent, docs-only (README + MASTER_PROMPT), 12 operations
+  in 17 minutes, nothing modified. It completed all 12 and reported 2 defects and 9 doc-vs-reality
+  mismatches. **An operator who could not read the code found what four adversarial sweeps and a
+  full runtime seat had missed** — because it followed the DOCS, and the docs are what a new
+  operator has.
+- **D-054:** a refused `index --in nosuchtarget` left the index behind; `query` then answered it at
+  **exit 0 with zero rows.**
+- **D-055:** a keyless `decision-tree` left `decisions.sqlite` behind — and the README's "fail-closed
+  writes nothing" was false in the literal sense.
+- **D-056, FOUND BY PROBING THE FAMILY RATHER THAN THE REPORTS:** `filter` and `find` did the same
+  thing and answered at **exit 0**. That is the D-009/D-028 defect, fixed on the MCP surface and
+  missed on the CLI — twice-repaired without the invariant ever being stated.
+- **THE INVARIANT, NOW STATED AND PINNED:** a run that refuses its input must not have touched the
+  disk.
+- **D-057:** the usage dump listed 14 of its 17 verbs, and README §18.1 tells the operator to trust
+  it. `find`, `filter`, `decision-tree` were undiscoverable by the documented method. Now 17.
+- **AND ONE SAFETY FIX:** `target add` now prints `registry <path>`. The drill's `JM_HOME` did not
+  survive its shell calls, so it wrote into the operator's real registry, and no output named the
+  file.

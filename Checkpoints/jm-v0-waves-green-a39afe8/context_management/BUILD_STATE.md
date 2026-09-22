@@ -1,6 +1,7 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `5ed0c4cfefcf2253b637a43eacfa6781` (git 49e5f7e)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `66aad1f121a711c031d17186358d1a0b` (git 5c1e76a)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+
 
 
 
@@ -67,7 +68,7 @@ sealed copy does not belong here.
 | `src/judge/policy.ts` | 121 |
 | `src/judge/transport.ts` | 66 |
 | `src/ledger.ts` | 64 |
-| `src/mcp.ts` | 185 |
+| `src/mcp.ts` | 195 |
 | `src/pools/budget.ts` | 60 |
 | `src/pools/pool.ts` | 27 |
 | `src/serve.ts` | 136 |
@@ -88,7 +89,7 @@ sealed copy does not belong here.
 | `src/verbs/scan.ts` | 93 |
 | `src/watch.ts` | 90 |
 
-## THE TEST INVENTORY (tests/, 35 files)
+## THE TEST INVENTORY (tests/, 36 files)
 
 | file | lines |
 |------|-------|
@@ -118,6 +119,7 @@ sealed copy does not belong here.
 | `tests/ladder-reason.test.ts` | 55 |
 | `tests/launcher.test.ts` | 94 |
 | `tests/ledger.test.ts` | 26 |
+| `tests/mcp-notification.test.ts` | 70 |
 | `tests/mcp.test.ts` | 89 |
 | `tests/query.test.ts` | 37 |
 | `tests/redact-perf.test.ts` | 58 |

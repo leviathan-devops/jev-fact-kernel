@@ -1718,3 +1718,73 @@ result line.
 - **A NOTE ON MY OWN TEST:** it first passed `name` to `jm_index`, a key the schema does not declare,
   so the write landed in `all.sqlite` and the assertion failed. Standard JSON-Schema semantics
   (unknown keys ignored) — and a reminder that a test's own argument names are part of what it tests.
+
+## EN-070 — THE SECOND-OPERATOR DRILL, ROUND 3: 12/12 operations, 2 defects, 9 doc mismatches
+**Protocol:** a zero-context subagent (`sonic`, 17 minutes), given ONLY `README.md` and
+`packages/jm/MASTER_PROMPT.md`, with the project's own logs forbidden. Revision `5c1e76a`. It
+modified nothing and cleaned up after itself (its words: *"the accidental real-home target removed
+and `~/.jmtargets.json` verified back to its original two entries"*).
+
+**IT COMPLETED 12/12 OPERATIONS** — indexed a corpus, queried it, scanned, clustered, spanned fs +
+jsonl in one command, reported on an index and a job, hand-shook the MCP surface (4 tools; the
+notification rule it observed is now D-051), started and stopped HTTP, ran one daemon tick, refused
+the keyless judged path, and read the usage dump.
+
+**IT FOUND TWO DEFECTS, both reproduced by me before any fix:**
+
+**D-054 — a refused `index --in <unknown> --name X` still created the index.**
+```
+$ jm index --in nosuchtarget --name zzz
+JM_ERROR: Error: JM_TARGET_UNKNOWN: nosuchtarget (have: none)   exit=2
+$ jm query zzz --fts tombstone      -> EXIT 0, zero rows
+```
+The store said "zzz exists and has no matches"; the previous command said "your arguments are
+wrong". **Mechanism:** `openDb` creates the file, and it ran before `targetsIn(spec)` validated the
+names. The MCP surface already resolved first; the CLI did not.
+
+**D-055 — the fail-closed judged path created its index BEFORE the key check.**
+```
+$ (no key) jm decision-tree --rows … --recipe …
+JM_ERROR: JEV_NO_KEY: …   exit=2
+$ find $JM_HOME   -> index/decisions.sqlite (72 KB), ledger.jsonl
+```
+A keyless operator who runs `decision-tree` once gets a permanent empty index named `decisions`
+that reports healthy and answers every query with zero rows — and README §18.7's promise that
+fail-closed "writes nothing" is false in the literal sense.
+
+**D-056 — AND PROBING FOR THE FAMILY FOUND THE WORST TWO.** The drill's two defects are one class,
+so I probed every verb that opens a store, and two more were worse than either:
+```
+BEFORE:  filter typo --question "x"   -> exit 0  AND created typo.sqlite
+         find "phrase" --in typo      -> exit 0  AND created typo.sqlite
+         calibrate (no key)           -> exit 0  AND created decisions.sqlite
+```
+`filter` and `find` are READ verbs that used the create-on-open — **the D-009/D-028 defect, fixed on
+the MCP surface and missed on the CLI**, and here it reached EXIT 0: the typo answered as a real,
+empty index. Unlike `query` and `scan`, which already used the refusing open.
+
+**D-057 — the usage dump hid 3 of its own verbs.** README §18.1 says *"There are 17 CLI verbs. Do
+not guess one: run `jm` with no verb and it prints the usage dump."* The dump listed **14**: `find`,
+`filter` and `decision-tree` were all real (each answers with its own `JM_ARGS:` line) and absent
+from the dump. An operator who trusts the dump never discovers them. **Now 17, verified by count.**
+
+**THE FIXES (all four), verified by re-running the same probes:**
+```
+AFTER:  filter typo            -> exit 2, NO artifact
+        find --in typo         -> exit 2, NO artifact
+        calibrate (no key)     -> exit 2, NO artifact
+        route (no key)         -> exit 2, NO artifact
+        evaluate (no key)      -> exit 2, NO artifact
+        index --in unknown     -> exit 2, NO artifact
+        decision-tree (no key) -> exit 2, NO artifact
+HAPPY:  index -> JM_INDEX_OK · filter -> JM_FILTER candidates=2 judged=2 kept=1 (p=0.96, live) · query · report
+```
+Reads now refuse (`openIndexExisting`); judged verbs check `resolveKey()` BEFORE opening (policy.ts
+already declares a missing key fatal regardless of fail polarity, so a refused run has no work);
+`calibrate --apply` still creates, because it writes. Pinned as `tests/phantom-artifacts.test.ts`
+(4 cases, 21 expects), including the positive half and the absent-path twin.
+
+**AND ONE SAFETY FIX FROM A FRICTION, NOT A DEFECT:** the drill's `export JM_HOME` did not survive
+its own shell calls, so `target add drill fs …` wrote into the **operator's real `~/.jmtargets.json`**
+— and nothing in the output ever named the file, so it was invisible without `cat`-ing JSON. `target
+add` and `target ls` now print `registry <path>`. One line, and the mistake cannot be missed.

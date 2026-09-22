@@ -211,3 +211,20 @@ Not software defects. They reached a gate, so they belong here.
 - **FIX:** the structured field is read directly, and a row without it is UNKNOWN (counted and
   excluded) rather than parsed from prose.
 - **LESSON:** a human-readable message is not a data channel. If a value matters, it gets a field.
+
+### F-21 — The second-operator drill's two defects, and the family they belong to (2026-09-22)
+- **WHAT THE OPERATOR SAW:** `index --in nosuchtarget --name zzz` failed at exit 2 and left
+  `zzz.sqlite` behind; `query zzz` then answered at **exit 0 with zero rows**. Separately, a keyless
+  `decision-tree` failed at exit 2 and left `decisions.sqlite` behind, contradicting the README's
+  "fail-closed writes nothing".
+- **THE CLASS:** `openDb` CREATES the file and ran before the input was validated. Identical to
+  D-009 and D-028; this was its third and fourth appearance.
+- **THE WORSE INSTANCES I FOUND BY PROBING THE FAMILY:** `filter` and `find` used the create-on-open
+  and answered at **exit 0** — a typo'd index became a real, empty index that reported healthy.
+- **WHY IT SURVIVED THREE EARLIER FIXES:** each fix repaired the SITES it knew about (`query`,
+  `scan`) or the SURFACE it found them on (MCP), never the INVARIANT. The invariant is now stated:
+  **a run that refuses its input must not have touched the disk.**
+- **FIX:** reads refuse; judged verbs resolve the key before opening; `calibrate --apply` may still
+  create because it writes. Pinned with both halves.
+- **LESSON:** fix the INVARIANT, then grep for its idiom across every surface. Two defect repairs
+  left two worse instances standing, and only probing the family found them.

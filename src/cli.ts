@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
-import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, type Target } from "./store/db.ts";
+import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, targetsPath, type Target } from "./store/db.ts";
 import { targetsIn, ingestAll } from "./targets.ts";
+import { resolveKey } from "./judge/key.ts";
+import { JEV_NO_KEY } from "./judge/client.ts";
 import { serveStdio } from "./mcp.ts";
 import { scanIndex } from "./verbs/scan.ts";
 import { clusterIndex } from "./verbs/cluster.ts";
@@ -31,6 +33,16 @@ function flag(name: string): string | undefined {
   return i >= 0 ? argv[i + 1] : undefined;
 }
 const has = (name: string) => argv.includes(`--${name}`);
+// A JUDGED VERB MUST RESOLVE ITS KEY BEFORE IT OPENS A STORE (D-055). policy.ts: a missing key is
+// fatal REGARDLESS of fail polarity, so a refused run has no work to do — but `openDb` CREATES the
+// file, so the refusal used to leave an empty index behind that then reported healthy and answered
+// every query with zero rows. A keyless engine now creates NO artifacts.
+function judgeKeyMissing(): boolean {
+  if (resolveKey()) return false;
+  console.error(`JM_ERROR: ${JEV_NO_KEY}: no TYPESAFE_API_KEY and no ~/.config/typesafe/key`);
+  return true;
+}
+
 const VALUE_FLAGS = new Set(["name", "include", "exclude", "limit", "where", "fts", "tag", "rows", "recipe", "context", "criteria", "out", "escalation", "concurrency", "budget-calls", "job", "question", "min-p", "common", "structure", "in", "index", "port", "truth", "truth-value", "apply-note", "phrase"]);
 function positionals(): string[] {
   const out: string[] = [];
@@ -59,6 +71,9 @@ function usage(): void {
   jm scan <index> [--lex P] [--re R] [--limit N] [--json]      seeds -> candidates (keyless)
   jm cluster <index> [--lex P] [--re R] [--min N] [--json]     group candidates (no model)
   jm extract <index> --re R|--field K [--lex P] [--out F]      structured pulls -> result
+  jm filter <index> --question "..." [--fts X] [--min-p P]     judge candidates -> kept bands (needs a key)
+  jm find "<phrase>" --in <index> [--common N] [--out F]       the 9-stage chain -> patterns (needs a key)
+  jm decision-tree --rows F --recipe F [--out F]               rows + recipe -> decisions (needs a key)
   jm route --task "..." [--catalogue] [--json]               catalogue Choice + injection
   jm evaluate --cases F --questions F --key K [--k N]         metrics + --replay diff
   jm report [index] [--json]                                  status over the store + ledger
@@ -94,6 +109,7 @@ async function main(): Promise<number> {
     if (sub === "ls") {
       const list = loadTargets();
       console.log(list.map((t) => `${t.name}\t${t.kind}\t${t.root}`).join("\n") || "(no targets)");
+      console.log(`registry ${targetsPath()}`);
       return 0;
     }
     if (sub === "add") {
@@ -109,7 +125,14 @@ async function main(): Promise<number> {
       const list = loadTargets().filter((t) => t.name !== name);
       list.push({ name, kind: kind as Target["kind"], root });
       saveTargets(list);
+      // NAME THE REGISTRY THAT WAS WRITTEN. A registry is a pointer store, and an operator with two
+      // stores (a scratch JM_HOME and the real ~/.jm) cannot tell from `target X -> root` WHICH one
+      // took the write. The second-operator drill wrote into the operator's real registry exactly
+      // this way — its `export JM_HOME` did not survive to the next shell call, and nothing in the
+      // output ever named the file. Printing it costs one line and makes the mistake impossible to
+      // miss. (`target ls` prints it too, below.)
       console.log(`target ${name} (${kind}) -> ${root}`);
+      console.log(`registry ${targetsPath()}`);
       return 0;
     }
     if (sub === "rm" || sub === "remove") {
@@ -137,6 +160,11 @@ async function main(): Promise<number> {
       }
       const spec = flag("in")!;
       const indexName = flag("name") ?? (spec === "all" ? "all" : spec.split(",").map((x) => x.trim()).join("+"));
+      // RESOLVE BEFORE OPENING (D-054): `openDb` creates the file, so `--in nosuchtarget` used to
+      // exit 2 and STILL leave `zzz.sqlite` behind — which then answered `query zzz` at exit 0 with
+      // zero rows, making "no such target" and "no matches" indistinguishable again. The MCP
+      // surface already resolved first; the CLI did not.
+      targetsIn(spec);
       const db = openDb(indexPathFor(indexName));
       try {
         // This is the PER-TARGET ARRAY (one entry per resolved target), not a stats object — the
@@ -236,9 +264,10 @@ async function main(): Promise<number> {
     let recipe: Recipe;
     try { recipe = validateRecipe(JSON.parse(readFileSync(recipePath, "utf8"))); }
     catch (err) { console.error(`JM_ERROR: ${String(err)}`); return 2; }   // a bad recipe is a CLIENT error, before any work
+    if (judgeKeyMissing()) return 2;                       // D-055: refuse BEFORE creating an index
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     try {
-      const res = await withLedger("decision-tree", { rows: rowsPath, recipe: recipePath }, async () => {
+      const res = await withLedger("decision-tree", { rows: rowsPath, recipe: recipePath, name: flag("name") ?? "decisions" }, async () => {
         const r = await decisionTree({
           db, rowsPath, recipe,
           contextPath: flag("context"), criteriaPath: flag("criteria"),
@@ -263,7 +292,10 @@ async function main(): Promise<number> {
     const indexName = positional[0];
     const question = flag("question");
     if (!indexName || !question) { console.error("JM_ARGS: jm filter <index> --question \"…\" [--fts X] [--min-p 0.8]"); return 2; }
-    const db = openDb(indexPathFor(indexName.startsWith("@") ? indexName.slice(1) : indexName));
+    // A READ VERB REFUSES A MISSING INDEX (D-056): `openDb` created `typo.sqlite`, and the typo then
+    // answered at EXIT 0 with zero rows — the D-009/D-028 class, fixed on the MCP surface and missed
+    // here. `query` and `scan` already used the refusing open; `filter` and `find` did not.
+    const db = openIndexExisting(indexName.startsWith("@") ? indexName.slice(1) : indexName, indexPathFor(indexName.startsWith("@") ? indexName.slice(1) : indexName));
     try {
       const res = await withLedger("filter", { index: indexName, question }, async () => {
         const r = await filterIndex(db, {
@@ -286,7 +318,9 @@ async function main(): Promise<number> {
     mkdirSync(join(process.env.JM_HOME ?? join(homedir(), ".jm"), "find"), { recursive: true });   // G13: the artifact home exists
     const indexArg = flag("in") ?? flag("index") ?? "shadow";
     const indexName = indexArg.startsWith("@") ? indexArg.slice(1) : indexArg;
-    const db = openDb(indexPathFor(indexName));
+    // A READ VERB REFUSES A MISSING INDEX (D-056): see `filter` above — same defect, same fix.
+    const db = openIndexExisting(indexName, indexPathFor(indexName));
+    if (judgeKeyMissing()) { db.close(); return 2; }        // D-055: and the key is checked before any work
     try {
       const res = await withLedger("find", { phrase, index: indexName }, async () => {
         const r = await find(db, {
@@ -367,9 +401,10 @@ async function main(): Promise<number> {
     if (has("catalogue")) { const c = buildCatalogue(); console.log(JSON.stringify(c, null, 2)); return 0; }   // no key, no judge: a pure read
     const task = flag("task") ?? positional.join(" ");
     if (!task) { console.error("JM_ARGS: jm route --task \"<task>\" [--catalogue]"); return 2; }
+    if (judgeKeyMissing()) return 2;                       // D-055: refuse BEFORE creating an index
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     try {
-      const r = await withLedger("route", { task, context: flag("context") }, async () => {
+      const r = await withLedger("route", { task, context: flag("context"), name: flag("name") ?? "decisions" }, async () => {
         const res = await route(db, { task, context: flag("context") });
         return { result: res, stats: { route: res.route, p: res.p, candidates: res.candidates }, costUsd: res.costUsd, calls: res.calls, cached: res.cached ? 1 : 0 };
       });
@@ -402,6 +437,7 @@ async function main(): Promise<number> {
     }
     if (!Array.isArray(cases)) { console.error("JM_EVAL_CASES: --cases must be a JSON ARRAY of {id, state, oracle}"); return 2; }
     const key = flag("key") ?? Object.keys(questions)[0];
+    if (judgeKeyMissing()) return 2;                       // D-055: refuse BEFORE creating an index
     const db = openDb(indexPathFor(flag("name") ?? "decisions"));
     try {
       const r = await withLedger("evaluate", { cases: casesPath, k: flag("k") }, async () => {
@@ -486,12 +522,23 @@ async function main(): Promise<number> {
   }
 
   if (verb === "calibrate") {
-    const db = openDb(indexPathFor(flag("name") ?? "decisions"));
-    if (has("truth")) {
-      const rawId = flag("truth") ?? "";
-      const id = Number(rawId);
+    // ARGUMENT VALIDATION COMES FIRST — it is the same invariant from the other side (D-056's fix
+    // opened the store before this check, so `calibrate --truth abc` began answering
+    // JM_INDEX_MISSING instead of naming the bad argument; the pre-existing cli-contract test caught
+    // it immediately). Validate the input, THEN touch the disk.
+    const rawId = has("truth") ? (flag("truth") ?? "") : null;
+    let truthId = 0;
+    if (rawId !== null) {
+      truthId = Number(rawId);
       // NaN reaching SQLite compares as NULL, so a typo'd id silently matched nothing. Refuse it.
-      if (!Number.isInteger(id) || id < 0) { console.error(`JM_ARGS: --truth <id> must be a non-negative integer (got "${rawId}")`); return 2; }
+      if (!Number.isInteger(truthId) || truthId < 0) { console.error(`JM_ARGS: --truth <id> must be a non-negative integer (got "${rawId}")`); return 2; }
+    }
+    // --apply RECORDS a row, so it may create the store; a plain calibrate READS it (D-056), and a
+    // read that creates is the phantom class. `calibrate` with no store has zero rows, not a new file.
+    const calIdx = flag("name") ?? "decisions";
+    const db = has("apply") || rawId !== null ? openDb(indexPathFor(calIdx)) : openIndexExisting(calIdx, indexPathFor(calIdx));
+    if (rawId !== null) {
+      const id = truthId;
       const val = flag("truth-value") ?? "operator_confirmed";
       const ok = recordTruth(db, id, val);
       if (!ok) { console.error(`JM_TRUTH_MISSING: no decision row with id=${id}`); db.close(); return 2; }   // the caller named a row that is not there: a CLIENT error

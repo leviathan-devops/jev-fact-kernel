@@ -307,6 +307,22 @@ D2/E1 (compounding knowledge work).
 |---------|------|-----|
 | `jm` CLI | the primary; pipes for composition | operator, scripts |
 | `jm serve` (:7777, `--port`) | `POST /decide`, `POST /find`, `GET /jobs`, `GET /health` | any host process |
+
+**THE REQUEST CONTRACTS** (the second-operator drill had to discover these by provoking 400s, which
+is a doc defect, not a feature):
+
+```
+POST /decide   {"state": <any JSON>, "questions": {"<key>": {"type": "noul", "instructions": "…"}}}
+               [optional "schema": "<string>"]        -> 200 {answers, cached, model, cost_usd}
+POST /find     {"phrase": "<string>"} [optional "common": <int>, "structure": "md"|"json"]
+                                                      -> 200 {trend, patterns, calls, cost_usd, below_common}
+GET  /health   -> 200 {ok, index, index_exists, key_present, model, key_source, key_fingerprint}
+GET  /jobs     -> 200 {jobs: [<id>, …]}
+```
+Errors are named and typed: `400 JM_JSON_INVALID` (the body is not JSON), `400 JM_ARGS: state +
+questions required` (valid JSON, missing fields), `404 JM_ROUTE: unknown path`, `413
+JM_BODY_TOO_LARGE` past the 1 MiB cap, `503 JEV_NO_KEY` when the key is absent (fail-closed). The
+default index is `decisions` — pass `--name` to serve a different one.
 | `jm mcp` (stdio) | tools `jm_query` `jm_find` `jm_decide` `jm_index` | agents mid-turn |
 | `jm watch` | daemon: index-watch, judge-drain, cache-gc, calibration-tick | standing services |
 | `jef` CLI | reflex scripts (validate, lint, shadow-report, bench) | the runtime layer |
@@ -447,7 +463,7 @@ The kinds and what `root` means for each:
 
 | kind | root points at | the rows are |
 |------|----------------|--------------|
-| `fs` | a DIRECTORY (or a single file) | one row per file; `path` = `<target>/<rel>` |
+| `fs` | a DIRECTORY (or a single file) | one row per file; `path` = `<rel>` in a SINGLE-target index, `<target>/<rel>` once the index holds more than one source |
 | `jsonl` | a `.jsonl` (or `.json`) FILE | one row per line/element; `path` = `<file>#L<n>` |
 | `sqlite` | a `.sqlite` FILE | one row per table row; `path` = `<file>#<table>/<pk>` |
 
@@ -466,7 +482,11 @@ jm index  @shadow                       # a SINGLE target; dispatches by its KIN
 
 `--in` **auto-names** the index when `--name` is absent: `all` -> `all`, `a,b` -> `a+b`. A name
 that is not in the registry is **loud** (`JM_TARGET_UNKNOWN`) and names the ones you do have —
-never a silent subset. `@target` and `--in target` are equivalent for every kind; `@` exists so a
+never a silent subset. **On the WRITE side that is exact** (`index --in X`, `index @X`, `target rm X`
+all answer `JM_TARGET_UNKNOWN` and name the ones you have). **On the READ side it is not**: `query
+--in nosuchtarget` answers `JM_INDEX_MISSING`, because a read resolves an INDEX name and never
+consults the registry — still loud, still exit 2, but the message points at a missing index rather
+than a bad target name. `@target` and `--in target` are equivalent for every kind; `@` exists so a
 one-target command stays short.
 
 ### 18.3 Reads refuse a missing index (G1 — the drill's most severe find)
@@ -483,6 +503,20 @@ Write verbs (`index`, `decision-tree`, `calibrate`, …) create it. This asymmet
 a silent failure: before it, a typo produced an EMPTY result at exit 0 **and a phantom index
 file**, so "no matches" and "no such index" were indistinguishable. Never trust an empty answer
 from a verb that did not tell you the index existed.
+
+**THE INVARIANT BEHIND IT, now enforced on every verb (D-054/D-055/D-056): a run that REFUSES its
+input must not have touched the disk.** The asymmetry above was applied twice — once on the CLI
+(`query`, `scan`) and once on the MCP surface — without the invariant ever being stated, so
+`filter`, `find`, `route`, `calibrate` and `decision-tree` each kept a create-on-open that ran
+BEFORE their input was validated. **`filter` and `find` were the worst: they answered at exit 0**
+over a phantom index, which is exactly the indistinguishability this section claims to have
+removed. The rule is now stated by category and pinned:
+
+- a **READ** refuses a missing index (`openIndexExisting`) — `query`, `scan`, `cluster`, `extract`,
+  `report`, `filter`, `find`;
+- a **JUDGED** verb resolves its key BEFORE it opens anything — a missing key is fatal regardless of
+  fail polarity, so a refused run has no work to do;
+- only a verb that genuinely **WRITES** may create the store (`index`, `calibrate --apply`).
 
 ### 18.4 Query returns POINTERS; the body comes from scan/extract (G11, G16)
 
@@ -517,7 +551,10 @@ Clusters partition by **`(source, kind)` first**, then by the token signature wi
 The signature is the top-N most frequent non-stop words ≥4 chars, **ties broken
 alphabetically** — so a tie between `service` and `tombstone` puts `service` first. There is no
 model here: the same input gives the same clusters in the same order. `n` counts the members;
-`small` counts clusters below `--min`; `grouped + ungrouped = candidates`.
+**Two counters this section used to promise are NOT printed**: `small` (clusters below `--min`) and
+`grouped + ungrouped = candidates`. The output is the five columns above and nothing else; the
+promise is withdrawn rather than implemented, because the partition is already visible in the `n=`
+column and a counter nobody reads is a claim that can drift.
 
 ### 18.6 The structure contract: `md` · `json` · `csv` (G9)
 
@@ -547,7 +584,9 @@ The judge resolves a key in this order, and **never logs or stores it**:
 | **judged** | `find` (its judge stage), `filter`, `decision-tree`, `route`, `evaluate`, `calibrate` | **CLI exit 2** with `JEV_NO_KEY` · **HTTP 503** |
 
 Fail-closed means the judged path writes **nothing** and decides **nothing** — zero decisions,
-not a default. To test the starve path, redirect `HOME` (unsetting the env var alone is not
+not a default. **This is now LITERALLY true (D-055):** the key is resolved before the store is
+opened, so a keyless run leaves no index behind; before that fix it created an empty
+`index/decisions.sqlite` on its way to refusing. To test the starve path, redirect `HOME` (unsetting the env var alone is not
 enough: the file is a legitimate second source):
 
 ```bash
@@ -582,7 +621,7 @@ the same names and the same semantics; an agent's answer and a curl answer canno
 ```bash
 jm watch --once --in a,b        # one reconcile tick
 jm watch --interval 30000       # the loop (ms)
-jm journal --limit 20           # read the journal back
+jm journal --limit 20           # read the journal back (TSV; the FILE on disk is JSON — see below)
 ```
 
 A tick **re-ingests the scoped targets through their adapters and journals the result**. It is
@@ -614,6 +653,7 @@ fingerprints: 12 distinct · 0 duplicate
 index files:  12 live
 ledger:       1 rows total · 1 naming this job · 1 ok · 0 failed · $0.000000
 reconciled:   YES — no duplicate fingerprints (the UNIQUE constraint enforces this structurally); 0 rows left running
+ledger verbs: index=3 query=4 scan=1 cluster=1 report=1
 ```
 
 `--job last` picks the most recently modified queue. The verb reconciles the two halves of a run:
