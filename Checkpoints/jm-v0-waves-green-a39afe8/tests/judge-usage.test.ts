@@ -52,10 +52,26 @@ describe("D-046 usage accounting", () => {
       await expect(decisionTree({ db, rowsPath: rowsA, recipe: closed, concurrency: 1 }))
         .rejects.toThrow(/JM_JUDGE_USAGE_MISSING/);                            // fail-closed: REFUSE
 
+      // AND FAIL-OPEN REFUSES TOO (the policy was UNIFIED — see the ruling below). This assertion
+      // used to read `expect(r.bands.noop).toBe(1)` — "fail-open: MARKED". That enshrined a policy the
+      // OTHER two verbs already contradicted: `filter` and `find` (via `fatalJudgeError`) treat an
+      // unmeasured cost as fatal REGARDLESS of polarity, and `policy.ts` documents that function as
+      // "THE JUDGE-FAILURE POLICY, IN ONE PLACE". `decision-tree` had TWO private copies of it, both
+      // checking `JEV_NO_KEY` alone — so under `fail: "open"` a `JM_JUDGE_USAGE_MISSING` was swallowed
+      // and the run COMPLETED on rows whose cost was never measured.
+      //
+      // THE RULING, and why refuse-regardless is the consistent rule: `fail: "open"` is the opt-in to
+      // DEGRADE ON AN OUTAGE — a marked row whose cost is known to be zero. A judge that ANSWERED is
+      // not an outage; it is broken ACCOUNTING, and the budget is the operator's guard against a
+      // runaway loop. An unmeasurable quantity must therefore REFUSE the limit enforcement, not
+      // satisfy it (D-046's own words), and a missing KEY is already fatal whichever polarity is set —
+      // an unmeasured COST is the same class. All three verbs now agree.
       const rowsB = `${sb.root}/rows-b.jsonl`;
       await Bun.write(rowsB, JSON.stringify({ i: 1, title: "open-phase", body: `b-${Date.now()}` }) + "\n");
-      const r = await decisionTree({ db, rowsPath: rowsB, recipe: open, concurrency: 1 });
-      expect(r.bands.noop).toBe(1);                                            // fail-open: MARKED
+      await expect(decisionTree({ db, rowsPath: rowsB, recipe: open, concurrency: 1 }))
+        .rejects.toThrow(/JM_JUDGE_USAGE_MISSING/);                            // fail-open: ALSO REFUSES
+      const countRow = db.query("SELECT COUNT(*) AS n FROM decisions").get() as { n: number };   // named const: a bun:sqlite result is in-process, and the cast carries its reason here
+      expect(countRow.n).toBe(0);                                              // NEITHER phase wrote a DECISION
       db.close();
     } finally {
       if (prev === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev;

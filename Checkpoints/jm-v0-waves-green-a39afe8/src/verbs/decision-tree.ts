@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { Judge } from "../judge/client.ts";
 import type { JudgeResponse } from "../judge/transport.ts";
-import { DEFAULT_POLICY, reasonForSignal, type Policy } from "../judge/policy.ts";
+import { DEFAULT_POLICY, fatalJudgeError, reasonForSignal, type Policy } from "../judge/policy.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
 
@@ -168,15 +168,20 @@ export async function decisionTree(opts: {
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
     } catch (err) {
-      // FAIL POLARITY, HONOURED FOR EVERY OUTAGE — NOT JUST A MISSING KEY (D-040).
-      // The check was `includes("JEV_NO_KEY")` alone, so a judge 500, 429 or timeout produced a
-      // `noop` ROW and exit 0 — a run that could not reach the judge reported itself as having
-      // DECIDED. Measured: with policy `fail: "closed"` and a 500, the artifact held
-      // `route=noop reason=error: JM_JUDGE_HTTP_500` and the process exited 0.
-      // `fail: "closed"` (the default) now propagates ANY judge failure: no decision rows, a named
-      // error, a non-zero exit. `fail: "open"` is the explicit opt-in for marked degradation.
-      const noKey = String(err).includes("JEV_NO_KEY");
-      if (noKey || policy.fail === "closed") throw err;
+      // THE POLICY IS NOT RE-IMPLEMENTED HERE (audit decision-tree.ts:134/149). `judge/policy.ts`
+      // documents `fatalJudgeError` as "THE JUDGE-FAILURE POLICY, IN ONE PLACE" — and this block was
+      // a SECOND COPY of it, which had DRIFTED. The copy checked `JEV_NO_KEY` alone, so a
+      // usage-missing response (D-046) fell through to the `fail: "open"` degradation path and was
+      // reported as `gate_unavailable:` — the SAME reason a judge outage produces. Meanwhile
+      // `filter` and `find` treat a usage-missing response as FATAL REGARDLESS OF POLARITY, because
+      // *"fail: open is the opt-in to DEGRADE — a marked row whose cost is known to be zero — not an
+      // opt-in to run without accounting."* **Two copies of one policy disagreed**, which is the
+      // entire reason the shared one exists. It also made the marked row's reason a lie: a judge
+      // that ANSWERED and whose answer was READ was reported as an unavailable gate.
+      //
+      // The shared function returns the fatal error string, or null when the polarity says degrade.
+      const fatal = fatalJudgeError([{ error: String(err) }], { failOpen: policy.fail === "open" });
+      if (fatal !== null) throw new Error(fatal);
       return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
     } finally {
       // THE CLAIM IS ALWAYS RELEASED — including on the fail-open return above and on a rethrow.
@@ -191,11 +196,16 @@ export async function decisionTree(opts: {
     }
   }, { concurrency: opts.concurrency ?? 6 });
 
-  if (results.errors.length > 0) {
-    const noKey = results.errors.find((e) => e.error.includes("JEV_NO_KEY"));
-    if (noKey) throw new Error(noKey.error);
-    if (policy.fail === "closed") throw new Error(results.errors[0].error);   // any outage, not just a key
-  }
+  // THE THIRD COPY OF THE POLICY, AND THE OPERATIVE ONE (audit decision-tree.ts:134/149). The inner
+  // catch above classifies a throw; but `runPool` CAPTURES a task's throw into `errors[]` rather
+  // than propagating it, so THIS block is what decides whether the run refuses. It checked
+  // `JEV_NO_KEY` only, then `fail === "closed"` — so under `fail: "open"` a
+  // `JM_JUDGE_USAGE_MISSING` was SWALLOWED and the run COMPLETED with rows whose cost was never
+  // measured. **Measured: a judge answering correctly without a `usage` block completed under
+  // `fail: "open"`** while `filter` and `find` refuse the same response — the drift the shared
+  // policy exists to prevent. All three verbs now classify through `fatalJudgeError`.
+  const fatal = fatalJudgeError(results.errors, { failOpen: policy.fail === "open" });
+  if (fatal !== null) throw new Error(fatal);
   for (const d of results.ok) if (d) { decisions.push(d); if (d.route === "escalate") escalations.push(d); }
 
   const bands = { act: decisions.filter((d) => d.route === "act").length,

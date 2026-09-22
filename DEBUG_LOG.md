@@ -2759,3 +2759,47 @@ an error carrying a newline made the whole `JM_QUEUED` line unparseable, the sam
   probe.** The test now creates the unreadable file *after* the first index, so it is genuinely NEW
   on the run that must fail on it — and the pin was proven to bite by dropping the count and watching
   it go red.
+
+## EN-100 — THE POLICY WAS IN THREE PLACES AND TWO OF THEM HAD DRIFTED
+The audit flagged `decision-tree.ts:134/149` as "re-implements `fatalJudgeError`" — a duplication note.
+Probing it found something worse, and it is the most consequential medium of the session.
+
+**THE DEFECT, MEASURED.** `judge/policy.ts` documents `fatalJudgeError` as *"THE JUDGE-FAILURE POLICY,
+IN ONE PLACE"*. `decision-tree` carried **two private copies** of it — the inner catch, and the
+**post-pool handler that is the OPERATIVE one** (because `runPool` CAPTURES a task's throw into
+`errors[]` rather than propagating it). Both checked `JEV_NO_KEY` alone, then `fail === "closed"` for
+everything else. So under `fail: "open"`, a `JM_JUDGE_USAGE_MISSING` was **swallowed** and the run
+**completed on rows whose cost was never measured**:
+```
+a judge that ANSWERS correctly but omits `usage`:
+  fail=closed  -> REFUSED   (correct)
+  fail=open    -> COMPLETED noop=0   <- a REAL DECISION from an unmeasured call
+while filter and find REFUSE the same response — measured, both polarities
+```
+**Two copies of one policy disagreed**, which is the entire reason the shared one exists.
+
+**THE RULING, stated because the two behaviours were both defensible:**
+> **An unmeasured cost is fatal REGARDLESS of fail polarity.** `fail: "open"` is the opt-in to DEGRADE
+> ON AN OUTAGE — a marked row whose cost is known to be zero. A judge that ANSWERED is not an outage;
+> it is broken **ACCOUNTING**, and the budget is the operator's guard against a runaway loop. D-046's
+> own wording settles it: *an unmeasurable quantity must REFUSE the limit enforcement, not satisfy it.*
+> A missing KEY is already fatal at either polarity — an unmeasured COST is the same class.
+
+**AND THE PIN ENSHRINED THE WRONG SIDE.** `tests/judge-usage.test.ts` asserted
+`expect(r.bands.noop).toBe(1)` — *"fail-open: MARKED"* — i.e. the D-046 pin had frozen the
+inconsistent behaviour, so the suite was green *while the three verbs disagreed*. **A pin that
+enshrines a policy the rest of the system contradicts is worse than no pin: it makes the drift look
+intentional.** It now asserts REFUSAL at both polarities and zero decision rows written.
+
+**THE FIX:** both private copies are gone; the inner catch and the post-pool handler classify through
+`fatalJudgeError`, so **all three judged verbs share one policy.** Verified: `fail=closed` and
+`fail=open` both REFUSE for `decision-tree`, and both polarities REFUSE for `find`.
+
+**THE PIN THAT BITES:** `test_all_three_verbs_agree_on_a_usage_less_judge` asserts the AGREEMENT
+property itself across both verbs and both polarities — and it was proven to bite by restoring the
+drifted copy (FAILS) and reverting (PASSES).
+
+**THE CLASS, named:** this is the *"fix the sites, not the rule"* failure — met for the seventh time
+this session. `fatalJudgeError` was extracted in D-041 precisely to end it, and `decision-tree` kept
+its own copies because they predated the extraction and nothing forced a reconciliation. **A shared
+policy only binds the callers that use it.**

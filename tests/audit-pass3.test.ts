@@ -748,3 +748,58 @@ describe("indexJob.ts:31/37 — a crashed run must not wear a success shape, and
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("the judge-failure POLICY is ONE policy across the three judged verbs", () => {
+  test("test_all_three_verbs_agree_on_a_usage_less_judge", async () => {
+    // THE PROPERTY THAT WAS BROKEN: `policy.ts` documents `fatalJudgeError` as "THE JUDGE-FAILURE
+    // POLICY, IN ONE PLACE" — and `decision-tree` carried TWO private copies that had drifted (the
+    // inner catch, and the post-pool handler that is the OPERATIVE one because `runPool` captures a
+    // task's throw into `errors[]`). Both checked `JEV_NO_KEY` alone, so under `fail: "open"` a
+    // `JM_JUDGE_USAGE_MISSING` was swallowed and the run COMPLETED on rows whose cost was never
+    // measured — while `filter` and `find` refused the same response. Measured, before the fix:
+    //   fail=closed -> REFUSED · fail=open -> COMPLETED noop=0 (a real decision from an unmeasured call)
+    //
+    // THE RULING: an unmeasured cost is fatal REGARDLESS of polarity. `fail: "open"` is the opt-in to
+    // degrade on an OUTAGE (a marked row whose cost is known to be zero); a judge that ANSWERED is not
+    // an outage but broken accounting, and the budget is the operator's guard. A missing KEY is
+    // already fatal at either polarity — an unmeasured COST is the same class.
+    const home = mkdtempSync(join(tmpdir(), "jm-agree-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "a.md"), "tombstone record for the policy-agreement probe with enough text");
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
+    process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
+    delete process.env.JM_LEDGER;
+    // a judge that ANSWERS CORRECTLY but omits `usage`
+    const server = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { flag: { type: "noul", noul: 0.9 }, is_instance: { type: "noul", noul: 0.9 } } }); } });
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
+    try {
+      const { openDb, indexPathFor } = await import("../src/store/db");
+      const { indexTarget } = await import("../src/verbs/index");
+      const { decisionTree, validateRecipe } = await import("../src/verbs/decision-tree");
+      const { find } = await import("../src/verbs/find");
+      const db = openDb(indexPathFor("agree"));
+      indexTarget(db, "agree", corpus, {});
+      const mk = (fail: string) => validateRecipe({ recipe: `ag-${fail}`, version: 1, questions: { flag: { type: "noul", instructions: "?" } }, policy: { act: 0.8, flag: 0.5, fail } } as never);
+      const rows = join(home, "rows.jsonl");
+      writeFileSync(rows, JSON.stringify({ i: 1, body: "x" }) + "\n");
+
+      // EVERY VERB REFUSES, AT EVERY POLARITY — one rule, no drift.
+      for (const fail of ["closed", "open"]) {
+        await expect(decisionTree({ db, rowsPath: rows, recipe: mk(fail), concurrency: 1 })).rejects.toThrow(/JM_JUDGE_USAGE_MISSING/);
+      }
+      for (const failOpen of [false, true]) {
+        await expect(find(db, { phrase: "tombstone", failOpen, concurrency: 1 })).rejects.toThrow(/JM_JUDGE_USAGE_MISSING/);
+      }
+      db.close();
+    } finally {
+      server.stop(true);
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
+      if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
+      if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 30000);
+});
