@@ -1,6 +1,6 @@
 # WAVE PLAN — JevManager: production-grade for agents
 
-WAVES: 6
+WAVES: 7
 
 ## W1 — INTERFACES (the parallelism enabler) · owner: interface desk
 - FILES (disjoint): `src/judge/types.ts` (NEW), `packages/jm-production-grade/INTERFACES.md`
@@ -48,3 +48,15 @@ WAVES: 6
   checkpoint (src + dist + docs + manifest + ONE seal mode).
 - DONE-WHEN: the U-gates and S-gates pass and the checkpoint structure gate prints.
 - TEST IDS: `test_canon_docs_present`
+
+## W7 — THE THREE-OPERATOR GATE (the TERMINAL wave — nothing closes without it)
+- FILES (disjoint): `~/.omp/agent/managed-skills/jev-manager-operator/SKILL.md`,
+  `packages/jm-production-grade/OPERATOR_TASKS.md` (NEW), `.trident/operator-gate/`
+- DELIVERABLE: two REAL tasks that a fresh agent can complete with the shipped artifacts only,
+  and the recorded transcripts of TWO fresh subagents completing them.
+- DONE-WHEN: two fresh subagents (zero session context, only the skill + the tools) each
+  complete their task on the FIRST attempt, and their transcripts are on disk.
+- TEST IDS: `test_operator_skill_is_sufficient`, `test_three_operators_agree`
+- THE FIX LOOP: any operator failure -> fix the ARTIFACT (the skill wording, the tool's
+  discoverability, a refusal's remedy) -> re-dispatch a THIRD fresh operator. Never explain
+  the failure to the operator; fix what made the explanation necessary.

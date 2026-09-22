@@ -216,3 +216,32 @@ TOKEN, not per request — so N items in ONE request costs the same as N items i
 the round trips. Measured: n=400 in one request at 2.39s with time FLAT in n. A 100,000-row
 corpus is therefore ~250 requests (chunked at 200), not 100,000 — and a re-run of unchanged input
 is ~0 requests (the per-item cache).
+
+## 20 · THE TERMINAL GATE — THREE INDEPENDENT AGENTS (the operator's ruling)
+> *"THIS GOAL DOES NOT COMPLETE UNTIL ... CONFIRMED WORKING IN RUNTIME FROM ACROSS 3 INDEPENDENT
+> AGENTS - YOU BEING 1. IF THE EXACT TOOLS + SKILLS CANNOT GIVE 2 FRESH SUBAGENTS FULLY UNDERSTAND
+> HOW TO USE JEV MANAGER FIRST CLASS ~ REJECTED. ... NO SMOKE TEST BULLSHIT 4932 BATTERIES GREEN
+> NOTHING FUCKING WORKS."*
+
+```
+GATE-3OP  operator 1 = this session (the reference operations)
+          operator 2 = a FRESH subagent, ZERO session context, given ONLY the skill + a real task
+          operator 3 = a SECOND fresh subagent, a DIFFERENT task, same conditions
+          PASS = both fresh operators succeed ON THE FIRST ATTEMPT
+```
+The two tasks are written in `packages/jm-production-grade/OPERATOR_TASKS.md`:
+- **TASK A** — index a real corpus, narrow it KEYLESSLY, then judge the survivors in ONE batch and
+  report the kept paths. Tests: picking `filter` (judged) over `scan` (keyless) for the second half,
+  and reading `requests=`.
+- **TASK B** — build a git pre-commit gate that refuses an unevidenced claim. Tests: authoring a
+  recipe (`noul` + a policy), running `decision-tree`, and reading the exit code — including
+  learning FROM THE SKILL that `choice` is refused at load.
+
+THE FIX LOOP: an operator's failure is a DEFECT in the shipped artifact (the skill's wording, a
+tool's discoverability, a refusal that does not name its remedy). Fix the ARTIFACT; never explain
+the failure to the operator. Re-dispatch a THIRD fresh operator who has never seen the failure.
+The gate passes only when TWO independent fresh operators each succeed on their first attempt.
+
+WHY THIS IS THE TERMINAL GATE AND NOT A BATTERY: a green battery measures the code; §20 measures
+whether an agent that has never seen this session can USE it. The operator's complaint — "4932
+batteries green nothing fucking works" — is exactly the failure this gate makes impossible.
