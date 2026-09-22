@@ -72,11 +72,14 @@ function test_adv_sql_injection() {
       expect(() => queryIndex(db, { where: "path LIKE '%'" })).toThrow();   // LIKE is not an allowed op
       expect(() => queryIndex(db, { where: "1=1" })).toThrow();             // digits are not a column
       expect(() => queryIndex(db, { where: "password='x'" })).toThrow();    // unknown column
-      // an injection-shaped VALUE is parameterised: it becomes an inert literal, not SQL.
-      // The correct assertion is "no injection happened", not "it threw".
-      const rows = queryIndex(db, { where: "size=1; DROP TABLE files" });
-      expect(Array.isArray(rows)).toBe(true);
-      expect(rows.length).toBe(0);                 // '1; DROP…' is a string compared to an INTEGER
+      // AN INJECTION-SHAPED VALUE IS REFUSED, NOT SILENTLY COMPARED. This asserted
+      // `rows.length === 0` with the comment "'1; DROP…' is a string compared to an INTEGER" — i.e. it
+      // ENSHRINED the defect: SQLite orders TEXT above INTEGER, so that comparison was false for every
+      // row, and the operator got an empty result at exit 0 that looked like "no matches". The
+      // parameterisation DID hold (the table survived), and now the value is also rejected BY NAME
+      // because `size` is a numeric column (`JM_WHERE_VALUE`). The table-survival assertion is kept —
+      // that is the injection property — and the silent-empty expectation is replaced by a refusal.
+      expect(() => queryIndex(db, { where: "size=1; DROP TABLE files" })).toThrow(/JM_WHERE_VALUE/);
       const still = db.query("SELECT COUNT(*) AS n FROM files").get() as { n: number };
       expect(still.n).toBe(1);                     // THE TABLE SURVIVED — the parameterisation held
       db.close();

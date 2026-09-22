@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `1633722286f19833d9b0019594ac4307` (git 0923ec4)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `b5aa483f0a583b4b8cbe4048c7d77e96` (git c8f0a2f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -59,7 +59,7 @@ sealed copy does not belong here.
 | file | lines |
 |------|-------|
 | `tests/adapters.test.ts` | 196 |
-| `tests/adversarial.test.ts` | 101 |
+| `tests/adversarial.test.ts` | 104 |
 | `tests/adversarial2.test.ts` | 230 |
 | `tests/adversarial3.test.ts` | 242 |
 | `tests/audit-findings.test.ts` | 157 |
