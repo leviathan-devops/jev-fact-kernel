@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `dd078da0cdee7a68922c9764e5425518` (git 062913f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `08ac3c655a7473cba7b6017e0c285c2a` (git 7621f16)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -22,7 +22,7 @@ sealed copy does not belong here.
 | `src/adapters/jsonl.ts` | 56 |
 | `src/adapters/sqlite.ts` | 81 |
 | `src/calibrate.ts` | 66 |
-| `src/cli.ts` | 669 |
+| `src/cli.ts` | 673 |
 | `src/job/indexJob.ts` | 57 |
 | `src/job/queue.ts` | 118 |
 | `src/job/run.ts` | 82 |
@@ -52,7 +52,7 @@ sealed copy does not belong here.
 | `src/verbs/report.ts` | 231 |
 | `src/verbs/route.ts` | 150 |
 | `src/verbs/scan.ts` | 105 |
-| `src/watch.ts` | 119 |
+| `src/watch.ts` | 128 |
 
 ## THE TEST INVENTORY (tests/, 44 files)
 
@@ -66,7 +66,7 @@ sealed copy does not belong here.
 | `tests/audit-highs-2.test.ts` | 122 |
 | `tests/audit-highs-3.test.ts` | 86 |
 | `tests/audit-judge.test.ts` | 165 |
-| `tests/audit-pass3.test.ts` | 993 |
+| `tests/audit-pass3.test.ts` | 1019 |
 | `tests/audit-phantom-surfaces.test.ts` | 107 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |

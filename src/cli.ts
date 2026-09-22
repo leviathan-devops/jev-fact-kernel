@@ -603,7 +603,11 @@ async function main(): Promise<number> {
     // would make a damaged journal indistinguishable from a short one.
     if (corrupt > 0) console.error(`JM_JOURNAL_CORRUPT: ${corrupt} malformed line(s) skipped (a torn append is expected in an append-only log)`);
     if (has("json")) console.log(JSON.stringify(rows, null, 2));
-    else for (const r of rows) console.log(`${r.at}\ttargets=${r.targets}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
+    // THE errors COLUMN IS CARRIED (same finding as the live tick render): the journal row has held
+    // `errors: string[]` all along — `watch.ts:20,52` — and this render dropped it, so the tick that
+    // FAILED and the tick that did nothing looked identical from the journal. Joined into one field
+    // so the TSV stays one-row-per-tick (a newline inside the message would break the shape).
+    else for (const r of rows) console.log(`${r.at}\ttargets=${r.targets}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms${r.errors && r.errors.length ? "\terrors=" + r.errors.join(" | ").replace(/\s+/g, " ").slice(0, 300) : ""}`);
     return 0;
   }
 

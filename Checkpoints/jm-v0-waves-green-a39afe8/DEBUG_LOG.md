@@ -2941,3 +2941,26 @@ build cache. Then `PRAGMA wal_checkpoint(TRUNCATE)` merged the 4 GB WAL back int
 **THE LESSON:** an index's `--rebuild` is a *logical* reset, not a *physical* one. A store that
 deletes 90% of its rows and keeps its file size is a store that lies about its footprint — and the
 lie surfaced as a full filesystem hours later, in an unrelated command, with a nonsense error.
+
+## EN-103 (continued) — THE WAL FIX, MEASURED
+The batching fix is in `indexTarget` (`src/verbs/index.ts:218`): the walk commits every 500 files into
+`ixBatch`, and the tombstone sweep moved to its own `sweepTx` (`:243`). Same shape `ingestTarget` already
+used (`src/targets.ts:169` — verified by grep).
+
+**THE SAME CORPUS, REBUILT, WITH THE WAL WATCHED:**
+
+| | before | after |
+|---|---|---|
+| peak WAL during the walk | **6986 MB** | **485 MB** |
+| leftover WAL at close | 4280 MB (then 6986 MB) | **none** (checkpointed) |
+| build time | 285.6 s | **92.8 s** |
+
+`JM_INDEX_OK files=11832 changed=11832 gone=0 text=11761 ms=92775`
+
+**WHY IT IS ALSO 3x FASTER:** checkpoints interleave with the writes instead of being deferred to the
+end of one giant commit — the same work, spread, with the WAL repeatedly truncated behind it.
+
+**THE MECHANISM, NAMED:** SQLite's `wal_autocheckpoint` defaults to 1000 pages (~4 MB) but it **cannot
+run while a transaction is open**. A transaction spanning the whole walk therefore suppresses every
+checkpoint and lets the WAL grow to the run's total write volume. A 1.8 GB corpus → a 4 GB db + a 7 GB
+WAL. Batching restores the autocheckpoint boundary every 500 files.

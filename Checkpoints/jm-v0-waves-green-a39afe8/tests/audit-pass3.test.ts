@@ -991,3 +991,29 @@ describe("index.ts — --rebuild must PURGE an old store, not just record the ne
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("watch — an error count with no message is not a signal", () => {
+  test("test_watch_renders_the_error_message_not_just_the_count", () => {
+    // FOUND BY DRIVING THE DAEMON with a bad target: the tick printed `errors=1` and NOTHING else,
+    // while the journal ROW it had just written carried the full message. The same tick, three
+    // renderings: stdout `errors=1` · `jm journal` no errors column at all · the artifact on disk
+    // the message. A count that cannot be acted on is the failure mode this engine exists to kill.
+    const home = mkdtempSync(join(tmpdir(), "jm-werr-"));
+    const c = join(home, "c"); mkdirSync(c, { recursive: true });
+    writeFileSync(join(c, "a.md"), "alpha");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      run("index", c, "--name", "i");
+      // a tick against an unknown target: the failure must be NAMED on stdout, not only counted
+      const t = run("watch", "--once", "--in", "nosuchtarget", "--name", "i");
+      const out = t.stdout.toString() + t.stderr.toString();
+      expect(out).toContain("errors=1");
+      expect(out).toContain("JM_TARGET_UNKNOWN");        // the MESSAGE, not just the count
+      // and the journal render carries it too (one row, message joined into a single field)
+      const j = run("journal", "--limit", "1");
+      expect(j.stdout.toString()).toContain("JM_TARGET_UNKNOWN");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});

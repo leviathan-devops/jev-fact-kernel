@@ -112,7 +112,16 @@ export async function watch(opts: WatchOpts = {}): Promise<void> {
       await Bun.sleep(interval);
       continue;
     }
-    process.stdout.write(`[jm watch] ${r.at} targets=${r.targets} rows=${r.rows} changed=${r.changed} ${r.ms}ms${r.errors.length ? ` errors=${r.errors.length}` : ""}\n`);
+    // THE ERROR MESSAGES ARE PRINTED, NOT JUST COUNTED. FOUND BY DRIVING THE DAEMON with a bad
+    // target: the tick printed `errors=1` and nothing else — while the journal ROW it had just
+    // written carried `"errors":["Error: JM_TARGET_UNKNOWN: nosuchtarget (have: rows)"]`. Measured
+    // renderings of that same tick: stdout `errors=1`, `jm journal` no errors column at all, the
+    // artifact on disk the full message. A count with no message is the failure mode this whole
+    // engine exists to kill: a signal that cannot be acted on. The count stays (it is compact and
+    // greppable); the text follows it, one line per error.
+    const errs = r.errors.length ? ` errors=${r.errors.length}` : "";
+    process.stdout.write(`[jm watch] ${r.at} targets=${r.targets} rows=${r.rows} changed=${r.changed} ${r.ms}ms${errs}\n`);
+    for (const e of r.errors) process.stdout.write(`[jm watch]   ! ${e}\n`);
     if (opts.once) return;
     await Bun.sleep(interval);
   }
