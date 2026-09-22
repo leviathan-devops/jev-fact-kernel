@@ -129,3 +129,29 @@ describe("M-J — `reconciled` must implement C8, not a different property", () 
     expect(bad).toMatch(/dup clean:\s+YES/);                          // the other property is unchanged
   });
 });
+
+describe("sqlite:45 — a COMPOSITE primary key must not collapse its rows", () => {
+  test("test_sqlite_composite_pk_keeps_every_row_distinct", () => {
+    // `PRAGMA table_info.pk` is the 1-based ORDINAL WITHIN the key, so `.find(c => c.pk === 1)` took
+    // one column of a composite key. MEASURED: `PRIMARY KEY (a,b)` with a=1 for four rows (b=0..3)
+    // produced ONE indexed file at `#pairs/1` while the ingest reported `rows=4 changed=4`.
+    // (The audit's own example used DISTINCT `a` values, which do not collide — the mechanism was
+    // right and its example was the benign case; the colliding input had to be constructed.)
+    const dir = mkdtempSync(join(tmpdir(), "jm-cpk-"));
+    const path = join(dir, "rep.sqlite");
+    const w = new Database(path, { create: true });
+    w.run("CREATE TABLE pairs (a INTEGER, b INTEGER, body TEXT, PRIMARY KEY (a,b))");
+    for (let i = 0; i < 4; i++) w.run("INSERT INTO pairs VALUES (?, ?, ?)", [1, i, `tombstone ${i}`]);
+    w.close();
+
+    const src = openSource(path);
+    const rows = [...rowsOf(src, ["pairs"])];
+    src.close();
+    rmSync(dir, { recursive: true, force: true });
+
+    expect(rows.length).toBe(4);
+    const pks = rows.map((r) => r.pk ?? "");
+    expect(pks.filter((p, i) => pks.indexOf(p) === i).length).toBe(4);   // four DISTINCT identities
+    expect(pks.every((p) => p.startsWith("1/"))).toBe(true);             // and both key columns are used
+  });
+});

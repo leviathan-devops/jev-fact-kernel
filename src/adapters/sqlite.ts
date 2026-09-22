@@ -42,15 +42,21 @@ export function* rowsOf(db: Database, tables: string[], opts: { limitPerTable?: 
   const limit = opts.limitPerTable ?? 10_000;
   const maxText = opts.maxTextBytes ?? 65_536;
   for (const table of tables) {
-    const pkCol = (db.query(`PRAGMA table_info(${quoteIdent(table)})`).all() as { name: string; pk: number }[]).find((c) => c.pk === 1)?.name ?? null;
-    // EVERY ROW NEEDS AN IDENTITY, AND A TABLE WITHOUT AN EXPLICIT PRIMARY KEY STILL HAS ONE: its
-    // `rowid`. `SELECT *` never returns `rowid`, so `pk` was `null` for every row of such a table and
-    // the downstream ref collapsed to the constant "0" — MEASURED: five rows in a PK-less table
-    // produced ONE indexed file at `#notes/0`, while the ingest reported `rows=5 changed=5`. Silent
-    // data loss reported as success, on a table shape that is entirely ordinary. Found by the audit
-    // (H-2). (`WITHOUT ROWID` tables always declare a PK, so the fallback is always available here.)
+    // EVERY PRIMARY-KEY COLUMN, NOT JUST THE FIRST. `PRAGMA table_info.pk` is the 1-based ORDINAL
+    // WITHIN the key, so `.find(c => c.pk === 1)` picks one column of a composite key — and when that
+    // column's value REPEATS across rows, every one of them collapses onto the same ref.
+    // MEASURED: a `PRIMARY KEY (a,b)` table with a=1 for four rows (b=0..3) produced ONE indexed file
+    // at `#pairs/1` while the ingest reported `rows=4 changed=4` — four rows became one, silently.
+    // (The audit's own example, `(a,b)` with distinct `a`, does NOT collide — so the finding was
+    // right about the mechanism and its example was the benign case; the defect is real and the probe
+    // had to construct the colliding input.) The composite key is joined with `/`, which no column
+    // value can contain after the ref's own escaping. Found by the audit (sqlite:45).
+    const pkCols = (db.query(`PRAGMA table_info(${quoteIdent(table)})`).all() as { name: string; pk: number }[])
+      .filter((c) => c.pk > 0)
+      .sort((a, b) => a.pk - b.pk)
+      .map((c) => c.name);
     const stmt = db.query(
-      pkCol
+      pkCols.length > 0
         ? `SELECT * FROM ${quoteIdent(table)} LIMIT ?`
         : `SELECT rowid AS "__jm_rowid", * FROM ${quoteIdent(table)} LIMIT ?`,
     );
@@ -60,7 +66,7 @@ export function* rowsOf(db: Database, tables: string[], opts: { limitPerTable?: 
       delete row.__jm_rowid;                    // identity, not content: keep it out of the FTS text
       let text = rowText(table, row);
       if (text.length > maxText) text = text.slice(0, maxText);
-      const pk = pkCol ? String(row[pkCol]) : String(rowid ?? "");
+      const pk = pkCols.length > 0 ? pkCols.map((c) => String(row[c])).join("/") : String(rowid ?? "");
       yield { table, pk, row, text };
     }
   }
