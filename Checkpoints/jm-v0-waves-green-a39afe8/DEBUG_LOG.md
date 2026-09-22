@@ -1909,3 +1909,53 @@ verdict** — and this is the sixth claim in this session that a probe settled a
 - **PROVEN:** the suite went from `186 pass / 1 fail` to **`187 pass / 0 fail`**, and the failing
   case's own diagnostic is what identified the leak (`home contents=[index .bun c targets.json jobs]`
   — no ledger, while the job reported success).
+
+## EN-075 — THE DEEPER AUDIT PASS FOUND TEN MORE HIGHS, INCLUDING A HOLE IN THE FIRST PASS'S FIX
+The first audit pass ran at a 15-minute per-request deadline and lost 23 of 107 items. Re-running
+with `--timeout 90 --concurrency 4` and `--exclude 'Checkpoints/**'` reached **1 of 54 items failed**
+at **32,743,987 tokens** — and found ten more high/critical findings, three of which are below.
+
+**C-2 · CRITICAL · the H-1 guard was bypassed by TRAVERSAL — a hole in the first fix.**
+`case "$CP" in Checkpoints/*)` MATCHES `Checkpoints/..`, and that path **resolves to the repo root**
+and passes `[ -d ]`. So `./scripts-seal.sh Checkpoints/..` would have deleted the live `src/` tree —
+the exact disaster H-1 was written to prevent, still reachable through a glob that looks like a
+containment check but is not one. *Fix:* canonicalize with `readlink -f` and require the path to be
+strictly INSIDE the resolved `Checkpoints` directory. **Verified:** `Checkpoints/..`,
+`Checkpoints/../..`, `.`, `..`, `/`, `$HOME` all refused by name; a path that RESOLVES inside
+(`Checkpoints/../Checkpoints/<name>`) is still accepted, because the guard is containment, not a
+string prefix. **THE LESSON:** a glob match is not a containment check, and the fix for a destructive
+bug is itself a place to look for one.
+
+**D-060 · HIGH · a per-target refresh destroyed the other targets' rows.**
+```
+$ jm index --in A,B --name tb      # A/a.md new, B/b.md new
+$ jm index @A --name tb            # JM_INDEX_OK ... gone=2
+  A/a.md -> gone     B/b.md -> gone     <- B's data, tombstoned AND PURGED
+```
+The tombstone sweep selected **every non-gone path in the index** and treated anything the current
+walk did not produce as deleted — so refreshing one source of a multi-source index deleted the others.
+*Fix:* the sweep is SCOPED to the run's own namespace (the run's `prefix`, and when it walked a bare
+root, every OTHER target's `<name>/` prefix is foreign and off-limits). **Verified:** `gone=0`, and
+`B/b.md` stays `new`.
+
+**D-061 · HIGH · `--limit` destroyed index entries.**
+```
+$ jm index <dir> --name lim --limit 1   # JM_INDEX_OK ... gone=2
+  f1.md -> gone   f2.md -> new   f3.md -> gone
+```
+`--limit` is a CAP (documented "stop after N files (testing)"), and the sweep read "not visited" as
+"deleted". *Fix:* a truncated walk never tombstones, and the skip is **REPORTED** —
+`sweep_skipped="walk truncated by --limit: an unvisited file is not a deleted file"` — because
+`gone=0` must never be ambiguous between "nothing was deleted" and "deletion was not checked".
+**Verified:** all three stay `new`, the marker appears on the limited run and NOT on a normal one.
+
+**AND THE POSITIVE HALF STILL WORKS:** a file genuinely removed from the corpus is still tombstoned
+(`gone=1`) and its text purged from `docs` AND `docs_fts` (leaked=0) — the fix narrowed the sweep, it
+did not disable it.
+
+**Pinned:** `tests/audit-highs-2.test.ts` (4 cases, 22 expects), including the seal-traversal guard
+and the real-deletion positive half.
+
+**THE PATTERN, NAMED:** both D-060 and D-061 are the same over-broad rule — *"not seen this run means
+gone"* — applied to two different kinds of not-seen (a capped walk, and another target's namespace).
+The sweep's rule was never wrong about DELETION; it was wrong about what counts as EVIDENCE of it.

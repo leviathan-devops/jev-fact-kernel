@@ -4,6 +4,7 @@ import { readdirSync, statSync, readFileSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
+import { loadTargets } from "../store/db.ts";
 
 export interface IndexOpts {
   include?: string[];
@@ -21,6 +22,9 @@ export interface IndexStats {
   files: number; changed: number; gone: number; textIndexed: number;
   bytesHashed: number; skipped: number; lastError?: string;
   ms: number; truncated: boolean; name: string; root: string;
+  // set ONLY when the tombstone sweep was deliberately not run, so `gone=0` can never be read as
+  // "nothing was deleted" when the truth is "deletion was not checked" (D-061).
+  sweep_skipped?: string;
 }
 
 const DEFAULT_EXCLUDE = ["node_modules", ".git", ".venv", "dist", "target", "__pycache__"];
@@ -136,6 +140,9 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
   let changed = 0, textIndexed = 0, bytesHashed = 0, truncated = false, skipped = 0, lastError: string | undefined;
   const seen = new Set<string>();
 
+  // the sweep is a TRANSACTION BODY, so anything it decides to skip is recorded here and folded
+  // into the returned stats after the commit.
+  let sweepSkipped: string | undefined;
   const tx = db.transaction(() => {
     for (const full of paths) {
       const base = relative(root, full);
@@ -149,18 +156,46 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
         if (r.truncated) truncated = true;
       } catch (err) { skipped++; lastError = String(err).slice(0, 120); }   // one bad file never aborts the batch
     }
-    const all = db.query("SELECT path FROM files WHERE state != 'gone'").all() as { path: string }[];
-    const gone = db.query("UPDATE files SET state='gone', indexed_at=? WHERE path=?");
-    // THE TOMBSTONE PURGES THE TEXT, it does not only flag the file (H-9). `UPDATE files SET
-    // state='gone'` alone left the file's `docs` and `docs_fts` rows in the store forever: queries
-    // stopped SERVING them (the read joins on state), but the deleted content stayed on disk in the
-    // index — MEASURED: a removed file's text was still in `docs` after the re-index. For a tool
-    // pointed at arbitrary corpora that is retained data nobody asked to keep, and `docs_fts` is a
-    // STANDALONE fts5 table (it holds its own copy of the text), so it needs its own delete.
-    // Found by the audit (H-9).
-    const purgeDocs = db.query("DELETE FROM docs WHERE path = ?");
-    const purgeFts = db.query("DELETE FROM docs_fts WHERE path = ?");
-    for (const r of all) if (!seen.has(r.path)) { gone.run(now, r.path); purgeDocs.run(r.path); purgeFts.run(r.path); }
+    // THE SWEEP IS SCOPED, AND A TRUNCATED WALK NEVER TOMBSTONES (D-060/D-061).
+    //
+    // Two measured data-loss defects, both from the same over-broad rule "not seen this run means
+    // gone":
+    //
+    //  D-061 — `jm index <dir> --limit 1` marked the files it did NOT WALK as gone. `--limit` is a
+    //          CAP; treating "not visited" as "deleted" destroyed index entries on a performance
+    //          flag. A truncated walk is not evidence of anything.
+    //  D-060 — `jm index @A --name combined` tombstoned AND PURGED every row belonging to target B.
+    //          A per-target refresh of a multi-source index destroyed the other sources.
+    //
+    // The rule now: a run may only tombstone paths inside ITS OWN NAMESPACE. `prefix` names that
+    // namespace for a multi-source ingest; when it is empty the run walked a bare root, so every
+    // OTHER target's `<name>/` prefix is foreign and off-limits. A path the run cannot prove it
+    // produced is left alone — a stale row is a wart, a purged row is lost data.
+    const truncatedByLimit = Boolean(opts.limit) && paths.length >= (opts.limit ?? 0);
+    if (truncatedByLimit) {
+      sweepSkipped = "walk truncated by --limit: an unvisited file is not a deleted file";
+    } else {
+      const ownPrefix = opts.prefix ?? "";
+      const foreignPrefixes = ownPrefix !== ""
+        ? []
+        : loadTargets().map((t: { name: string }) => `${t.name}/`).filter((p: string) => p !== ownPrefix);
+      const all = db.query("SELECT path FROM files WHERE state != 'gone'").all() as { path: string }[];
+      const gone = db.query("UPDATE files SET state='gone', indexed_at=? WHERE path=?");
+      // THE TOMBSTONE PURGES THE TEXT, it does not only flag the file (H-9). `UPDATE files SET
+      // state='gone'` alone left the file's `docs` and `docs_fts` rows in the store forever:
+      // queries stopped SERVING them (the read joins on state), but the deleted content stayed on
+      // disk in the index — MEASURED: a removed file's text was still in `docs` after the
+      // re-index. For a tool pointed at arbitrary corpora that is retained data nobody asked to
+      // keep, and `docs_fts` is a STANDALONE fts5 table (it holds its own copy of the text), so it
+      // needs its own delete. Found by the audit (H-9).
+      const purgeDocs = db.query("DELETE FROM docs WHERE path = ?");
+      const purgeFts = db.query("DELETE FROM docs_fts WHERE path = ?");
+      for (const r of all) {
+          const inOwnNamespace = (ownPrefix === "" || r.path.startsWith(ownPrefix)) && !foreignPrefixes.some((f: string) => r.path.startsWith(f));
+          if (!inOwnNamespace || seen.has(r.path)) continue;
+          gone.run(now, r.path); purgeDocs.run(r.path); purgeFts.run(r.path);
+        }
+    }
   });
   tx();
 
@@ -169,5 +204,8 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
   return {
     files: total, changed, gone: goneCount, textIndexed, bytesHashed, skipped, lastError,
     ms: Date.now() - t0, truncated, name, root,
+    // present ONLY when the sweep was deliberately not run, so `gone=0` can never be read as
+    // "nothing was deleted" when the truth is "deletion was not checked" (D-061).
+    sweep_skipped: sweepSkipped,
   };
 }

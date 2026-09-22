@@ -244,7 +244,7 @@ async function main(): Promise<number> {
     });
     db.close();
     if (has("json")) console.log(JSON.stringify({ index: indexName, db: dbPath, ...stats }, null, 2));
-    else console.log(`JM_INDEX_OK files=${stats.files} changed=${stats.changed} gone=${stats.gone} text=${stats.textIndexed} ms=${stats.ms} db=${dbPath}`);
+    else console.log(`JM_INDEX_OK files=${stats.files} changed=${stats.changed} gone=${stats.gone} text=${stats.textIndexed} ms=${stats.ms} db=${dbPath}${stats.sweep_skipped ? ` sweep_skipped="${stats.sweep_skipped}"` : ""}`);
     return 0;
   }
 

@@ -8,12 +8,25 @@ cd "$(dirname "$0")"
 CP="${1:-Checkpoints/jm-v0-waves-green-a39afe8}"
 # THE DESTRUCTIVE PATH IS GUARDED, and the guard is a NAMED REFUSAL, not a warning. Step 1 below
 # runs `rm -rf "$CP/$d"` for src/tests/context_management/artifacts/recipes/packages, so a caller who
-# passes a path resolving to the LIVE TREE (`./scripts-seal.sh .`, `..`, `/`) would delete the source
-# tree and then fail at the copy, with `set -e` aborting and the tree already gone. Validating only
-# `[ -d "$CP" ]` accepted every one of those. Found by the audit (H-1).
-case "$CP" in
-  Checkpoints/*) : ;;
-  *) echo "REFUSING: the seal writes only under Checkpoints/ (got '$CP'); it removes each subtree before copying it" >&2; exit 1 ;;
+# passes a path resolving to the LIVE TREE would delete the source tree and then fail at the copy,
+# with `set -e` aborting and the tree already gone.
+#
+# CANONICALIZE FIRST, THEN REQUIRE CONTAINMENT. A glob check is not enough: `Checkpoints/..` MATCHES
+# `Checkpoints/*` and still resolves to the repo root, so the first version of this guard let the
+# original disaster straight through — found by the audit (C-2), and it was a hole in this very fix.
+#
+# AND IT FAILS CLOSED. `readlink -f` returns EMPTY when a path component does not exist (a fresh
+# checkout has no `Checkpoints/` yet), and the obvious `|| echo "$CP"` fallback silently restores the
+# RAW string — which the glob then matches again, re-opening the bypass in exactly the environment a
+# clone starts in. Caught by this guard's own test running from the seal's COPY, where `Checkpoints/`
+# does not exist. An unresolvable path is refused, because containment cannot be proven.
+REPO_REAL="$(readlink -f . 2>/dev/null || true)"
+[ -n "$REPO_REAL" ] || { echo "REFUSING: cannot resolve the repository root" >&2; exit 1; }
+CP_REAL="$(readlink -f "$CP" 2>/dev/null || true)"
+[ -n "$CP_REAL" ] || { echo "REFUSING: cannot resolve '$CP' (does it exist?) — the seal removes each subtree before copying it" >&2; exit 1; }
+case "$CP_REAL" in
+  "$REPO_REAL"/Checkpoints/*) : ;;
+  *) echo "REFUSING: the seal writes only INSIDE the Checkpoints directory (got '$CP' -> '$CP_REAL'); it removes each subtree before copying it" >&2; exit 1 ;;
 esac
 [ -d "$CP" ] || { echo "no such checkpoint: $CP" >&2; exit 1; }
 
@@ -28,7 +41,7 @@ done
 for f in TESTING_LOG.md FAILURE_LOG.md DEBUG_LOG.md BUILD_REPORT.md AUDIT_SUMMARY.md \
          README.md THEATRICALITY_LOG.md VIOLATION_LOG.md \
          scripts-container-rig.sh scripts-gates.sh scripts-jm-mcp.sh scripts-real-corpus.sh \
-         scripts-jm-watch.sh \
+         scripts-jm-watch.sh scripts-seal.sh \
          package.json tsconfig.json bunfig.toml; do
   [ -e "$f" ] && cp "$f" "$CP/$f"
 done
