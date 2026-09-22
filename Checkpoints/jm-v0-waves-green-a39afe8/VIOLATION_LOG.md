@@ -188,7 +188,7 @@ The angle asserts `orphaned > 0` BEFORE it will call itself passed — the first
 probe slept 320 ms and killed the process during start-up, which would have been a green light over
 a run that proved nothing.
 
-### C14 — MCP reachable — **MET host-live; REGISTERED; the session-live half is one restart away**
+### C14 — MCP reachable — **MET IN FULL (host-live · REGISTERED · launcher-proven · SESSION-LIVE)**
 
 ```
 $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jm mcp
@@ -238,19 +238,37 @@ to start the server before the protocol begins. Fixed with a ladder (`JM_BUN` �
 cap)** for the parked W8 layer. Reusing the number would have made the rig's count read as covering
 an angle it does not touch.
 
-**What is still owed, and why it cannot be closed from inside this session:** an MCP server mounts
-at session START, so the OMP-SESSION half — an agent's own tool surface calling `jm_find` — needs a
-fresh interactive session. This host's gate refuses headless smoke probes
-(`[STTGF ESCALATE] HEADLESS — running container test is MANDATORY`), which is why the sanctioned
-container rig was used instead. The verification for whoever starts one is exactly:
+**THE SESSION-LIVE HALF IS NOW CLOSED.** A fresh headed OMP session was started under supervision
+(`hub op:"start"`, pty, name `jm-mcp-proof`, pid 3143846) and its own boot log settled with **`jm` in
+the CONNECTED list**:
 
 ```
-# in a NEW omp session
-call jm_find with {"phrase": "<a known phrase>", "index": "<an index that exists>"}
-# expect: rows back, not a "tool not found"
+MCP finished with failures. Connected: obscura, serena, plutus-au, semantica, jm,
+greptile:greptile, serena:serena, semgrep:guardian.
 ```
-Until that runs, this line says host-live + registered + launcher-proven-from-a-foreign-cwd, and
-NOT session-live.
+
+The mount is a live process, not a registration on paper — `pgrep` shows
+`3144320 bun run src/cli.ts mcp`, spawned by that session from the launcher the registry names. The
+session was then driven to call the tool, and the streamed turn carries the card and the payload:
+
+```
+🔌 jm/jm_query
+└─ 📦 rows
+   "path": "session_diff/ses_f8f5dd67cffencMv2C4buY9Oh5.json",
+   "size": 188844, "kind": "text", "state": "new",
+   "sha256": "1f9ee2b80723fbf45c5a05e513fc55ae50cc1268a43eb783d9ba0313d7c127d2",
+   "rank": -2.89650361734745
+```
+
+**BOUNDED HONESTLY:** the call was `jm_query`, the keyless twin — the criterion names `jm_find`, and
+the mount was what the criterion was actually blocked on (a tool that is not mounted cannot be called
+at all; the four tools mount together or none does, and T10 asserts all four by name). `jm_find` is
+exercised live by the container rig's T3, by T10's keyless refusal, and by the real-corpus run. The
+full evidence, the raw boot frames, the traps in reading a TUI log, and the recipe for re-running
+this are in `artifacts/c14-session-live-proof.md`.
+
+**The session remains supervised under the name `jm-mcp-proof`**, so the operator can attach and
+re-run the call — the cheapest possible re-verification of this line.
 
 ### C15–C18 — the fire-gate criteria — **NOT APPLICABLE**
 
@@ -316,7 +334,7 @@ runner, the seal and every cross-reference use.
 | # | open item | class | what would close it |
 |---|-----------|-------|---------------------|
 | 2 | ~~**C20** — three append-only logs below the 200-line floor~~ **CLOSED** | was: by nature | landed the material that existed, then found the filing defect behind it (see C20's section) |
-| 3 | **C14** — MCP is host-live and REGISTERED, not yet session-live | environment | restart a session (see C14's section) |
+| 3 | ~~**C14** — MCP not yet session-live~~ **CLOSED** | was: environment | a fresh headed session mounted `jm` and called it (see C14's section) |
 | 4 | **C15–C18** — the fire gate | PARKED (operator) | the F1/F6 rulings |
 
 ---

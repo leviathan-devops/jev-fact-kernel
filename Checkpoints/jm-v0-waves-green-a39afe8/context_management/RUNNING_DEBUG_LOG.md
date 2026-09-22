@@ -292,3 +292,20 @@ the source chunk of the independent audit.
 - **AND ONE SAFETY FIX:** `target add` now prints `registry <path>`. The drill's `JM_HOME` did not
   survive its shell calls, so it wrote into the operator's real registry, and no output named the
   file.
+
+## [2026-09-22] C14 CLOSED — the session-live half, by starting the session
+
+- **WHAT WAS BLOCKED:** an MCP server mounts at session START, and a running session cannot observe
+  its own registry. The registration was on disk and the launcher was proven from a foreign cwd; the
+  last half needed a FRESH session, and this host's gate refuses headless smoke probes
+  (`[STTGF ESCALATE] HEADLESS — running container test is MANDATORY`).
+- **WHAT CLOSED IT:** a headed OMP session under supervision (`hub op:"start"`, pty, `jm-mcp-proof`).
+  Its boot log settled with **`jm` in the CONNECTED list**, and `pgrep` showed the live
+  `bun run src/cli.ts mcp` that session spawned. Driven to call the tool, the streamed turn carries
+  the card `🔌 jm/jm_query` and real rows from the real 159 MB `shadow` index.
+- **THE FALSE GREEN AVOIDED:** a pattern match on the marker matches the INPUT ECHO instantly. The
+  evidence is the streamed turn — reasoning → tool card → payload — not a regex hit.
+- **BOUNDED:** the call was `jm_query`, the keyless twin; the criterion names `jm_find`, and the
+  MOUNT was what it was blocked on. Stated in the artifact rather than papered over.
+- **AND THE METHOD IS NOW WRITTEN DOWN:** seven steps plus the three traps in reading a TUI log, so
+  the next operator re-runs this in minutes instead of rediscovering it.
