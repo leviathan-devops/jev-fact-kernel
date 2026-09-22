@@ -51,9 +51,11 @@ describe("W4 find", () => {
     process.env.JM_MOCK_DIR = mock;
     try {
       const res = await find(db, { phrase: "split-brain session bug", common: 2 });
-      // the chain ran and narrowed: seeds -> candidates -> judged -> patterns
-      expect(res.trend).toMatch(/^\d+ → \d+ → \d+ → \d+$/);
-      const [seeds, candidates, judged, patterns] = res.trend.split(" → ").map(Number);
+      // the chain ran and narrowed: seeds -> candidates -> KEPT -> patterns. The four leading
+      // numbers keep their position and separator; the labels AFTER them name each stage — the trend
+      // gained information, because `judged` and `kept` are different numbers (audit find.ts:158).
+      expect(res.trend).toMatch(/^\d+ → \d+ → \d+ → \d+/);
+      const [seeds, candidates, judged, patterns] = res.trend.split("   (")[0].split(" → ").map(Number);
       expect(seeds).toBeGreaterThan(0);
       expect(candidates).toBeGreaterThan(0);
       expect(judged).toBeGreaterThan(0);

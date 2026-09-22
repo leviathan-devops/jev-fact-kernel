@@ -54,7 +54,18 @@ function judgeDbFor(name: string): Database {
 
 export function startServer(opts: ServeOpts = {}) {
   const port = opts.port ?? 7777;
-  const maxBody = opts.maxBodyBytes ?? Number(process.env.JM_SERVE_MAX_BODY ?? DEFAULT_MAX_BODY_BYTES);
+  // THE OVERRIDE IS VALIDATED (audit serve.ts:57). `Number(env ?? DEFAULT)` yields **NaN** for any
+  // non-numeric value — `JM_SERVE_MAX_BODY=10mb` is the natural typo — and BOTH guards in
+  // `readBodyCapped` compare with `>`, where `x > NaN` is ALWAYS FALSE. So a typo silently DISABLED
+  // the body cap entirely, and the oversized-body availability defect (D-036, which this cap was
+  // added to fix) came straight back. **The same class as the judge's body cap (D-051-adjacent,
+  // `transport.ts:49`), still live on this surface** — a guard whose override a typo can switch off
+  // is not a guard. It fails CLOSED: a bad override refuses to start rather than run uncapped.
+  const rawCap = process.env.JM_SERVE_MAX_BODY;
+  const maxBody = opts.maxBodyBytes ?? (rawCap === undefined ? DEFAULT_MAX_BODY_BYTES : Number(rawCap));
+  if (!Number.isFinite(maxBody) || maxBody <= 0) {
+    throw new Error(`JM_SERVE_MAX_BODY_INVALID: "${rawCap}" is not a positive number (bytes) — refusing to start with the body cap disabled`);
+  }
   const indexName = opts.name ?? "decisions";
 
   const token = process.env.JM_SERVE_TOKEN;   // optional bearer; loopback-only by default

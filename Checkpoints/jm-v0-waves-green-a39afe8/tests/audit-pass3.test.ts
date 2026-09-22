@@ -803,3 +803,62 @@ describe("the judge-failure POLICY is ONE policy across the three judged verbs",
     }
   }, 30000);
 });
+
+describe("the judged verbs — a claim is released on EVERY exit, and the trend tells the truth", () => {
+  test("test_claim_refund_and_judged_vs_kept", async () => {
+    // TWO defects, both the "fix the sites, not the rule" class (instance count: eight):
+    //  · find.ts:93 / filter.ts — `budget.claim()` had NO `finally` refund, while `decision-tree.ts`
+    //    was fixed for exactly this in EN-083. A worker that THREW (a judge outage, or `noulFrom`
+    //    refusing an unusable answer) exited holding the claim, so the budget leaked one slot per
+    //    failed row and then reported a FALSE "budget exhausted".
+    //  · find.ts:158 — the `judged` field was `judged.length`, and `judged` holds only rows with
+    //    `p >= minP` — so it was LITERALLY `kept.length`, and the trend reported the kept count under
+    //    the label "judged".
+    const home = mkdtempSync(join(tmpdir(), "jm-claim-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    for (let i = 0; i < 6; i++) writeFileSync(join(corpus, `f${i}.md`), `tombstone record ${i} with enough body text for an excerpt`);
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
+    process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
+    process.env.JM_JUDGE_URL = "http://127.0.0.1:9/";          // a dead port: EVERY call fails
+    delete process.env.JM_LEDGER;
+    try {
+      const { openDb, indexPathFor } = await import("../src/store/db");
+      const { indexTarget } = await import("../src/verbs/index");
+      const { find } = await import("../src/verbs/find");
+      const { filterIndex } = await import("../src/verbs/filter");
+      const db = openDb(indexPathFor("claim"));
+      indexTarget(db, "claim", corpus, {});
+
+      // A cap of 3 with 6 failing rows: a leaked claim stops the run at 4. Refunded, all 6 are tried.
+      const f = await find(db, { phrase: "tombstone record", failOpen: true, budgetCalls: 3, concurrency: 2 });
+      const [seeds, candidates, kept, patterns] = f.trend.split("   (")[0].split(" → ").map(Number);
+      expect(candidates).toBe(6);                              // ALL rows attempted, no leaked claim
+      expect(f.judged).toBe(6);                                // things JUDGED = the candidates
+      expect(kept).toBe(0);                                     // nothing passed (every call failed)
+      expect(f.kept).toBe(0);                                   // and `kept` is its own number now
+      expect(f.judged).not.toBe(f.kept === 0 ? -1 : f.kept);    // judged ≠ kept (the old field made them equal)
+
+      // `FilterOpts` selects candidates with `fts`/`where`, not an index name (the store is already
+      // open). tsc caught that — the typed boundary doing its job rather than a silent wrong probe.
+      //
+      // AND `filter`'s SEMANTICS DIFFER FROM `find`'s, which this pin documents: here `judged` counts
+      // judgements PRODUCED and `kept` those that passed `--min-p`, so an outage yields
+      // `candidates=6 judged=0 kept=0` — the "considered answer vs empty result" signal D-041 exists
+      // for. `find`'s `judged` was a DUPLICATE of `kept`; applying that fix here would have destroyed
+      // this signal, and `test_filter_refuses_a_judge_outage` is the assertion that caught it.
+      const fl = await filterIndex(db, { fts: "tombstone", question: "is it about a tombstone?", failOpen: true, budgetCalls: 3, concurrency: 2 });
+      expect(fl.candidates).toBe(6);                            // ALL candidates attempted — the refund
+      expect(fl.judged).toBe(0);                                // but no judgement PRODUCED (outage)
+      expect(fl.judged).toBeLessThan(fl.candidates);            // and the two numbers stay distinct
+      db.close();
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
+      if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
+      if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 30000);
+});
