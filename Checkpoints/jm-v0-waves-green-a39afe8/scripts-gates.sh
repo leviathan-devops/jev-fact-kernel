@@ -152,8 +152,13 @@ for round in 1 2 3 4; do
   BAD=$(cat /tmp/jm-gates-conc-$round-*.rc | grep -cv '^0$' || true)
   [ "$BAD" -gt 0 ] && CONC_FAILS=$((CONC_FAILS + BAD))
 done
-FAILS=$(grep -lh "database is locked\|UNIQUE constraint" /tmp/jm-gates-conc-*.out 2>/dev/null | wc -l)
-FAILS=$(grep -l "database is locked" /tmp/jm-gates-conc-*.out 2>/dev/null | wc -l)
+# ONE ASSIGNMENT, ONE PATTERN SET. There were TWO consecutive `FAILS=` lines: the first matched
+# "database is locked\|UNIQUE constraint" and the second overwrote it with "database is locked"
+# alone — so the UNIQUE-constraint half was DEAD CODE, and the D-038 meta-seed race (a
+# `UNIQUE constraint` error under concurrency) could never fail this gate. `-lh` was also
+# contradictory: `-h` suppresses the filenames that `-l` exists to produce. `-E` takes the
+# alternation, and the gate now checks what its name says it checks. Found by the audit (C-1).
+FAILS=$(grep -lE "database is locked|UNIQUE constraint" /tmp/jm-gates-conc-*.out 2>/dev/null | wc -l)
 tok "4 concurrent indexers, no lock errors" bash -c "[ \"$FAILS\" -eq 0 ]"
 tok "4 concurrent indexers all exit 0 (x4 rounds)" bash -c "[ \"$CONC_FAILS\" -eq 0 ]"
 # the row count is on the `files:` line — the first line's number is the index size in KB

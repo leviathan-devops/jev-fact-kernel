@@ -151,7 +151,16 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
     }
     const all = db.query("SELECT path FROM files WHERE state != 'gone'").all() as { path: string }[];
     const gone = db.query("UPDATE files SET state='gone', indexed_at=? WHERE path=?");
-    for (const r of all) if (!seen.has(r.path)) gone.run(now, r.path);
+    // THE TOMBSTONE PURGES THE TEXT, it does not only flag the file (H-9). `UPDATE files SET
+    // state='gone'` alone left the file's `docs` and `docs_fts` rows in the store forever: queries
+    // stopped SERVING them (the read joins on state), but the deleted content stayed on disk in the
+    // index — MEASURED: a removed file's text was still in `docs` after the re-index. For a tool
+    // pointed at arbitrary corpora that is retained data nobody asked to keep, and `docs_fts` is a
+    // STANDALONE fts5 table (it holds its own copy of the text), so it needs its own delete.
+    // Found by the audit (H-9).
+    const purgeDocs = db.query("DELETE FROM docs WHERE path = ?");
+    const purgeFts = db.query("DELETE FROM docs_fts WHERE path = ?");
+    for (const r of all) if (!seen.has(r.path)) { gone.run(now, r.path); purgeDocs.run(r.path); purgeFts.run(r.path); }
   });
   tx();
 
