@@ -2544,3 +2544,53 @@ reason: skill:omp-session-forensics at p=0.890 >= act 0.8
 ```
 **The live judge made a real decision, picked the right tool from a 477-entry catalogue, and emitted
 an injection line — from a directory that is not the repo.**
+
+## EN-095 — the operator's use case, and the TWO defects that still blocked it
+The operator's requirement, stated exactly: *"point at X target, find ALL instances of Y data and
+compile it into a .md list of verbatim text blocks, then also a pattern list + summary/analysis."*
+After EN-094 the tool was on PATH; pointing it at the Graph Intelligence session directory still
+FAILED, in two independent ways. Both were found by running the real use case, not by reading.
+
+**DEFECT 1 — MY OWN CHUNKING FIX BROKE THE QUERY (a regression introduced hours earlier).**
+EN-093 made large files searchable by CHUNKING them (`rel#c0`, `rel#c1`, …). The `query --fts` join
+was `docs_fts x JOIN files f ON f.path = x.path` — true while every doc's path WAS the file's path,
+and **false for every chunk**. So the fix made chunked text searchable in the index and **invisible
+through the query verb**:
+```
+MEASURED: chunked fts rows that JOIN to a file: 0 of 313
+          --fts ttsr_injection -> nothing      (raw MATCH -> 18)
+```
+*Fix:* the join goes `docs_fts → docs (by path) → files (by file_id)` — true for whole and chunked
+docs alike. **The lesson is the one this build keeps meeting: a fix is a change like any other, and
+its own consumers are part of its blast radius.** The pin (added to `tests/audit-pass3.test.ts`)
+was proven to bite by temporarily restoring the path join: it FAILS on the broken form, PASSES on the
+fix.
+
+**DEFECT 2 — FTS5 SPLITS ON `_`, SO AN IDENTIFIER SEARCHED FOR NOTHING.**
+`--fts ttsr_injection` searched for ONE token that does not exist, because the tokenizer treats `_`
+as a separator — and returned NOTHING while the text sat indexed. MEASURED: `ttsr_injection` → 0;
+`ttsr AND injection` → 22. That is precisely the operator's "find all instances of Y" case failing
+silently. *Fix:* a BARE identifier (no operators, no quotes) containing a separator is translated to
+its parts ANDed — what a person typing an identifier means. Anything already expression-shaped passes
+through untouched, so the FTS language stays available.
+
+**AND A NOTE ON THE FIXING ITSELF, recorded because it cost several attempts:** `bm25()` cannot be
+aggregated (`unable to use function bm25 in the requested context`) and cannot be referenced outside
+the FTS table's scope (`no such column: docs_fts`). Three restructurings failed before the simple
+answer — **one flat SELECT, no GROUP BY, one row per matching chunk** (the path carries `#cN`, so the
+operator sees WHICH part hit, which is more useful than a collapsed row). **The simple form was
+correct all along; I reached it last because I was optimising for a tidier result shape than the
+problem needed.**
+
+**PROVEN on the real directory:**
+```
+$ jm index @gi --name gi
+JM_INDEX_OK files=124 changed=124 gone=0 text=124 ms=2154
+$ jm query gi --fts ttsr_injection --limit 3
+39689774  new  …/2026-09-13T22-23-48-820Z_01a09cde-…jsonl      <-- the 37.9 MB session, FOUND
+```
+The file that was completely invisible two turns ago is now the top hit.
+
+**AND THE DELIVERABLE IT PRODUCED:** `artifacts/GI_FAILURE_CORPUS.md` (227 lines) — 7 enforcement
+firings verbatim, all 43 operator messages, a 7-pattern detector table, and analysis — built **by the
+tool**, which is the operator's stated requirement demonstrated end to end.

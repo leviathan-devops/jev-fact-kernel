@@ -497,3 +497,43 @@ describe("E3 / decision-tree.ts:85 — an unreadable answer is an UNKNOWN, never
     }
   });
 });
+
+describe("query.ts — the FTS chain must reach CHUNKED text and a bare identifier", () => {
+  test("test_fts_finds_a_chunked_file_and_an_underscored_identifier", async () => {
+    // TWO defects in the same chain, both measured on a real 37.9 MB session file:
+    //  (1) THE JOIN. `docs_fts x JOIN files f ON f.path = x.path` held while every doc's path WAS the
+    //      file's path — and broke the moment large files began being CHUNKED (`rel#c0`, …), because a
+    //      chunk path never equals a file path. MEASURED: 0 of 313 chunked fts rows joined, so a
+    //      chunked file was searchable in the index and INVISIBLE through `query --fts`.
+    //  (2) THE TOKENIZER. FTS5 splits on `_`, so `--fts ttsr_injection` searched one token that does
+    //      not exist and returned NOTHING while the text sat indexed. A bare identifier is now
+    //      translated to its parts ANDed; anything already expression-shaped passes through.
+    const home = mkdtempSync(join(tmpdir(), "jm-q-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    // A FILE BIG ENOUGH TO ACTUALLY CHUNK — over the 256 KB default, carrying a distinctive
+    // underscored identifier deep inside. (The first version used a ~2.8 KB file, which never chunked,
+    // so the assertion tested nothing — a fixture-geometry blind spot.)
+    writeFileSync(join(corpus, "big.log"), "filler ".repeat(45_000) + " ttsr_injection recorded here");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      run("index", corpus, "--name", "q", "--json");
+      const db = new Database(join(home, "index", "q.sqlite"), { readonly: true });
+      const chunked = (db.query("SELECT COUNT(*) AS n FROM docs WHERE path LIKE '%#c%'").get() as { n: number }).n;
+      db.close();
+      expect(chunked).toBeGreaterThan(0);                      // the file WAS chunked
+
+      // (1) the chunked content is reachable through the query verb
+      const byUnderscore = run("query", "q", "--fts", "ttsr_injection").stdout.toString();
+      expect(byUnderscore).toContain("big.log");               // found, though it lives in a chunk
+      // (2) and the identifier matched despite FTS5's `_` split
+      const byParts = run("query", "q", "--fts", "ttsr AND injection").stdout.toString();
+      expect(byParts).toContain("big.log");
+      // an expression still passes through untouched
+      const byPhrase = run("query", "q", "--fts", '"ttsr_injection"').stdout.toString();
+      expect(byPhrase).not.toContain("JM_FTS_INVALID");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});

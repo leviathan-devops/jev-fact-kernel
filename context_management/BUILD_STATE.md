@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `e5b7942f68b8d9d652993580f245dfbb` (git bb3930f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `fb468fc4f60c1b6e26bdd3037d68ac1b` (git c4ba352)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -48,7 +48,7 @@ sealed copy does not belong here.
 | `src/verbs/filter.ts` | 58 |
 | `src/verbs/find.ts` | 163 |
 | `src/verbs/index.ts` | 286 |
-| `src/verbs/query.ts` | 77 |
+| `src/verbs/query.ts` | 110 |
 | `src/verbs/report.ts` | 217 |
 | `src/verbs/route.ts` | 150 |
 | `src/verbs/scan.ts` | 105 |
@@ -66,7 +66,7 @@ sealed copy does not belong here.
 | `tests/audit-highs-2.test.ts` | 122 |
 | `tests/audit-highs-3.test.ts` | 86 |
 | `tests/audit-judge.test.ts` | 165 |
-| `tests/audit-pass3.test.ts` | 499 |
+| `tests/audit-pass3.test.ts` | 539 |
 | `tests/audit-phantom-surfaces.test.ts` | 107 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |

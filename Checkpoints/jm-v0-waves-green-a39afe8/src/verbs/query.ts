@@ -40,11 +40,41 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
   const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(Math.min(rawLimit, 10_000)) : 50;   // NaN/negative/float -> default (LIMIT -1 would mean unlimited)
   const params: Bind[] = [];
   let sql: string;
+  // AN OPERATOR-FACING FTS QUERY IS FORGIVING (the second half of the same defect). FTS5's tokenizer
+  // splits on `_`, `-` and `.`, so `--fts ttsr_injection` searched for a SINGLE token that does not
+  // exist and returned NOTHING while the text sat indexed — the exact "point at X, find all Y" case
+  // failing silently. MEASURED: `ttsr_injection` → 0 rows; `ttsr AND injection` → 22. So a BARE
+  // IDENTIFIER (no FTS operators, no quotes) containing a separator is translated into its parts
+  // ANDed together — which is what a person typing an identifier means. Anything that already looks
+  // like an FTS expression is passed through untouched, so the query language stays available.
+  const ftsQuery = (() => {
+    const raw = opts.fts ?? "";
+    const looksLikeExpression = /["'*()]|\b(AND|OR|NOT|NEAR)\b/i.test(raw);
+    if (looksLikeExpression) return raw;
+    const parts = raw.split(/[^A-Za-z0-9]+/).filter((t) => t.length > 0);
+    if (parts.length <= 1) return raw;
+    return parts.map((p) => `"${p}"`).join(" AND ");
+  })();
   if (opts.fts) {
+    // THE JOIN GOES THROUGH `docs`, NOT BY PATH (a bug this fix's own change introduced). The previous
+    // form was `docs_fts x JOIN files f ON f.path = x.path` — correct while every doc's path WAS the
+    // file's path, and WRONG the moment large files began being CHUNKED (`rel#c0`, `rel#c1`, …): chunk
+    // rows never match `f.path`, so a chunked file's text became searchable in the index and
+    // **invisible through `query --fts`**. MEASURED on the GI session directory: 0 of 313 chunked fts
+    // rows joined, and `--fts ttsr_injection` returned nothing while raw `MATCH` returned 18.
+    //
+    // ONE JOIN, NO AGGREGATION. `bm25()` must be called with the FTS table in scope and cannot be
+    // aggregated (SQLite: "unable to use function bm25 in the requested context"), so a chunked file
+    // legitimately yields SEVERAL rows — one per matching chunk. That is honest for a search result
+    // (the path carries its `#cN`, so the operator sees WHICH part matched) and it keeps the query a
+    // single flat SELECT that every downstream clause can extend. A plain (non-chunked) file still
+    // yields exactly one row, so nothing changes for the common case.
     sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256, bm25(docs_fts) AS rank
-             FROM docs_fts x JOIN files f ON f.path = x.path
+             FROM docs_fts
+             JOIN docs d ON d.path = docs_fts.path
+             JOIN files f ON f.id = d.file_id
             WHERE docs_fts MATCH ? AND f.state != 'gone'`;
-    params.push(opts.fts);
+    params.push(ftsQuery);
   } else {
     sql = `SELECT f.path, f.size, f.mtime, f.kind, f.state, f.sha256 FROM files f WHERE f.state != 'gone'`;
   }
@@ -59,8 +89,11 @@ export function queryIndex(db: Database, opts: QueryOpts = {}): QueryRow[] {
     sql += ` AND f.path IN (SELECT path FROM tags WHERE name = ? AND value = ?)`;
     params.push(k, v);
   }
-  const order = opts.fts ? ` ORDER BY bm25(docs_fts)` : ` ORDER BY f.size DESC`;
-  sql += order + ` LIMIT ?`; params.push(limit);   // bound, never interpolated   // FTS by relevance, scans by size
+  // FTS ORDERS BY RELEVANCE, SCANS BY SIZE. No GROUP BY: a chunked file yields one row per matching
+  // chunk on purpose (the path carries its `#cN`, so the operator sees WHICH part hit), and grouping
+  // would require aggregating `bm25()`, which SQLite refuses in any context but the plain SELECT.
+  const order = opts.fts ? ` ORDER BY rank` : ` ORDER BY f.size DESC`;
+  sql += order + ` LIMIT ?`; params.push(limit);   // bound, never interpolated
   try {
     return db.query(sql).all(...params) as QueryRow[];
   } catch (err) {
