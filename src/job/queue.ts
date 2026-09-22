@@ -57,10 +57,19 @@ export class Queue {
 
   /** Ack is conditional on the row still being OURS: a stale process whose claimed row was
    *  swept back to pending and re-claimed by a live process must NOT overwrite the live result.
-   *  Returns false when the ack was refused (the row moved on without us). */
-  complete(id: number, result: unknown): boolean {
-    const r = this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running'",
-      [JSON.stringify(result ?? null), new Date().toISOString(), id]);
+   *  Returns false when the ack was refused (the row moved on without us).
+   *
+   *  THE GUARD CHECKS THE ATTEMPT, NOT JUST THE STATE (audit queue.ts:61). `state='running'` alone
+   *  is satisfied by a DIFFERENT claim: the sequence "stale process claims row 5 (attempts=1) →
+   *  sweep returns it to pending → live process re-claims row 5 (attempts=2) → stale process acks"
+   *  passes the state check and overwrites the live result. The row's `attempts` counter is the
+   *  generation token, so the ack must name the attempt it is acking. */
+  complete(id: number, result: unknown, attempt?: number): boolean {
+    const r = attempt === undefined
+      ? this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running'",
+        [JSON.stringify(result ?? null), new Date().toISOString(), id])
+      : this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running' AND attempts=?",
+        [JSON.stringify(result ?? null), new Date().toISOString(), id, attempt]);
     return r.changes === 1;
   }
   fail(id: number, error: string): boolean {

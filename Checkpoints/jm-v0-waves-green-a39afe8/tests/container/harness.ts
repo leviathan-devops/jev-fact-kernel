@@ -168,9 +168,16 @@ async function T5(): Promise<void> {
   const d = db.query("SELECT COUNT(*) AS n, COUNT(DISTINCT fingerprint) AS uniq FROM queue WHERE state='done'").get() as { n: number; uniq: number };
   db.close();
   rmSync(home, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true });
-  const ok = orphaned > 0 && d.n === 400 && d.n === d.uniq;
-  record("T5", ok, ok ? "JM_RESUME_OK dup=0" : "JM_RESUME_DUP>0",
-    `SIGKILLed with ${orphaned} orphaned (${doneBefore} already done) -> resumed, done=${d.n} distinct=${d.uniq}`);
+  // THE LABEL MUST NAME WHICH CHECK FAILED. It read `JM_RESUME_DUP>0` for BOTH `d.n !== 400` and
+  // `d.n !== d.uniq`, so a run that resumed INCOMPLETELY reported a duplicate — and duplicates are
+  // structurally impossible here (`fingerprint` is UNIQUE), which sent the investigation after a
+  // defect that cannot exist. A failure label that names the wrong cause is an instrument defect: it
+  // makes the real one harder to find than no label at all.
+  const complete = d.n === 400;
+  const distinctOk = d.n === d.uniq;
+  const ok = orphaned > 0 && complete && distinctOk;
+  record("T5", ok, ok ? "JM_RESUME_OK dup=0" : (!complete ? "JM_RESUME_INCOMPLETE" : "JM_RESUME_DUP>0"),
+    `SIGKILLed with ${orphaned} orphaned (${doneBefore} already done) -> resumed, done=${d.n} distinct=${d.uniq}${complete ? "" : " (INCOMPLETE: expected 400)"}`);
 }
 
 // ---------------------------------------------------------------- T6 · budget cap

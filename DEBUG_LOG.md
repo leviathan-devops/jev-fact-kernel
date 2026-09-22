@@ -2169,3 +2169,39 @@ wrote it up as the fix failing. The `404` was the ENGINE refusing correctly — 
 `--name f`, so the server was serving the default `decisions` index, which did not exist. **The probe
 was wrong, not the code** — the same class as the T10 `phrase`/`query` mistake, and the reason every
 failure is adjudicated both ways before a fix.
+
+## EN-082 — the T5 flake, and the label that sent the investigation after a defect that cannot exist
+**WHAT HAPPENED:** a seal run reported `JM_CONTAINER_RIG FAIL — 7/8 angles, failed: T5(JM_RESUME_DUP>0)`.
+T5 then passed **4/4** when run directly, and the next seal run was `8/8`.
+
+**THE INSTRUMENT DEFECT, which is the more useful half:** T5's verdict line was
+```
+record("T5", ok, ok ? "JM_RESUME_OK dup=0" : "JM_RESUME_DUP>0", …)
+const ok = orphaned > 0 && d.n === 400 && d.n === d.uniq;
+```
+**One label covered TWO different failures.** `d.n !== 400` (an INCOMPLETE resume) and `d.n !== d.uniq`
+(a duplicate) both printed `JM_RESUME_DUP>0` — and duplicates are **structurally impossible** here
+(`queue.fingerprint` is `UNIQUE`), so the label named a defect that cannot exist and sent the
+investigation the wrong way. **A failure label that names the wrong cause is worse than no label: it
+costs more to disprove than to discover.** The two checks are now separate (`JM_RESUME_INCOMPLETE` vs
+`JM_RESUME_DUP>0`) and the message carries `(INCOMPLETE: expected 400)` when that is the failure.
+
+**AND THE AUDIT'S OWN FINDING ON THE SAME SUBSYSTEM, FIXED (queue.ts:61, HIGH).**
+`complete(id, result)` guarded on `state='running'` ALONE — which is satisfied by a *different* claim.
+The sequence *stale process claims row 5 (attempts=1) → the sweep returns it to pending → a live
+process re-claims row 5 (attempts=2) → the stale process acks* passes the state check and **overwrites
+the live result**, defeating the documented guarantee that "a stale process must NOT overwrite the
+live result". The row's `attempts` counter is the generation token, so `complete` now accepts an
+optional attempt and matches it:
+```
+UPDATE queue SET state='done', … WHERE id=? AND state='running' AND attempts=?
+```
+This is very plausibly the mechanism behind the intermittent T5 — a resume whose in-flight row was
+re-acked by the process that had already been killed. **Stated as a hypothesis, not a claim:** the
+flake did not reproduce in 4 direct runs or in the following seal, and a fix that cannot be shown to
+have cured its symptom is recorded as a fix for the DEFECT, not as a cure for the FLAKE.
+
+**THE FLAKE ITSELF IS RECORDED AS OPEN.** What is established: it is intermittent, it occurred under
+the seal's heavier conditions, and it now produces an HONEST label. The resume condition for
+diagnosing it is the next occurrence — which will say `JM_RESUME_INCOMPLETE` if the resume fell short,
+and that is a different investigation from a duplicate.

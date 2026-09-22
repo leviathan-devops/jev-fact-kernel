@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `f883ea82224990c9378be96d6d5d18b4` (git d3833f2)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `7e46719e0a9b9ea0e48927fc5e346ee4` (git 47517d0)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -24,7 +24,7 @@ sealed copy does not belong here.
 | `src/calibrate.ts` | 61 |
 | `src/cli.ts` | 610 |
 | `src/job/indexJob.ts` | 40 |
-| `src/job/queue.ts` | 83 |
+| `src/job/queue.ts` | 92 |
 | `src/job/run.ts` | 75 |
 | `src/job/store.ts` | 38 |
 | `src/judge/cache.ts` | 65 |
@@ -73,7 +73,7 @@ sealed copy does not belong here.
 | `tests/calibrate-unknown.test.ts` | 66 |
 | `tests/cli-contract.test.ts` | 153 |
 | `tests/concurrency.test.ts` | 95 |
-| `tests/container/harness.ts` | 347 |
+| `tests/container/harness.ts` | 354 |
 | `tests/decide.test.ts` | 209 |
 | `tests/decision.test.ts` | 112 |
 | `tests/find-excerpt.test.ts` | 91 |
