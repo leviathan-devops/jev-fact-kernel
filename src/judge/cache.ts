@@ -17,9 +17,18 @@ export function redact(value: unknown): unknown {
       // ORDER: MOST SPECIFIC FIRST. With the loose phone pattern ahead of the hex pattern, a
       // 32-character hex string was redacted as `[phone]abcdef[phone]` — the marker was wrong AND
       // six characters of the value SURVIVED. A partial redaction of a secret is a leak.
+      //
+      // THE SECRET PATTERN RUNS BEFORE THE HEX PATTERN (audit cache.ts:21). The rule above was
+      // stated here and contradicted two lines below it: `sk-`/`ghp_`/`xoxb-` tokens whose BODY is
+      // a long hex run match BOTH patterns — MEASURED, `sk-` + 40 hex characters matches
+      // `[a-f0-9]{32,128}` and the secret pattern alike — so hex-first consumed the body first and
+      // the marker came out `sk-[hex]` instead of `[secret]`. The body was still erased, so this
+      // is a MARKER defect rather than a leak; it is fixed because a redactor whose output says
+      // `[hex]` about a GitHub token misreports what it found, and because the rule and the code
+      // must not disagree. Most specific (a known secret prefix) before most generic (a hex run).
       .replace(/[\w.+-]{1,64}@[\w-]{1,255}\.[\w.]{1,255}/g, "[email]")
-      .replace(/\b[a-f0-9]{32,128}\b/gi, "[hex]")
       .replace(/\b(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,128}/g, "[secret]")
+      .replace(/\b[a-f0-9]{32,128}\b/gi, "[hex]")
       // THE PHONE PATTERN REQUIRES PHONE STRUCTURE (audit cache.ts:23). The loose form
       // `/\+?\d[\d ()-]{7,20}\d/` matched any 9–22 character run of digits — so an ordinary
       // numeric ID was redacted to `[phone]`, and **two states differing only in such an ID

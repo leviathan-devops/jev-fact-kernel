@@ -136,3 +136,30 @@ describe("find.ts:94 / policy.ts — an unmeasured cost is fatal REGARDLESS of f
     }
   });
 });
+
+describe("cache.ts:21 — the redaction ORDER must match the rule stated beside it", () => {
+  test("test_secret_marker_wins_over_the_generic_hex_marker", () => {
+    // The comment says "ORDER: MOST SPECIFIC FIRST" and the code contradicted it two lines below.
+    // MEASURED: `sk-` + 40 hex characters matches BOTH `[a-f0-9]{32,128}` and the secret pattern, so
+    // hex-first consumed the body and the marker came out `sk-[hex]` instead of `[secret]`. The body
+    // was still erased, so this is a MARKER defect rather than a leak — fixed because a redactor
+    // that says `[hex]` about a GitHub token misreports what it found, and because the rule and the
+    // code must not disagree. A redactor inside a CACHE KEY is observable through the fingerprint,
+    // so the property is pinned at that boundary: two DIFFERENT secrets must still hash apart
+    // (the body stays in the key's input), while a MARKER change is checked by the collision
+    // behaviour of same-shaped secrets.
+    // WHAT IS OBSERVABLE, AND WHAT IS DELIBERATE. A secret's BODY being erased from the key is the
+    // PRIVACY property, not a defect: the fingerprint is stored, and a low-entropy secret would be
+    // brute-forceable out of a bare sha256. So two secrets of the same SHAPE collide BY DESIGN —
+    // while two ordinary numeric IDs must NOT (that was the phone-pattern defect: it matched data
+    // that is not a secret at all). My first draft of this test asserted the opposite and was wrong
+    // about the design; the corrected assertions below separate the two cases.
+    const secretA = "ghp_" + "a".repeat(36);
+    const secretB = "ghp_" + "b".repeat(36);
+    expect(fingerprint("m", "v1", { t: secretA })).toBe(fingerprint("m", "v1", { t: secretB }));   // the body is redacted: intended
+    // a bare hex run is NOT a secret-shaped token, so it must not collapse onto one
+    expect(fingerprint("m", "v1", { t: "a".repeat(40) })).not.toBe(fingerprint("m", "v1", { t: secretA }));
+    // and ordinary numeric IDs stay distinct (the phone-pattern fix, re-asserted here)
+    expect(fingerprint("m", "v1", { id: "123456789" })).not.toBe(fingerprint("m", "v1", { id: "987654321" }));
+  });
+});

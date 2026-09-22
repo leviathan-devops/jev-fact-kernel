@@ -2341,3 +2341,25 @@ example benign).
 `endsWith("_escape")` — which the injectivity fix changed (a sanitised name now carries a digest). It
 now asserts the LAW directly and more strongly: the resolved path is INSIDE the jobs directory,
 carries no traversal segment, and is exactly one segment deep.
+
+## EN-088 — the redaction order, and a test of mine that was wrong about the DESIGN
+**cache.ts:21 · MEDIUM · the pattern order contradicted the rule stated beside it.**
+The comment reads *"ORDER: MOST SPECIFIC FIRST"*, and the code two lines below put the generic hex
+pattern **before** the secret-prefix pattern. **MEASURED:** `sk-` + 40 hex characters matches BOTH
+`[a-f0-9]{32,128}` and the secret pattern, so hex-first consumed the body and the marker came out
+`sk-[hex]` instead of `[secret]`. The body was still erased — so this is a **MARKER** defect, not a
+leak — and it is fixed because a redactor that says `[hex]` about a GitHub token misreports what it
+found, and because a rule and its code must not disagree. **Verified:** all four markers now correct
+(`[secret]` for `sk-`/`ghp_`/`xoxb-`, `[hex]` for a bare run, `[email]`, `[phone]`).
+
+**AND MY FIRST PIN FOR IT WAS WRONG ABOUT THE DESIGN — which the failure made visible.** I asserted
+that two DIFFERENT secrets must hash apart. They must not: a secret's body being erased from the key
+is the **PRIVACY** property (the fingerprint is stored, and a low-entropy secret would be
+brute-forceable out of a bare sha256). So same-shaped secrets collide **by design**, while ordinary
+numeric IDs must not — and that is exactly the distinction the phone-pattern fix turned on: one
+pattern matched DATA, the other matches SECRETS. The corrected pin asserts both sides and names the
+difference.
+
+**THE GENERAL LESSON, now hit twice in this tier:** a comment that states a rule is a claim like any
+other. This one said "most specific first" while the code did the opposite, and it had been read
+past — including by me, twice.
