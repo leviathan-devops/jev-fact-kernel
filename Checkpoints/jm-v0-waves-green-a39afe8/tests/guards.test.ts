@@ -21,8 +21,13 @@ function test_guard_path_sanitisation() {
     expect(s).not.toContain("..");                                       // no traversal survives
     expect(s).toMatch(/^[A-Za-z0-9._-]+$/);   // the exact underscore count is incidental; the LAW is: no separator, no traversal
     expect(safeName("x".repeat(200)).length).toBeLessThanOrEqual(64);
-    expect(safeName("..")).toBe("_");                    // ".." collapses to a harmless stem
+    // THE LAW, NOT THE LITERAL. This asserted `safeName("..") === "_"`, which is the INCIDENTAL
+    // stem — and the line two above already says the exact characters are incidental. The audit's
+    // M-H fix gave a sanitised name a collision-proof suffix (so `my index` and `my/index` no longer
+    // share one index file), which changes the stem to `_-<digest>`. The property this test exists
+    // for is unchanged and is asserted directly: no traversal, safe charset, bounded.
     expect(safeName("..")).not.toContain("..");
+    expect(safeName("..")).toMatch(/^[A-Za-z0-9._-]+$/);
     expect(() => safeName(".")).toThrow(/JM_NAME_INVALID/);   // "." is a directory, never a name
     expect(() => safeName("")).toThrow(/JM_NAME_INVALID/);
     expect(indexPathFor("ok-name").endsWith("ok-name.sqlite")).toBe(true);

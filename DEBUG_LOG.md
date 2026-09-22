@@ -1832,3 +1832,60 @@ add` and `target ls` now print `registry <path>`. One line, and the mistake cann
 - **THE THREE THAT BEHAVED, recorded so silence is not proof:** a VANISHED target root reports
   `errors=1` on the tick rather than crashing; two concurrent ticks both complete; an index name
   containing `../../` is sanitised and nothing escapes.
+
+## EN-073 — the audit's MEDIUM tier, adjudicated: five more confirmed, one REFUTED
+Continuing the adjudication past the high/critical set. Each finding is a hypothesis until a probe
+settles it — **and one of these was settled AGAINST the audit.**
+
+**M-A · CONFIRMED · the JSONL adapter truncated BEFORE parsing.**
+`raw.length > maxLine ? raw.slice(0, maxLine) : raw` ran before `JSON.parse`, so every VALID line
+wider than 64 KiB became invalid JSON and was reclassified `{__malformed: true}`, its payload cut to
+200 chars on top. **MEASURED:** one valid 70,038-byte record → `{"__malformed":true,...}`. A legitimate
+wide record was indexed as garbage. *Fix:* parse the whole line, bound the STORED text afterwards.
+
+**M-B · CONFIRMED · `VALUE_FLAGS` was missing `lex`, `re`, `min`, `field`.**
+`positionals()` only skips the next token for names in that set, so those flags' VALUES leaked into
+positionals — harmless for `scan` (it ignores extras) and a real bug for any verb reading
+`positional[1]`. *Fix:* the four names added.
+
+**M-C · CONFIRMED · the SEAL shipped STALE docs.**
+Step 1 copied `context_management` into the seal; steps 3b/3c then rewrote the **LIVE** copies. So the
+sealed copy kept the PREVIOUS tree sha. **MEASURED:** after a content change the live doc read
+`d387f989…` while the sealed doc still read `f579c3cc…` — **the checkpoint shipped docs that disagree
+with the tree they describe, and the seal's own gate passed because it reads the live copies.**
+*Fix:* re-copy after the rewrite; `live == sealed` now verified on both `CURRENT_STATE` and
+`BUILD_STATE`.
+
+**M-D · CONFIRMED · a VACUOUS token in the gate runner.**
+`tok "stdout is DATA" bash -c "… | grep -qv 'cost='"` — `grep -qv` succeeds as soon as ANY line lacks
+`cost=`, which is almost always true, so a stray `cost=` line on stdout went **undetected** and the
+"data only" guarantee was not checked at all. *Fix:* `! grep -q 'cost='` — passes only when NO line
+carries one, and the runner still reports 41/0 because the CLI is genuinely correct.
+
+**M-F · CONFIRMED (latent) · the seal could abort at the moment everything is correct.**
+The canon-extras selection used `grep -vxF` under `set -o pipefail`; `grep` exits 1 when it selects
+NOTHING — which is exactly the case when the canon holds precisely the 11 named docs — and pipefail
+carried that into the assignment. It has not fired because `RUNTIME_SEAT` is always an extra; it would
+fire the first time the canon is exactly 11. *Fix:* `|| true`, because the selection is a REPORT.
+
+**M-G · CONFIRMED · `scripts-real-corpus.sh` ran `rm -rf` on a caller-supplied path.**
+`JM_HOME="${1:-/tmp/jm-real}"` then `rm -rf "$JM_HOME"` — so `./scripts-real-corpus.sh "$HOME"` would
+have destroyed the home directory. **The same class as the seal's H-1, in a second script.** *Fix:* a
+named refusal unless the path looks disposable (`/tmp/*`, `*jm-*`). Verified: refuses `$HOME`, and the
+rig still PASSES.
+
+**M-H · CONFIRMED · `safeName` was not INJECTIVE.**
+`my index` and `my/index` both sanitised to `my_index`, so two DIFFERENT index names resolved to ONE
+file. **MEASURED:** the second `jm index --name "my/index"` reported `JM_INDEX_OK … changed=0` while
+writing into the first index's file, and `ls index/` showed a single `my_index.sqlite`. **The D-027
+class, in a second function** — `safeTargetName` had been fixed and `safeName` had not. *Fix:* the
+same collision-proof suffix; already-safe names return UNCHANGED so every existing index keeps its
+filename and `indexPathFor` stays deterministic. Pinned in `tests/audit-findings.test.ts`.
+
+**M-I · REFUTED — the audit was WRONG, and the probe is the reason to say so.**
+The finding: *"`openIndexExisting` is documented as READ-ONLY but delegates to `openDb()`, which
+performs writes (mkdirSync, create:true, WAL conversion, schema DDL)."* Every clause is true of the
+CODE, and the conclusion — that a read therefore mutates the store — **does not follow.** MEASURED:
+the index's mtime is **UNCHANGED** across a query. The writes it names are idempotent on an existing
+index (the file exists, the schema already matches, WAL is already set). **An audit is a SOURCE, not a
+verdict** — and this is the sixth claim in this session that a probe settled against the reviewer.

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openSource, rowsOf } from "../src/adapters/sqlite";
 import { validateRecipe } from "../src/verbs/decision-tree";
+import { safeName } from "../src/store/db";
 
 describe("H-2 — a table without a PRIMARY KEY must not collapse its rows", () => {
   test("test_sqlite_rows_without_a_pk_keep_their_identity", () => {
@@ -52,5 +53,28 @@ describe("H-5 — policy.fail must be validated, or a typo silently degrades to 
     for (const bad of ["Closed", "closed ", "opne", "", "OPEN", 1, null]) {
       expect(() => validateRecipe(mk(bad) as never)).toThrow(/JM_RECIPE_INVALID: policy\.fail/);
     }
+  });
+});
+describe("M-H — safeName must be INJECTIVE, like safeTargetName", () => {
+  test("test_index_names_that_sanitise_alike_stay_distinct", () => {
+    // MEASURED BEFORE THE FIX: `jm index --name "my index"` and `--name "my/index"` both resolved to
+    // `my_index.sqlite` — the second reported `JM_INDEX_OK ... changed=0` while writing into the
+    // FIRST index's file, and `ls index/` showed one file for two names. The same class as D-027
+    // (the target sanitiser) and D-008, in a second function. A value that becomes a KEY must map
+    // one-to-one.
+    const pairs: [string, string][] = [
+      ["my index", "my/index"],
+      ["a.b", "a/b"],
+      ["x  y", "x__y"],
+    ];
+    for (const [a, b] of pairs) {
+      expect(safeName(a)).not.toBe(safeName(b));       // distinct names, distinct keys
+    }
+    // an ALREADY-SAFE name is returned UNCHANGED, so existing indexes keep their filenames
+    for (const safe of ["shadow", "all", "decisions", "my-index_v2.1"]) {
+      expect(safeName(safe)).toBe(safe);
+    }
+    // deterministic: the same name always resolves the same way
+    expect(safeName("my index")).toBe(safeName("my index"));
   });
 });

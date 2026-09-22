@@ -47,7 +47,14 @@ export function openDb(path: string): Database {
 export function safeName(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").slice(0, 64);
   if (!cleaned || cleaned === "." || cleaned === "..") throw new Error(`JM_NAME_INVALID: "${name}"`);
-  return cleaned;
+  // COLLISION-PROOF, the same fix `safeTargetName` carries for D-027. `my index` and `my/index` both
+  // sanitised to `my_index`, so two DIFFERENT index names resolved to ONE file — MEASURED: the second
+  // `jm index --name "my/index"` reported `JM_INDEX_OK ... changed=0` while writing into the first
+  // index's file, and `ls index/` showed a single `my_index.sqlite`. An operator naming two indexes
+  // that differ only in punctuation silently got one. A name that was ALREADY safe is returned
+  // UNCHANGED, so every existing index keeps its filename and `indexPathFor` stays deterministic.
+  if (cleaned === name) return cleaned;
+  return `${cleaned.slice(0, 48)}-${createHash("sha256").update(name).digest("hex").slice(0, 8)}`;
 }
 export const indexPathFor = (name: string): string => join(indexDir(), `${safeName(name)}.sqlite`);
 
