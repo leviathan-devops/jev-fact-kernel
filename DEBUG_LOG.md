@@ -2140,3 +2140,32 @@ not admit is not a deletion candidate, and a real deletion the filter WOULD admi
 
 Three separate repairs were needed because the rule was applied three times to three different kinds
 of not-seen — a cap, a namespace, and a filter — without ever being written down.
+
+## EN-081 — two more from the third pass: a frame that kills the server, and a branch with no catch
+Both are about an error that reaches a boundary without a NAME attached to it.
+
+**mcp:199 · HIGH · a valid JSON value that is not an OBJECT killed the MCP server.**
+```
+$ printf '…initialize…\n…initialized…\nnull\n' | scripts-jm-mcp.sh
+JM_ERROR: null is not an object (evaluating 'req.id')      <- the server is DEAD, no frame emitted
+```
+`JSON.parse("null")` **succeeds**, so it sailed past the parse guard; `handle` then dereferenced
+`req.id` on `null`. The client saw a **dead pipe** rather than an error it could act on — the parse
+guard covered SYNTAX and nothing covered SHAPE. *Fix:* a valid JSON value that is not an object
+(including an array) is refused with `-32600 JM_MCP_INVALID_REQUEST`. **Verified:** `null`, a string,
+a number and an array each produce a named frame, the raw JS error is gone, and a request sent AFTER
+a bad frame is still answered — the server survives.
+
+**serve:137 · HIGH · `/find` had no catch, so a real engine failure escaped to Bun's default handler.**
+`/decide` maps `JEV_NO_KEY` → 503 and anything else → 500 with the engine's own sentence; `/find`'s
+branch had **no try/catch at all** — the enclosing block is `try { … } finally { db.close(); }` — so
+`find()`'s real failures (`JM_JUDGE_USAGE_MISSING`, a fatal store or judge error) bypassed the
+named-refusal contract every other path honours and produced a stack-shaped 500 instead.
+*Fix:* the same mapping as `/decide`. **Verified:** a keyless `POST /find` on a served index returns
+**503** with `{"error":"Error: JEV_NO_KEY: no TYPESAFE_API_KEY and no ~/.config/typesafe/key"}`.
+
+**AND A PROBE DEFECT WORTH RECORDING:** my first attempt at that verification got a `404` and I nearly
+wrote it up as the fix failing. The `404` was the ENGINE refusing correctly — I had not passed
+`--name f`, so the server was serving the default `decisions` index, which did not exist. **The probe
+was wrong, not the code** — the same class as the T10 `phrase`/`query` mistake, and the reason every
+failure is adjudicated both ways before a fix.

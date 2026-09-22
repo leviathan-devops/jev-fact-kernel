@@ -196,6 +196,16 @@ export async function serveStdio(): Promise<void> {
       let req: JsonRpcRequest;
       try { req = JSON.parse(line) as JsonRpcRequest; }
       catch { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "JM_MCP_PARSE" } }) + "\n"); continue; }
+      // A VALID JSON VALUE THAT IS NOT AN OBJECT IS STILL AN INVALID REQUEST (audit mcp:199).
+      // `JSON.parse("null")` SUCCEEDS, so it sailed past the parse guard and `handle` dereferenced
+      // `req.id` on `null` — killing the server with a raw JS error and NO JSON-RPC frame, so the
+      // client saw a dead pipe rather than an error it could act on. JSON-RPC requires an object;
+      // `-32600` (Invalid Request) is the frame for anything else. The parse guard covered
+      // SYNTAX and this covers SHAPE.
+      if (req === null || typeof req !== "object" || Array.isArray(req)) {
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "JM_MCP_INVALID_REQUEST: a JSON-RPC message must be an object" } }) + "\n");
+        continue;
+      }
       const res = await handle(req);
       if (res) process.stdout.write(JSON.stringify(res) + "\n");
     }

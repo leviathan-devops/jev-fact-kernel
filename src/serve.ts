@@ -134,8 +134,21 @@ export function startServer(opts: ServeOpts = {}) {
           try { body = JSON.parse(raw) as typeof body; }
           catch { return Response.json({ error: "JM_JSON_INVALID" }, { status: 400 }); }
           if (!body.phrase) return Response.json({ error: "JM_ARGS: phrase required" }, { status: 400 });
-          const res = await find(db, { phrase: body.phrase, common: body.common, structure: body.structure ?? "json" });
-          return Response.json({ trend: res.trend, patterns: res.patterns, calls: res.calls, cost_usd: res.costUsd, below_common: res.belowCommon });
+          // THE SAME ERROR MAPPING AS `/decide` (audit serve:137). This branch had NO catch — the
+          // enclosing block has only `try { … } finally { db.close(); }` — so a real engine failure
+          // (`JM_JUDGE_USAGE_MISSING`, a fatal store or judge error) escaped to Bun's default
+          // handler: a 500 with an internal body, bypassing the named-refusal contract every other
+          // path honours, and giving the caller a stack-shaped answer instead of the engine's own
+          // sentence. A keyless call is `503` (fail-closed), anything else is `500` with the
+          // engine's message.
+          try {
+            const res = await find(db, { phrase: body.phrase, common: body.common, structure: body.structure ?? "json" });
+            return Response.json({ trend: res.trend, patterns: res.patterns, calls: res.calls, cost_usd: res.costUsd, below_common: res.belowCommon });
+          } catch (err) {
+            const msg = String(err);
+            if (msg.includes("JEV_NO_KEY")) return Response.json({ error: msg }, { status: 503 });
+            return Response.json({ error: msg }, { status: 500 });
+          }
         }
         return Response.json({ error: "JM_ROUTE: unknown path" }, { status: 404 });
       } finally { db.close(); }

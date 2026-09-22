@@ -80,3 +80,28 @@ describe("serve:94 — an unknown route must create no store", () => {
     expect(created).toBe(false);                       // and the refused one created nothing
   }, 120000);
 });
+describe("mcp:199 — a valid JSON value that is not an OBJECT is still an invalid request", () => {
+  test("test_non_object_frame_is_refused_not_fatal", () => {
+    // MEASURED BEFORE THE FIX: `JSON.parse("null")` SUCCEEDS, so it sailed past the parse guard and
+    // `handle` dereferenced `req.id` on `null` — killing the server with a raw JS error and NO
+    // JSON-RPC frame, so the client saw a dead pipe rather than an error it could act on. The parse
+    // guard covered SYNTAX; this covers SHAPE.
+    const home = mkdtempSync(join(tmpdir(), "jm-nul-"));
+    const init = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}';
+    const note = '{"jsonrpc":"2.0","method":"notifications/initialized"}';
+    for (const bad of ["null", '"a string"', "42", "[]"]) {
+      const r = Bun.spawnSync({
+        cmd: [LAUNCHER],
+        stdin: Buffer.from([init, note, bad, '{"jsonrpc":"2.0","id":9,"method":"ping"}'].join("\n") + "\n"),
+        cwd: "/",
+        env: { ...process.env, JM_HOME: home, HOME: home, PATH: process.env.PATH ?? "" } as Record<string, string>,
+        timeout: 30000,
+      });
+      const out = r.stdout.toString();
+      expect(out).toContain("JM_MCP_INVALID_REQUEST");     // a NAMED frame, not a crash
+      expect(out).not.toContain("is not an object");       // and not the raw JS error
+      expect(out).toContain('"id":9');                     // the server SURVIVED and answered the next one
+    }
+    rmSync(home, { recursive: true, force: true });
+  });
+});
