@@ -4,6 +4,7 @@
 // Both are guards that hold in the obvious case and fail in the less obvious one — the shape this
 // build keeps meeting.
 import { describe, expect, test } from "bun:test";
+import { echoJudge } from "./helpers";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,7 +54,7 @@ describe("client.ts:61 — an UNMEASURED response must not be cached", () => {
     process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
     delete process.env.JM_LEDGER;
     let calls = 0;
-    const server = Bun.serve({ port: 0, fetch() { calls++; return Response.json({ model: "m", answers: { flag: { type: "noul", noul: 0.9 } } }); } });
+    const server = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", noul: 0.9 }), { usage: null, onCall: () => calls++ }) });
     process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
     try {
       const db = openDb(indexPathFor("cb"));
@@ -113,7 +114,7 @@ describe("find.ts:94 / policy.ts — an unmeasured cost is fatal REGARDLESS of f
     const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
     process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
     delete process.env.JM_LEDGER;
-    const server = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { is_instance: { type: "noul", noul: 0.9 } } }); } });   // NO usage block
+    const server = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", noul: 0.9 }), { usage: null }) });   // NO usage block
     process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
     try {
       const { openDb, indexPathFor } = await import("../src/store/db");

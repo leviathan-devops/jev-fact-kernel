@@ -8,14 +8,15 @@
 // The invariant the cache must hold: same (endpoint, model, schema, state) -> same answer. Not
 // "same model name".
 import { test, expect, describe } from "bun:test";
+import { echoJudge } from "./helpers";
 import { makeSandbox } from "./helpers.ts";
 import { openDb, indexPathFor } from "../src/store/db.ts";
 import { Judge } from "../src/judge/client.ts";
 
 describe("D-044 cache endpoint scoping", () => {
   test("test_two_endpoints_do_not_share_a_cache_entry", async () => {
-    const a = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { flag: { type: "noul", noul: 0.9 } }, usage: { input_tokens: 5, output_tokens: 1 } }); } });
-    const b = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { flag: { type: "noul", noul: 0.1 } }, usage: { input_tokens: 5, output_tokens: 1 } }); } });
+    const a = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", noul: 0.9 }), { usage: { input_tokens: 5, output_tokens: 1 } }) });
+    const b = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", noul: 0.1 }), { usage: { input_tokens: 5, output_tokens: 1 } }) });
     const sb = makeSandbox();
     const prev = process.env.JM_JUDGE_URL;
     try {

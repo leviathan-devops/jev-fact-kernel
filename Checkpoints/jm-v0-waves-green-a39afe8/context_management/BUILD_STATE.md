@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `cc30a0375cf1479b1c00b2cdb468d452` (git 49084cb)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `0fa495fe8963a95b697fb8928ab1499b` (git a265172)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -28,7 +28,7 @@ sealed copy does not belong here.
 | `src/job/run.ts` | 82 |
 | `src/job/store.ts` | 56 |
 | `src/judge/cache.ts` | 74 |
-| `src/judge/client.ts` | 224 |
+| `src/judge/client.ts` | 234 |
 | `src/judge/key.ts` | 26 |
 | `src/judge/policy.ts` | 130 |
 | `src/judge/transport.ts` | 101 |
@@ -41,7 +41,7 @@ sealed copy does not belong here.
 | `src/store/schema.ts` | 69 |
 | `src/targets.ts` | 185 |
 | `src/verbs/cluster.ts` | 93 |
-| `src/verbs/decision-tree.ts` | 244 |
+| `src/verbs/decision-tree.ts` | 260 |
 | `src/verbs/evaluate.ts` | 178 |
 | `src/verbs/excerpt.ts` | 54 |
 | `src/verbs/extract.ts` | 105 |
@@ -65,11 +65,11 @@ sealed copy does not belong here.
 | `tests/audit-findings.test.ts` | 157 |
 | `tests/audit-highs-2.test.ts` | 122 |
 | `tests/audit-highs-3.test.ts` | 86 |
-| `tests/audit-judge.test.ts` | 165 |
-| `tests/audit-pass3.test.ts` | 1019 |
+| `tests/audit-judge.test.ts` | 166 |
+| `tests/audit-pass3.test.ts` | 1020 |
 | `tests/audit-phantom-surfaces.test.ts` | 107 |
 | `tests/budget.test.ts` | 62 |
-| `tests/cache-endpoint-scope.test.ts` | 46 |
+| `tests/cache-endpoint-scope.test.ts` | 47 |
 | `tests/calibrate-unknown.test.ts` | 66 |
 | `tests/cli-contract.test.ts` | 163 |
 | `tests/concurrency.test.ts` | 95 |
@@ -80,13 +80,13 @@ sealed copy does not belong here.
 | `tests/find.test.ts` | 159 |
 | `tests/guard-query.test.ts` | 46 |
 | `tests/guards.test.ts` | 100 |
-| `tests/helpers.ts` | 43 |
+| `tests/helpers.ts` | 71 |
 | `tests/index.test.ts` | 71 |
 | `tests/job-report.test.ts` | 107 |
 | `tests/judge-answer-shape.test.ts` | 79 |
 | `tests/judge-outage.test.ts` | 77 |
 | `tests/judge-policy.test.ts` | 138 |
-| `tests/judge-usage.test.ts` | 88 |
+| `tests/judge-usage.test.ts` | 89 |
 | `tests/ladder-reason.test.ts` | 55 |
 | `tests/launcher.test.ts` | 94 |
 | `tests/ledger.test.ts` | 26 |

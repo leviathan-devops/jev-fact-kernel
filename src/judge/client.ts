@@ -141,6 +141,7 @@ export async function askMany(
   const pairs: { key: string; fp: string; item: AskItem; qname: string }[] = [];
   const answers: AskManyResult["answers"] = {};
   const cachedKeys: string[] = [];
+  let cachedModel: string | null = null;
   let cached = 0;
   for (const it of items) {
     for (const [qname, q] of Object.entries(questions)) {
@@ -154,12 +155,21 @@ export async function askMany(
       // (`{c1__match: {c1__match: {...}}}`) and `noulFrom` reported
       // `JM_JUDGE_ANSWER_INVALID: expected "match", received [match]` — found by the replay test.
       const stored = hit ? (hit.answers as Record<string, unknown>)[qname] : undefined;
-      if (stored !== undefined) { answers[key2] = stored as JudgeResponse["answers"][string]; cached++; cachedKeys.push(key2); }
+      if (stored !== undefined) {
+        answers[key2] = stored as JudgeResponse["answers"][string];
+        cached++; cachedKeys.push(key2);
+        // THE MODEL IS THE ONE THAT PRODUCED THE CACHE, not the requested constant. A cold run
+        // reported the RESPONSE model (`jev-1.13.0`) while an all-cached run reported the REQUEST
+        // constant (`jev-latest`) — so the same work produced two different artifacts, and the
+        // determinism contract ("a replay is byte-identical", decision.test.ts:51) broke on the model
+        // field alone. `ask()` already reads `hit.model` for exactly this reason.
+        if (hit!.model) cachedModel = hit!.model;
+      }
       // a cached map WITHOUT this question is a miss: it must still be asked.
       else pairs.push({ key: key2, fp, item: it, qname });
     }
   }
-  if (pairs.length === 0) return { answers, model, requests: 0, cached, cachedKeys, asked: 0, inputTokens: 0, costUsd: 0, usageMissing: 0 };
+  if (pairs.length === 0) return { answers, model: cachedModel ?? model, requests: 0, cached, cachedKeys, asked: 0, inputTokens: 0, costUsd: 0, usageMissing: 0 };
 
   // 2 · THE MISSES, IN CHUNKS. 200 keeps the payload well under the 256 KB outbound cap while
   //     staying inside the measured 400-question ceiling.
@@ -220,5 +230,5 @@ export async function askMany(
       );
     }
   }
-  return { answers, model: lastModel, requests, cached, cachedKeys, asked, inputTokens, costUsd, usageMissing };
+  return { answers, model: cachedModel ?? lastModel, requests, cached, cachedKeys, asked, inputTokens, costUsd, usageMissing };
 }

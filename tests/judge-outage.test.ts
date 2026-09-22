@@ -9,7 +9,7 @@
 // what produced the D-037 false lead.
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { join } from "node:path";
-import { makeSandbox, fill } from "./helpers.ts";
+import { makeSandbox, fill, echoJudge } from "./helpers.ts";
 import { openDb, indexPathFor, saveTargets } from "../src/store/db.ts";
 import { decisionTree, validateRecipe, type Recipe } from "../src/verbs/decision-tree.ts";
 
@@ -24,7 +24,7 @@ beforeAll(() => {
       const u = new URL(req.url);
       if (u.pathname === "/err500") return new Response('{"detail":"boom"}', { status: 500 });
       if (u.pathname === "/err429") return new Response('{"detail":"slow down"}', { status: 429 });
-      return Response.json({ model: "flaky", answers: { flag: { type: "noul", noul: 0.9 } }, usage: { input_tokens: 10, output_tokens: 2 } });
+      return echoJudge(() => ({ type: "noul", noul: 0.9 }), { model: "flaky", usage: { input_tokens: 10, output_tokens: 2 } })(req);
     },
   });
 });

@@ -4,6 +4,7 @@
 // more high/critical findings — including two in code written the SAME DAY. Each probe below is the
 // settlement that turned a hypothesis into a defect.
 import { describe, expect, test } from "bun:test";
+import { echoJudge } from "./helpers";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -464,7 +465,7 @@ describe("E3 / decision-tree.ts:85 — an unreadable answer is an UNKNOWN, never
     process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
     delete process.env.JM_LEDGER;
     // a judge that answers with a shape NOTHING recognises
-    const server = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", usage: { input_tokens: 5 }, answers: { flag: { type: "noul", weird_field: 0.97 } } }); } });
+    const server = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", weird_field: 0.97 }), { usage: { input_tokens: 5 } }) });
     process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
     try {
       const { openDb, indexPathFor } = await import("../src/store/db");
@@ -771,7 +772,7 @@ describe("the judge-failure POLICY is ONE policy across the three judged verbs",
     process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
     delete process.env.JM_LEDGER;
     // a judge that ANSWERS CORRECTLY but omits `usage`
-    const server = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { flag: { type: "noul", noul: 0.9 }, is_instance: { type: "noul", noul: 0.9 } } }); } });
+    const server = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", noul: 0.9 }), { usage: null }) });
     process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
     try {
       const { openDb, indexPathFor } = await import("../src/store/db");

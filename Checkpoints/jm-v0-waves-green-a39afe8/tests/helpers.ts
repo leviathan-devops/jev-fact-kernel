@@ -41,3 +41,31 @@ export function fill(root: string, files: Record<string, string>): void {
     writeFileSync(full, body);
   }
 }
+
+/** A judge endpoint that ECHOES the requested question keys — the documented wire contract
+ *  ("answers come back under the same keys", docs.typesafe.ai/api).
+ *
+ *  WHY THIS EXISTS: the engine BATCHES. A batched request carries one question per item, keyed
+ *  `<itemId>__<questionName>`, so a stub that returns a FIXED key (`flag`, `is_instance`, …) answers
+ *  nothing and the engine — correctly — raises `JM_JUDGE_ANSWER_COUNT`. Every server stub that
+ *  predated batching had that shape; this helper is the faithful replacement. `answer(i, key, q)`
+ *  builds the answer for the i-th requested question.
+ *
+ *  `usage: null` omits the usage block on purpose (the D-046 "unmeasured cost" fixtures). */
+export function echoJudge(
+  answer: (i: number, key: string, q: Record<string, unknown>) => unknown,
+  opts: { model?: string; usage?: { input_tokens: number; output_tokens?: number } | null; onCall?: () => void } = {},
+) {
+  return async (req: Request): Promise<Response> => {
+    opts.onCall?.();
+    const body = (await req.json().catch(() => ({}))) as { questions?: Record<string, Record<string, unknown>> };
+    const qs = body.questions ?? {};
+    const answers: Record<string, unknown> = {};
+    const entries = Object.entries(qs);
+    if (entries.length === 0) answers.flag = answer(0, "flag", {});
+    else entries.forEach(([k, q], i) => { answers[k] = answer(i, k, q); });
+    const resp: Record<string, unknown> = { model: opts.model ?? "m", answers };
+    if (opts.usage !== null) resp.usage = opts.usage ?? { input_tokens: 5, output_tokens: 1 };
+    return Response.json(resp);
+  };
+}

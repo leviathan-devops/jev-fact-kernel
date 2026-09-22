@@ -1,6 +1,6 @@
 # NEXT_STEPS — JM (overwrite; the live queue with acceptance criteria)
 
-**TREE SHA: `cc30a0375cf1479b1c00b2cdb468d452` (git 49084cb)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `0fa495fe8963a95b697fb8928ab1499b` (git a265172)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE BLOCKER (nothing ships while this is red)
 
 ### N-1 — Re-run the audit and land the verdict

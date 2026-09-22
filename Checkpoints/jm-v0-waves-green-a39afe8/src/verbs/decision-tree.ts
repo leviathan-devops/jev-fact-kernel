@@ -95,6 +95,8 @@ export interface DecisionTreeResult {
   rows: number; decisions: number; cached: number; calls: number; costUsd: number;
   bands: { act: number; escalate: number; noop: number };
   out?: string; escalationOut?: string; budgetStopped: boolean;
+  /** HTTP REQUESTS made. `calls` counts judged rows; this counts ROUND TRIPS — the batching proof. */
+  requests: number;
 }
 
 /** THE AGGREGATE SIGNAL, OR `null` WHEN THERE IS NONE (audit decision-tree.ts:85).
@@ -137,91 +139,105 @@ export async function decisionTree(opts: {
   if (policy.fail === "open") console.error("JM_POLICY: fail=open — judge outages continue with marked rows");
   const decisions: DecisionRow[] = [];
   const escalations: DecisionRow[] = [];
-  let cached = 0, calls = 0, costUsd = 0, budgetStopped = false;
+  let cached = 0, calls = 0, costUsd = 0, budgetStopped = false, requests = 0;
 
-  const results = await runPool(rows, async (row, i) => {
-    if (budgetStopped) return null;
-    if (!budget.claim()) { budgetStopped = true; return null; }   // SYNC claim before the await (D-024)   // HARD CAP: no room, no call
-    const state = { row, criteria, context };
-    // EVERY CLAIM IS RELEASED (audit decision-tree.ts:121). `budget.claim()` increments `pending`,
-    // which `roomLeft()` counts, and only `settle()` decrements it — but BOTH degraded-return sites
-    // (the fail-open noop here and the outer catch below) returned WITHOUT settling. So every
-    // degraded row permanently consumed a slot: a run that hit a judge outage under `fail: "open"`
-    // leaked one claim per row and then stopped with a false "budget exhausted" — the degradation
-    // path silently became a budget failure. A claim that produces no measured call is REFUNDED;
-    // `finally` is the only shape that covers every exit, including a rethrow.
-    let settled = false;
-    try {
-      let res;
-      try {
-        res = await judge.ask(state, opts.recipe.questions, `${opts.recipe.recipe}@v${opts.recipe.version}`);
-      } catch (err) {
-        if (policy.fail === "open") return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 100)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
-        throw err;    // fail-closed (the default): propagate, never a silent success
-      }
-      // No cast: `res.answers` IS the type the parameter declares, so the boundary is checked rather
-      // than asserted. The previous `as never` disabled exactly the checking that would catch a
-      // future field rename — the defect class this function was just fixed for.
-      const value = answersToPolicyValue(res.answers);
-      // ONE signal source: the aggregate drives BOTH the route and the reason, and the reason now
-      // comes from the SAME ladder the route does (a fixed template here made every row claim
-      // ">= act", including the noops and the escalates — D-030).
-      //
-      // AN UNREADABLE ANSWER IS NOT A ZERO (audit decision-tree.ts:85). `value === null` means the
-      // response carried no usable signal, so there is nothing to route on — the row is built with
-      // `signal: null` and the FAIL POLARITY decides: `closed` (the default) refuses the run, `open`
-      // marks the row. `budget.settle` runs BEFORE either, because a real call WAS made and its cost
-      // is real regardless of whether we could read the answer.
-      const decided = value === null ? null : reasonForSignal(value, policy);
-      const d: DecisionRow = decided === null
-        ? { i, route: "noop", reason: "gate_no_signal: the response carried no usable signal (no noul/probabilities/confidence) — an unreadable answer cannot be routed", answers: res.answers, cached: res.cached, model: res.model, signal: null }
-        : { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model, signal: value };
-      budget.settle(res.costUsd, res.cached);
-      settled = true;
-      if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
-      if (decided === null && policy.fail === "closed") throw new Error(`JM_JUDGE_NO_SIGNAL: the response carried no usable signal, so row ${i} cannot be routed — the same refusal as any other unreadable answer (fail: "open" opts into a marked row instead)`);
-      if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
-      return d;
-    } catch (err) {
-      // THE POLICY IS NOT RE-IMPLEMENTED HERE (audit decision-tree.ts:134/149). `judge/policy.ts`
-      // documents `fatalJudgeError` as "THE JUDGE-FAILURE POLICY, IN ONE PLACE" — and this block was
-      // a SECOND COPY of it, which had DRIFTED. The copy checked `JEV_NO_KEY` alone, so a
-      // usage-missing response (D-046) fell through to the `fail: "open"` degradation path and was
-      // reported as `gate_unavailable:` — the SAME reason a judge outage produces. Meanwhile
-      // `filter` and `find` treat a usage-missing response as FATAL REGARDLESS OF POLARITY, because
-      // *"fail: open is the opt-in to DEGRADE — a marked row whose cost is known to be zero — not an
-      // opt-in to run without accounting."* **Two copies of one policy disagreed**, which is the
-      // entire reason the shared one exists. It also made the marked row's reason a lie: a judge
-      // that ANSWERED and whose answer was READ was reported as an unavailable gate.
-      //
-      // The shared function returns the fatal error string, or null when the polarity says degrade.
-      const fatal = fatalJudgeError([{ error: String(err) }], { failOpen: policy.fail === "open" });
-      if (fatal !== null) throw new Error(fatal);
-      return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
-    } finally {
-      // THE CLAIM IS ALWAYS RELEASED — including on the fail-open return above and on a rethrow.
-      //
-      // THE REFUND GOES THROUGH THE `cached` PATH, and my first attempt at this got it wrong:
-      // `settle(0, false)` calls `spend(0)`, which INCREMENTS the call count — so a FAILED call was
-      // billed as a spend, and a run of degraded rows exhausted a calls cap on calls that never
-      // happened (measured: cap=3 over 6 failing rows stopped at 3 with `budgetStopped=true`).
-      // `settle(0, true)` is the release-without-spend branch, which is exactly what "this claim
-      // produced no measured call" means. A refund is not a purchase.
-      if (!settled) budget.settle(0, true);
+  // ── THE BATCH PATH (MEASURED: 400 questions in ONE request; time FLAT in n) ──────────────────
+  // The recipe's questions are the SAME for every row, and each row is that recipe applied to ONE
+  // state. So N rows = N questions in ONE request, with the row in a structured `instructions` field
+  // ("Put the question in one field and the data in the others" — docs.typesafe.ai/api). The per-row
+  // POOL is gone: it made N requests where one does.
+  //
+  // THREE SEMANTICS ARE PRESERVED EXACTLY, because they are pinned and load-bearing:
+  //   · A CLAIM THAT PRODUCES NO MEASURED CALL IS REFUNDED (`settle(0, true)` — a refund is not a
+  //     purchase; `settle(0, false)` increments the call count, the D-024/EN-083 defect).
+  //   · AN UNREADABLE ANSWER IS NOT A ZERO — `answersToPolicyValue` returning null routes the row by
+  //     FAIL POLARITY (`fail: closed` refuses, `fail: open` marks it), never as a decision.
+  //   · AN UNMEASURED COST IS FATAL AT BOTH POLARITIES (D-046) — usage is checked before any routing.
+  const qForRow: Record<string, { type: string; instructions: unknown; criteria?: unknown }> = {};
+  for (const [qname, q] of Object.entries(opts.recipe.questions as Record<string, { type: string; instructions: unknown }>)) {
+    qForRow[qname] = { type: q.type, instructions: q.instructions };
+  }
+  // ── THE CLAIM LOOP: claim a chunk, ask it, settle it, and let REFUNDS FREE ROOM FOR THE NEXT ──
+  //
+  // The pool claimed one row at a time and a REFUNDED claim freed its slot, so under `fail: open` a
+  // judge outage degraded EVERY row (`decisions=6` with `budgetCalls=3`) — a cap counts CALLS THAT
+  // HAPPENED, not rows attempted. Claiming all rows up front (my first batching attempt) broke that:
+  // it hit the cap at 3 and stopped with a FALSE "budget exhausted", which is the exact defect the
+  // 121 audit fixed. So the batching is layered ON TOP of the same claim discipline: claim up to
+  // min(200, what the budget allows), one request for the chunk, settle each row (a failed chunk
+  // REFUNDS every claim in it), then loop — the freed room admits the next chunk.
+  //
+  // 200 IS ALSO askManyBatch's OWN CHUNK SIZE, so one loop iteration is exactly one HTTP request and
+  // every claim is settled against the response that belongs to it.
+  const CHUNK = 200;
+  for (let base = 0; base < rows.length; ) {
+    const items: { id: string; state: unknown }[] = [];
+    const indices: number[] = [];
+    while (base < rows.length && items.length < CHUNK && budget.claim()) {   // SYNC claim before the await (D-024)
+      items.push({ id: String(base), state: { row: rows[base], criteria, context } });
+      indices.push(base);
+      base++;
     }
-  }, { concurrency: opts.concurrency ?? 6 });
-
-  // THE THIRD COPY OF THE POLICY, AND THE OPERATIVE ONE (audit decision-tree.ts:134/149). The inner
-  // catch above classifies a throw; but `runPool` CAPTURES a task's throw into `errors[]` rather
-  // than propagating it, so THIS block is what decides whether the run refuses. It checked
-  // `JEV_NO_KEY` only, then `fail === "closed"` — so under `fail: "open"` a
-  // `JM_JUDGE_USAGE_MISSING` was SWALLOWED and the run COMPLETED with rows whose cost was never
-  // measured. **Measured: a judge answering correctly without a `usage` block completed under
-  // `fail: "open"`** while `filter` and `find` refuse the same response — the drift the shared
-  // policy exists to prevent. All three verbs now classify through `fatalJudgeError`.
-  const fatal = fatalJudgeError(results.errors, { failOpen: policy.fail === "open" });
-  if (fatal !== null) throw new Error(fatal);
-  for (const d of results.ok) if (d) { decisions.push(d); if (d.route === "escalate") escalations.push(d); }
+    // A CHUNK THAT CANNOT EVEN START IS THE REAL "STOPPED" SIGNAL. A claim failure MID-chunk is not:
+    // that chunk's claims may be REFUNDED after the request (a degraded row consumed no budget), and
+    // the refund frees the room the next chunk needs. Setting `budgetStopped` on the mid-chunk failure
+    // (my first attempt) stopped the run at the cap with 3 of 6 rows attempted — the exact FALSE
+    // "budget exhausted" the 121 audit fixed.
+    if (items.length === 0) { budgetStopped = true; break; }
+    let bd: Awaited<ReturnType<typeof judge.askManyBatch>>;
+    try {
+      bd = await judge.askManyBatch(items, qForRow, `${opts.recipe.recipe}@v${opts.recipe.version}`);
+    } catch (err) {
+      for (let i = 0; i < items.length; i++) budget.settle(0, true);   // no measured call was produced
+      // THE POLICY IS NOT RE-IMPLEMENTED HERE (audit decision-tree.ts:134/149): `fatalJudgeError` is
+      // "THE JUDGE-FAILURE POLICY, IN ONE PLACE" — it makes an unmeasured cost fatal at BOTH
+      // polarities while honouring `fail: open` for an outage.
+      const fatal = fatalJudgeError([{ error: err instanceof Error ? err.message : String(err) }], { failOpen: policy.fail === "open" });
+      if (fatal !== null) throw new Error(fatal);
+      for (const it of items) {
+        decisions.push({ i: Number(it.id), route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 120)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow);
+      }
+      continue;                                                // refunded -> the loop claims the next chunk
+    }
+    if (bd.usageMissing > 0) {
+      for (let i = 0; i < items.length; i++) budget.settle(0, true);
+      throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);
+    }
+    requests += bd.requests;
+    const cachedSet = new Set(bd.cachedKeys);
+    const share = bd.asked > 0 ? bd.costUsd / bd.asked : 0;   // one request's cost, split across its rows
+    for (const it of items) {
+      const i = Number(it.id);
+      // THE ANSWER IS READ BY QUESTION NAME, and each answered question belongs to THIS row only —
+      // so `answers` is keyed back to the recipe's own names, then converted the same way `ask()` was.
+      const answers: Record<string, unknown> = {};
+      let anyCached = false, allCached = true, anyAnswered = false;
+      const questionKeys = Object.keys(qForRow).map((qn) => `${it.id}__${qn}`);
+      for (const qk of questionKeys) {
+        const a = bd.answers[qk];
+        if (a === undefined) { allCached = false; continue; }
+        anyAnswered = true;
+        if (cachedSet.has(qk)) { anyCached = true; } else { allCached = false; }
+        answers[qk.slice(it.id.length + 2)] = a;
+      }
+      const isCached = anyAnswered && allCached;
+      budget.settle(isCached ? 0 : share, isCached);
+      if (!anyAnswered) continue;                            // no answer is not an answer
+      if (!isCached) { calls++; costUsd += share; }
+      if (isCached) cached++;
+      const value = answersToPolicyValue(answers as Parameters<typeof answersToPolicyValue>[0]);
+      const decided = value === null ? null : reasonForSignal(value, policy);
+      if (decided === null) {
+        if (policy.fail === "closed") throw new Error(`JM_JUDGE_NO_SIGNAL: the response carried no usable signal, so row ${i} cannot be routed — the same refusal as any other unreadable answer (fail: "open" opts into a marked row instead)`);
+        decisions.push({ i, route: "noop", reason: "gate_no_signal: the response carried no usable signal (no noul/probabilities/confidence) — an unreadable answer cannot be routed", answers, cached: isCached, model: bd.model, signal: null } as DecisionRow);
+      } else {
+        decisions.push({ i, route: decided.route, reason: decided.reason, answers, cached: isCached, model: bd.model, signal: value } as DecisionRow);
+      }
+    }
+    if (budgetStopped) break;
+  }
+  // `decisions` was filled by the batch path above; only the escalation split remains.
+  for (const d of decisions) if (d.route === "escalate") escalations.push(d);
 
   const bands = { act: decisions.filter((d) => d.route === "act").length,
                   escalate: decisions.filter((d) => d.route === "escalate").length,
@@ -240,5 +256,5 @@ export async function decisionTree(opts: {
   const artifact = decisions.map(({ i, route, reason, answers, model }) => ({ i, route, reason, answers, model }));
   if (opts.outPath) writeFileSync(opts.outPath, JSON.stringify(artifact, null, 2));
   if (opts.escalationPath) writeFileSync(opts.escalationPath, escalations.map((e) => JSON.stringify(e)).join("\n") + (escalations.length ? "\n" : ""));
-  return { rows: rows.length, decisions: decisions.length, cached, calls, costUsd, bands, out: opts.outPath, escalationOut: opts.escalationPath, budgetStopped };
+  return { rows: rows.length, decisions: decisions.length, cached, calls, costUsd, bands, out: opts.outPath, escalationOut: opts.escalationPath, budgetStopped, requests };
 }

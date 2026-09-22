@@ -7,6 +7,7 @@
 // The fix reports the gap (`usageMissing`) and the verbs treat it like any other judge failure
 // under their own fail polarity — the same policy D-040/D-041 built.
 import { test, expect, describe } from "bun:test";
+import { echoJudge } from "./helpers";
 import { makeSandbox } from "./helpers.ts";
 import { openDb, indexPathFor } from "../src/store/db.ts";
 import { Judge } from "../src/judge/client.ts";
@@ -15,7 +16,7 @@ import { Budget } from "../src/pools/budget.ts";
 
 describe("D-046 usage accounting", () => {
   test("test_a_usage_less_response_is_REPORTED_not_billed_at_zero", async () => {
-    const s = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", answers: { flag: { type: "noul", noul: 0.9 } } }); } });
+    const s = Bun.serve({ port: 0, fetch: echoJudge(() => ({ type: "noul", noul: 0.9 }), { usage: null }) });
     const sb = makeSandbox();
     const prev = process.env.JM_JUDGE_URL;
     process.env.JM_JUDGE_URL = `http://127.0.0.1:${s.port}/`;

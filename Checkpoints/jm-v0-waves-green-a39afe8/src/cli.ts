@@ -327,7 +327,7 @@ async function main(): Promise<number> {
       });
       db.close();
       if (has("json")) console.log(JSON.stringify(res, null, 2));
-      else console.log(`JM_DECISIONS rows=${res.rows} decided=${res.decisions} act=${res.bands.act} escalate=${res.bands.escalate} noop=${res.bands.noop} calls=${res.calls} cached=${res.cached}` + (res.budgetStopped ? " BUDGET_STOPPED" : ""));
+      else console.log(`JM_DECISIONS rows=${res.rows} decided=${res.decisions} act=${res.bands.act} escalate=${res.bands.escalate} noop=${res.bands.noop} calls=${res.calls} cached=${res.cached} requests=${res.requests}` + (res.budgetStopped ? " BUDGET_STOPPED" : ""));
       return res.budgetStopped ? 3 : 0;
     } catch (err) {
       db.close();
