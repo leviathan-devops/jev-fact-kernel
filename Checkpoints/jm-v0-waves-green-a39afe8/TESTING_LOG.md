@@ -788,3 +788,56 @@ RESUME        a lane whose deeper rounds complete; the ledger's PART 2 lists the
 **AND THE GATE DID ITS JOB:** an independent review that finds a critical in the gate runner, a
 live-tree-deleting bug in the seal, and a vacuous pass in the verification rig is a gate worth
 having. The build makes **no ship-ready claim** while this line reads BLOCKED.
+
+### THE AUDIT GATE — THE DEEPER PASS, AND WHAT IT FOUND (2026-09-22, second run)
+
+The first run lost 23 of 107 items to a 15-minute per-request deadline. Re-running with
+**`--timeout 90 --concurrency 4 --exclude 'Checkpoints/**'`** reached **1 of 54 items failed** at
+**32,743,987 tokens**:
+
+```
+RUN        ocr review --from 7b7f7eb --to HEAD --provider verboo --model deepseek-v4.1-flash
+           --exclude 'Checkpoints/**' --timeout 90 --concurrency 4
+STATUS     partial — 120 findings; 1 of 54 selected items failed; 0 warnings
+TOKENS     32,743,987        FILES 54
+ARTIFACT   artifacts/audit-2026-09-22-complete-attempt.json
+DISTINCT   119 after de-duplication: 1 critical · 9 high · 49 medium · 60 low
+```
+
+**THE 1 FAILED ITEM IS `src/judge/*`** — one subsystem's deeper round still exceeded even the
+90-minute deadline. Everything else completed.
+
+**SIX MORE HIGH/CRITICAL FINDINGS, ALL CONFIRMED AND FIXED:**
+
+| # | sev | finding | the measured mechanism |
+|---|-----|---------|------------------------|
+| C-2 | critical | **my own H-1 guard was bypassed by traversal** | `Checkpoints/*` MATCHES `Checkpoints/..`, which resolves to the REPO ROOT — the live-tree-deleting disaster was still reachable. Then a SECOND hole: `readlink -f` returns empty for a non-existent path and the `|| echo` fallback restored the RAW string, re-opening the bypass in a fresh clone (caught by the guard's own test running from the seal's COPY). Now canonicalized, containment-checked, and **fail-closed** |
+| D-060 | high | a per-target refresh destroyed another target's rows | `jm index @A --name combined` over an index holding A and B tombstoned AND PURGED every one of B's rows. The sweep is now scoped to the run's own namespace |
+| D-061 | high | `--limit` destroyed index entries | a CAP was read as a deletion: `--limit 1` marked the files it did not WALK as gone. A truncated walk never tombstones, and the skip is REPORTED (`sweep_skipped=`) so `gone=0` is never ambiguous |
+| ledger:51 | high | a run that could not be RECORDED reported clean success | with an unwritable `JM_LEDGER`, `jm index` printed `JM_INDEX_OK` and **exited 0** with no row anywhere — L3 "no row, no run" violated. Now throws `JM_LEDGER_FAILED` |
+| evaluate:35 | high | `pOf` read a field the judge never writes | `probs` vs the canonical `probabilities` — every choice-shaped answer scored **0**, and agreement/Brier were computed over fabricated zeros. Verified: `agreement=100.0% brier=0.0100` vs `0% / 1.0000` |
+| sqlite:45 | high | a COMPOSITE primary key collapsed its rows | `.find(c => c.pk === 1)` took one column of a composite key: `PRIMARY KEY (a,b)` with a=1 for four rows produced **ONE file** while reporting `rows=4 changed=4`. (The audit's example used DISTINCT `a`, which does not collide — the mechanism was right, the example was the benign case.) |
+
+**AND ONE REFUTED:** `M-I` — *"`openIndexExisting` is documented read-only but delegates to `openDb()`,
+which performs writes"*. Every clause is true of the CODE and the conclusion does not follow:
+**the index's mtime is UNCHANGED across a query.** The writes it names are idempotent on an existing
+index. **An audit is a SOURCE, not a verdict** — the sixth claim this session that a probe settled
+against the reviewer.
+
+**ADJUDICATION TALLY: 16 high/critical findings confirmed and fixed (10 + 6), 1 refuted, 0 unproven.**
+
+**AUDIT GATE: BLOCKED.** Not FAIL — every high/critical finding in two full passes was adjudicated by
+probe, confirmed, fixed and pinned, with zero false positives surviving. Not PASS — **no run reaches
+`complete`**: the lane's deepest round exceeds even a 90-minute deadline on this host, leaving
+`src/judge/*` unreviewed in the scoped run and **~100 medium/low findings UNADJUDICATED**. A
+`partial` artifact cannot stand for a complete review.
+
+```
+ADJUDICATED   16 high/critical — confirmed, fixed, pinned (see artifacts/audit-adjudication-ledger.md)
+REFUTED       1 (M-I: the read-only open does not mutate the store — mtime unchanged)
+OPEN          ~100 medium/low findings — named by file in the ledger
+UNREVIEWED    src/judge/* (the scoped run's 1 failed group) + the Checkpoints copies
+RESUME        a lane whose deepest round completes, or a per-subsystem scoped review
+```
+
+**No ship-ready claim is made while this line reads BLOCKED.**
