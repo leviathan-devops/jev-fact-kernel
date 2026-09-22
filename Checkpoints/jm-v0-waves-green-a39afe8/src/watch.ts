@@ -97,7 +97,21 @@ export function readJournal(limit = 20): { rows: TickResult[]; corrupt: number }
 export async function watch(opts: WatchOpts = {}): Promise<void> {
   const interval = opts.intervalMs ?? 60_000;
   for (;;) {
-    const r = await tick({ index: opts.index, in: opts.in });
+    // A TRANSIENT FAILURE MUST NOT END THE DAEMON (audit watch.ts:100). `await tick(...)` was
+    // unguarded, so ANY throw — `openDb` on a locked or briefly-unavailable store, the journal
+    // `appendFileSync` on a full disk — terminated the loop. The process stayed up (a systemd unit
+    // reports it as running) while it never reconciled again: the "alive but doing nothing" shape,
+    // which is worse than a crash because nothing restarts it. The failure is REPORTED and the
+    // loop CONTINUES; `once` still rethrows, so a cron tick surfaces its error by exit code.
+    let r: TickResult;
+    try {
+      r = await tick({ index: opts.index, in: opts.in });
+    } catch (err) {
+      process.stderr.write(`[jm watch] TICK_FAILED ${new Date().toISOString()} ${String(err).slice(0, 200)}\n`);
+      if (opts.once) throw err;
+      await Bun.sleep(interval);
+      continue;
+    }
     process.stdout.write(`[jm watch] ${r.at} targets=${r.targets} rows=${r.rows} changed=${r.changed} ${r.ms}ms${r.errors.length ? ` errors=${r.errors.length}` : ""}\n`);
     if (opts.once) return;
     await Bun.sleep(interval);

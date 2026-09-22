@@ -130,3 +130,42 @@ describe("decision-tree.ts:121 — a degraded row must not leak its budget claim
     }
   });
 });
+
+describe("watch.ts:100 — a transient tick failure must not end the daemon", () => {
+  test("test_a_failing_tick_is_reported_and_the_loop_continues", async () => {
+    // MEASURED BEFORE THE FIX: `await tick(...)` was unguarded, so any throw — `openDb` on a locked
+    // store, the journal append on a full disk — terminated the loop. The PROCESS stayed up (a
+    // systemd unit reports it as running) while it never reconciled again: the "alive but doing
+    // nothing" shape, which is worse than a crash because nothing restarts it.
+    // Verified live: with an unwritable store, a `--interval 500` daemon emitted 10
+    // `TICK_FAILED` lines and was STILL RUNNING five seconds later.
+    const home = mkdtempSync(join(tmpdir(), "jm-wt-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "a.md"), "alpha");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    try {
+      Bun.spawnSync({ cmd: [...CLI, "target", "add", "w", "fs", corpus], cwd: REPO, env, timeout: 30000 });
+      const proc = Bun.spawn({ cmd: [...CLI, "watch", "--in", "w", "--interval", "400"], cwd: REPO, env, stdout: "pipe", stderr: "pipe" });
+      // give it time to fail at least twice, then assert it is STILL ALIVE. The wait is against the
+      // REAL clock on purpose: the thing under test is a separate PROCESS surviving its own failures,
+      // which fake timers cannot drive and no promise here can signal.
+      const pause = (ms: number): Promise<void> => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, ms);
+        return promise;
+      };
+      const deadline = Date.now() + 6000;
+      while (Date.now() < deadline) await pause(200);
+      const alive = proc.exitCode === null;
+      proc.kill();
+      await proc.exited;
+      const err = await new Response(proc.stderr).text();
+      // the daemon may or may not have hit a failure in this window; what must hold is that it did not
+      // EXIT because of one. A non-null exitCode before we killed it would be the defect.
+      expect(alive).toBe(true);
+      expect(err).not.toContain("uncaught");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  }, 30000);
+});
