@@ -198,3 +198,28 @@ describe("scan.ts:59 — a user-supplied pattern is an availability boundary", (
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("extract.ts:51 — `--field` must work for the adapter whose rows ARE JSON", () => {
+  test("test_field_extraction_covers_jsonl_and_sqlite", () => {
+    // MEASURED BEFORE THE FIX: `--field name` over a `.jsonl` corpus returned `values: []` for every
+    // row (`empty: 2`) while `--re '"name":"([^"]+)"'` returned both — because the extractor assumed
+    // the SQLITE adapter's `key: value` render, and the JSONL adapter stores `JSON.stringify(value)`.
+    // The documented "a JSON key to pull out of each row's text" did not hold for the adapter whose
+    // rows ARE JSON.
+    const home = mkdtempSync(join(tmpdir(), "jm-ex-"));
+    const jsonl = join(home, "rows.jsonl");
+    writeFileSync(jsonl, '{"name":"alice","role":"admin"}\n{"name":"bob","role":"user"}\n');
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 30000 });
+    try {
+      run("target", "add", "ex", "jsonl", jsonl);
+      run("index", "@ex", "--name", "ex");
+      const out = run("extract", "ex", "--field", "name").stdout.toString();
+      const parsed = JSON.parse(out.slice(out.indexOf("{"))) as { rows: { values: string[] }[]; total: number; empty: number };
+      expect(parsed.total).toBe(2);
+      expect(parsed.empty).toBe(0);
+      expect(parsed.rows.map((r) => r.values[0])).toEqual(["alice", "bob"]);
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});

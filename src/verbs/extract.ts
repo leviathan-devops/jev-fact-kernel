@@ -48,16 +48,33 @@ export function extractFields(db: Database, candidates: Candidate[], spec: Extra
           if (values.length >= maxPerRow) break;
         }
       } else if (spec.field) {
-        // A row's text is "key: value" lines (the sqlite/jsonl adapters' render); pull the named key.
-        const rx = new RegExp(`^${spec.field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: (.*)$`, "mi");
-        const m = doc.text.match(rx);
-        if (m) {
-          const raw = m[1].trim();
-          try {
-            const parsed = JSON.parse(raw) as unknown;
-            values.push(typeof parsed === "string" ? parsed : JSON.stringify(parsed));
-          } catch { values.push(raw); }
+        // A ROW'S TEXT IS NOT ALWAYS "key: value" LINES (audit extract.ts:51). That render is the
+        // SQLITE adapter's; the JSONL adapter stores `JSON.stringify(value)`, so `--field name` over
+        // a `.jsonl` corpus found nothing — MEASURED: two records with `"name":"alice"` and
+        // `"name":"bob"` both yielded `values: []` (`empty: 2`), while `--re '"name":"([^"]+)"'`
+        // returned both. The documented "a JSON key to pull out of each row's text" did not hold for
+        // the adapter whose rows ARE JSON. So the JSON form is tried FIRST and the rendered-line form
+        // is the fallback, which is the order that matches how each adapter writes its text.
+        let pulled: string | undefined;
+        try {
+          const parsed = JSON.parse(doc.text) as unknown;
+          if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const v = (parsed as Record<string, unknown>)[spec.field];
+            if (v !== undefined) pulled = typeof v === "string" ? v : JSON.stringify(v);
+          }
+        } catch { /* not JSON: fall through to the rendered-line form */ }
+        if (pulled === undefined) {
+          const rx = new RegExp(`^${spec.field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: (.*)$`, "mi");
+          const m = doc.text.match(rx);
+          if (m) {
+            const raw = m[1].trim();
+            try {
+              const parsed = JSON.parse(raw) as unknown;
+              pulled = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+            } catch { pulled = raw; }
+          }
         }
+        if (pulled !== undefined) values.push(pulled);
       }
     }
     if (values.length === 0) empty++;

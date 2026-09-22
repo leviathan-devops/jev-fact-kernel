@@ -2254,3 +2254,26 @@ input angle still passes.
 **THE THROUGH-LINE FOR BOTH:** the failure mode is not a wrong answer, it is a service that stops —
 and in both cases the code was doing exactly what it was written to do. A guard that only covers the
 HAPPY input is not a guard; it is a guard for the tests.
+
+## EN-085 — extract.ts:51: a documented feature that never worked on the adapter it named
+**The README documents `--field` as "a JSON key to pull out of each row's text (jsonl/sqlite rows)".**
+The implementation assumed the SQLITE adapter's `key: value` render:
+```
+const rx = new RegExp(`^${spec.field}: (.*)$`, "mi");   // the rendered-line form
+```
+But the JSONL adapter stores `JSON.stringify(value)` — its rows ARE JSON, not rendered lines.
+**MEASURED:**
+```
+$ jm extract ex --field name          ->  rows: [{"path":"…/ex.jsonl#L1","values":[]}, …]  total=0 empty=2
+$ jm extract ex --re '"name":"([^"]+)"' ->  values: ["alice"], ["bob"]                        total=2 empty=0
+```
+So the flag worked for the adapter it did NOT name in the doc, and failed for the one it DID. *Fix:*
+try the JSON form first (the adapter whose rows are JSON), fall back to the rendered-line form (the
+adapter that renders lines) — the order that matches how each adapter writes its text. **Verified:**
+`--field name` over JSONL now yields `alice`/`bob` (`total=2 empty=0`), and the SQLite form still
+yields the same.
+
+**THE CLASS, WHICH THIS BUILD HAS NOW MET SIX TIMES:** a claim in the docs, a test that does not
+exercise it against the boundary the docs name, and an implementation that quietly serves a
+different case. `--field` had a test — against a SQLite fixture. The docs named both adapters; the
+test named one.
