@@ -228,3 +228,296 @@ Not software defects. They reached a gate, so they belong here.
   create because it writes. Pinned with both halves.
 - **LESSON:** fix the INVARIANT, then grep for its idiom across every surface. Two defect repairs
   left two worse instances standing, and only probing the family found them.
+
+---
+
+# THE FULL FAILURE LEDGER — every derailment observed across 161 commits
+
+**Scope.** Every failure observed during the build: test failures, operator rejections, discipline
+failures, spec violations, and the instrument defects. Grouped by CLASS, because the class is the
+durable finding — a single instance is an incident, a class is a rule.
+
+**The classes, and their instance counts. THIS TABLE IS THE SUMMARY OF THE ENTIRE LEDGER.**
+
+| class | instances | what it is | the rule it produced |
+|-------|-----------|------------|----------------------|
+| **A VALUE LAUNDERED** | **11** | an absent/unknown value read as a specific one and acted upon | never let `?? 0`, a default, or a fallback stand in for a measurement |
+| **A GUARD WITH AN OFF-SWITCH** | **7** | a check that exists but can be disabled by a typo, an omitted argument, or an override | when the guard's job is to STOP something, its off-switch must not exist |
+| **FIX THE SITES, NOT THE RULE** | **9** | a defect repaired where it was found while the same defect lived elsewhere | grep for the idiom after fixing its first instance |
+| **RELEASED ON THE HAPPY PATH ONLY** | **4** | a resource (store handle, budget claim, stream) freed on success and not on the other exit | every claim is released on EVERY exit; `finally` is the only shape that covers a rethrow |
+| **A BOUNDARY NEVER CROSSED** | **4** | a unit test that mocked the far side and thereby tested a belief | at least one test per external boundary must cross it FOR REAL |
+| **A REPORT THAT CANNOT REPORT** | **4** | a command or label that prints something other than the result | the command which reports a result is PART OF the result |
+| **THE FIX'S OWN BLAST RADIUS** | **3** | a fix that broke a consumer the fixer did not consider | a fix is a change like any other; its consumers are its blast radius |
+| **ACCEPTED GARBAGE** | **6** | a value the code trusts that nobody validated (a cast, a raw string, a hand-maintained set) | a value that crosses a boundary unchecked is a value the boundary does not exist for |
+
+## CLASS A — A VALUE LAUNDERED INTO A SPECIFIC ONE (11 instances)
+
+**The most productive class in the build.** Each instance: an absent or unrecognised value became a
+concrete number, and the code ACTED on it, producing a wrong answer that looked like data.
+
+### A-1 · D-039
+
+- **the mechanism:** 4 verbs read `answers.<key>.noul ?? 0`
+- **what it produced:** a judge saying 0.95 under another key read as **0**
+- **the fix:** `noulFrom` by SHAPE; an unusable answer THROWS
+
+### A-2 · D-042
+
+- **the mechanism:** the same in `filter`
+- **what it produced:** a renamed answer key produced `kept=0` after six real calls
+- **the fix:** one `answerFrom` resolver, shape-first
+
+### A-3 · D-043
+
+- **the mechanism:** the stored confidence was regex-parsed from the row's own REASON prose
+- **what it produced:** every degraded/errored row stored `conf=0` — a fabricated "the judge said no"
+- **the fix:** the signal rides on the row; NULL = unknown
+
+### A-4 · D-045
+
+- **the mechanism:** the READ side of the same column
+- **what it produced:** an UNCERTAIN confidence counted as zero in bands and mean
+- **the fix:** unknown rows are COUNTED and EXCLUDED
+
+### A-5 · D-046
+
+- **the mechanism:** `resp.usage?.input_tokens ?? 0`
+- **what it produced:** a usage-less call billed **$0**; the USD cap could never fire (50 calls vs a $0.0001 cap: `roomLeft=true`)
+- **the fix:** the gap is REPORTED (`usageMissing`) and routed through the fail policy
+
+### A-6 · evaluate:35
+
+- **the mechanism:** `pOf` read `probs`; the canonical field is `probabilities`
+- **what it produced:** every choice answer scored 0; agreement and Brier were computed over fabricated zeros
+- **the fix:** read the canonical field; verified 100.0% vs 0%
+
+### A-7 · decision-tree:85
+
+- **the mechanism:** `answersToPolicyValue` seeded `best = 0`
+- **what it produced:** an unrecognised answer shape returned 0 and was ROUTED as a decision; also swallowed NaN
+- **the fix:** returns `number \| null`; the polarity decides
+
+### A-8 · report.ts:57/146
+
+- **the mechanism:** `cost += Number(r.cost_usd ?? 0)`
+- **what it produced:** ONE malformed ledger row made the whole report print **`$NaN`**
+- **the fix:** an unreadable cost is COUNTED (`cost_unknown`) and NAMED on the output
+
+### A-9 · indexJob.ts:31
+
+- **the mechanism:** `res?… ?? 0` on every counter after a caught crash
+- **what it produced:** a crashed run reported `done=0 … files=<the whole index>` — indistinguishable from an empty job
+- **the fix:** an explicit `ok`; `failed` carried from `RunResult`
+
+### A-10 · filter.ts:70 (attempted)
+
+- **the mechanism:** I applied `find`'s fix here too
+- **what it produced:** would have DESTROYED a real signal: every outage would report `judged=candidates`
+- **the fix:** REVERTED — the same rule was wrong for one of the two verbs
+
+### A-11 · calibrate.ts:30
+
+- **the mechanism:** inline `0.8`/`0.5` duplicating `DEFAULT_POLICY`
+- **what it produced:** a policy change would silently not reach calibration — bands describing a policy nobody runs
+- **the fix:** import the canonical default
+
+**THE RULE, stated once:** *a value that crosses a boundary unchecked is a value the boundary does
+not exist for.* Where a number will be ACTED on, an absence must be representable — `null`, a
+thrown error, a counted-and-named gap — never a number.
+
+## CLASS B — A GUARD WITH AN OFF-SWITCH (7 instances)
+
+### B-1 · H-5
+
+- **the mechanism:** `policy.fail` was the ONE unvalidated policy field
+- **what it produced:** a typo (`"Closed"`) made BOTH polarity checks false → the run silently degraded to **fail-OPEN**
+- **the fix:** validate the enum; a typo is refused by name
+
+### B-2 · transport.ts:49
+
+- **the mechanism:** `Number(env ?? DEFAULT)` yields NaN for `1mb`; `bytes > NaN` is ALWAYS FALSE
+- **what it produced:** the judge body cap was **silently disabled**
+- **the fix:** a non-finite override refuses by name
+
+### B-3 · serve.ts:57
+
+- **the mechanism:** the same shape on `JM_SERVE_MAX_BODY`
+- **what it produced:** the HTTP body cap was **silently disabled** — the D-036 availability defect came back
+- **the fix:** refuses to start with the cap disabled
+
+### B-4 · H-1 / C-2
+
+- **the mechanism:** `[ -d "$CP" ]` then `rm -rf`; then a glob `Checkpoints/*` that MATCHES `Checkpoints/..`
+- **what it produced:** `./scripts-seal.sh .` would have **deleted the live `src/` tree**
+- **the fix:** canonicalize + containment + FAIL CLOSED
+
+### B-5 · C-2 (2nd hole)
+
+- **the mechanism:** `readlink -f` returns EMPTY for a non-existent path; the `\|\| echo` fallback restored the raw string
+- **what it produced:** the bypass re-opened in exactly the environment a fresh clone starts in
+- **the fix:** an unresolvable path is REFUSED, not guessed
+
+### B-6 · queue.ts:61
+
+- **the mechanism:** `complete()` guarded on `state='running'` ALONE
+- **what it produced:** a stale worker's ack could overwrite a LIVE result
+- **the fix:** match the `attempts` generation
+
+### B-7 · E1
+
+- **the mechanism:** the attempt parameter was OPTIONAL with a permissive fallback
+- **what it produced:** **its only production caller omitted it within one turn** — the guard was unprotected
+- **the fix:** attempt is REQUIRED; tsc enumerates every bypass
+
+**THE RULE:** *a guard that can be switched off by LEAVING OUT AN ARGUMENT is not a guard* — and
+neither is one disabled by a typo. The off-switch's existence is the defect, not its use.
+
+## CLASS C — FIX THE SITES, NOT THE RULE (9 instances)
+
+### C-1 · D-028 → D-054/055/056
+
+- **the shape:** the phantom-store defect was fixed on the CLI verbs, then on the read guard — and was STILL live on the MCP dispatcher AND the HTTP router
+- **what it produced:** a refused `jm_index` created `all.sqlite`; a `404` created `decisions.sqlite`
+
+### C-2 · D-040 → D-041
+
+- **the shape:** the judge-outage policy was fixed in one verb, and the `JEV_NO_KEY`-only check was COPIED into three others
+- **what it produced:** `filter` and `find` returned EMPTY RESULTS on a judge outage
+
+### C-3 · D-042 → evaluate
+
+- **the shape:** the answer-reader was fixed in four verbs; `evaluate` read the key directly and fabricated EVERY metric
+- **what it produced:** agreement/Brier/ECE computed from zeros
+
+### C-4 · index.ts:74
+
+- **the shape:** the tombstone rule was repaired twice (D-060 namespace, D-061 `--limit`) before the third instance (`--include` destroyed the excluded files) exposed it as a RULE
+- **what it produced:** "not seen this run" is only evidence of deletion if the run WOULD have seen it
+
+### C-5 · EN-083 → find/filter
+
+- **the shape:** the budget-claim `finally` was added to `decision-tree.ts` and NOT swept
+- **what it produced:** `find.ts` and `filter.ts` leaked a claim per failed row — instance EIGHT of this class
+
+### C-6 · fatalJudgeError → decision-tree
+
+- **the shape:** the shared policy was extracted in D-041 "IN ONE PLACE"; `decision-tree` kept **two private copies** that DRIFTED
+- **what it produced:** under `fail=open` a `JM_JUDGE_USAGE_MISSING` was swallowed and the run completed on unmeasured rows
+
+### C-7 · safeTargetName → safeName
+
+- **the shape:** the injectivity fix landed on the TARGET sanitiser; the INDEX sanitiser had the same defect
+- **what it produced:** `my index` and `my/index` resolved to ONE file
+
+### C-8 · the rig's env restore → tests/helpers
+
+- **the shape:** H-6/H-7 fixed the rig's env leak; `tests/helpers.ts` had the same leak, and a test I wrote REPRODUCED it minutes later
+- **what it produced:** a DELETED path leaked into every later test
+
+### C-9 · the doc floors → the filing
+
+- **the shape:** the doc contract was believed satisfied; the canon logs had not moved in 60 commits
+- **what it produced:** the entries were being written to the SHIP log — a floor that never moves is a filing problem, not a quiet session
+
+**THE RULE:** *after fixing a defect, GREP FOR ITS IDIOM across every surface.* The invariant has
+to be stated BEFORE it can be swept, and six of these nine were swept only after the third or
+fourth instance forced the statement.
+
+## CLASS D — RELEASED ON THE HAPPY PATH ONLY (4 instances)
+
+| # | the resource | the leak | the fix |
+|---|--------------|----------|---------|
+| D-1 | the sqlite handle in `job/run.ts` | the `try/finally` wrapped only the TAIL, so a `stopOnError` rethrow escaped before `db.close()` | the guard wraps the WHOLE body |
+| D-2 | the budget claim in `decision-tree.ts` | both degraded-return sites returned without `settle()`, so a judge outage under `fail: open` leaked a claim per row and then reported a **FALSE "budget exhausted"** | a `finally` refunds via the `cached` path |
+| D-3 | the budget claim in `find.ts` AND `filter.ts` | the same leak, unswept (instance eight of class C) | the same `finally` |
+| D-4 | the `fs.ReadStream` in `adapters/jsonl.ts` | `rl.close()` relinquishes the interface but does NOT destroy the stream — **40 abandoned generators left 40 open fds, exactly 1:1** | `stream.destroy()` in the `finally` |
+
+**PLUS THE FIX'S OWN BUG, which is its own lesson:** my first refund used `settle(0, false)`, which
+calls `spend(0)` — **INCREMENTING the call count and billing a call that failed.** Measured: a cap
+of 3 over 6 failing rows stopped at 3 with `budgetStopped=true`. **A refund is not a purchase.**
+
+## CLASS E — A BOUNDARY NEVER CROSSED (4 instances)
+
+| # | the boundary | the belief the mock encoded | what crossing it found |
+|---|--------------|----------------------------|------------------------|
+| E-1 | the live judge's accepted question types | that `mcq` worked | **D-034: `route` had NEVER made a successful call** — the API rejects `mcq` with HTTP 400 |
+| E-2 | the real 37.9 MB session file | that `index` indexes a corpus | **86 of 124 files had no searchable text** — the ftp chain was blind |
+| E-3 | the container's environment | that the suite was hermetic | **9 tests failed with `JEV_NO_KEY`** — the suite depended on an ambient key FILE |
+| E-4 | a judge answering without a `usage` block | that `usage` is always present | **D-046** — an unmeasured call billed at $0 and the USD cap could never fire |
+
+**AND THE SHARPEST ONE, IN THE RIG ITSELF:** T10's negative half asserted "a keyless `jm_find` is
+refused" and PASSED — **on `JM_ARGS: phrase required`.** The angle sent `query`; `jm_find` reads
+`phrase`. The call threw BEFORE any key resolution, and `isError: true` satisfied the assertion.
+**A missing-argument error read as a key refusal — the vacuous pass the whole rig exists to catch,
+inside the rig.** Found by the audit (H-8).
+
+**THE RULE:** *a mock encodes the author's belief about the far side of a boundary.* At least one
+test per external boundary must cross it FOR REAL.
+
+## CLASS F — A REPORT THAT CANNOT REPORT (4 instances)
+
+| # | the command | what it printed instead of the result |
+|---|-------------|---------------------------------------|
+| T-07 | `;` between `tsc` and `git commit` | **a commit landed with L0 RED** — a gate named in the command and joined by the wrong operator |
+| T-10 | `bun test 2>&1 \| tail -2` | the EXPECT-COUNT line instead of pass/fail — **a commit ran on a failing suite**; only the seal's own battery caught it |
+| EN-067 | the gate runner's own capture | `GATES: 40 passed / 1 failed` with **no failing row** — undiagnosable from its own output |
+| T-5 label | T5's verdict line | `JM_RESUME_DUP>0` for BOTH an incomplete resume and a duplicate — and duplicates are **structurally impossible** (`fingerprint` is UNIQUE), so the label named a defect that cannot exist |
+
+**THE RULE:** *the command which reports a result is PART OF the result.* A report command that can
+print anything but the outcome is decoration, not a gate.
+
+**AND THE THIRD INSTANCE OF ONE SHAPE (T-07, T-10, T-12):** in all three the gate was NAMED in the
+command and joined by `;` instead of `&&`. **The rule is formatting, not motivation.**
+
+## CLASS G — THE FIX'S OWN BLAST RADIUS (3 instances)
+
+| # | the fix | what it broke |
+|---|---------|---------------|
+| G-1 | chunking large files so they became searchable | the `docs_fts` join was `f.path = x.path` — **0 of 313 chunked rows joined**, so the fix made chunked text searchable IN THE INDEX and invisible THROUGH THE QUERY |
+| G-2 | requiring `attempt` on `complete` | the claim reported the attempt BEFORE the increment, so **every ack from a normal claim was refused** |
+| G-3 | applying `find`'s `judged` fix to `filter` | would have destroyed the D-041 outage signal (`candidates > judged`); **`test_filter_refuses_a_judge_outage` caught it** and it was reverted |
+
+**THE RULE:** *a fix is a change like any other, and its own consumers are part of its blast*
+*radius.* Re-run the downstream checks before declaring it done.
+
+## CLASS H — ACCEPTED GARBAGE (6 instances)
+
+| # | the boundary | what it trusted |
+|---|--------------|-----------------|
+| H-1 | `kind as Target["kind"]` | an operator string — `target add x bogus /path` registered a target with **no adapter**, failing later at index time |
+| H-2 | `JSON.parse(...) as Target[]` | valid JSON of the wrong SHAPE — `{}`, `null`, `"x"` all passed and failed far away as `undefined is not a function` |
+| H-3 | `writeFileSync(p, …)` on the registry | a crash mid-write — callers do read-modify-write, so this loses **every target the operator defined** |
+| H-4 | the tilde expansion | expanded for the CHECK and stored RAW — validation and every later reader disagreed |
+| H-5 | `VALUE_FLAGS`, hand-maintained | drifted from the code TWICE (4 flags, then 8 more); their values leaked into positionals |
+| H-6 | `Number(caps)` in `Budget` | the KEYS were unvalidated — `new Budget({call: 5})` was accepted with `roomLeft: true` and the cap did nothing |
+
+**THE RULE:** *a hand-maintained set that must mirror the code will drift from it.* The remedy is not
+vigilance but DERIVATION — the pin now derives the check from the source, so the next drift fails at
+the test instead of silently at a call site.
+
+## THE TALLY
+
+| class | instances |
+|-------|-----------|
+| A value laundered | 11 |
+| Fix the sites, not the rule | 9 |
+| A guard with an off-switch | 7 |
+| Accepted garbage | 6 |
+| A boundary never crossed | 4 |
+| A report that cannot report | 4 |
+| Released on the happy path only | 4 |
+| The fix's own blast radius | 3 |
+| **TOTAL CLASSIFIED** | **48** |
+
+Plus 13 defect ids that are individual incidents rather than class instances (D-048/D-049 the
+launcher's two, D-050 the gate runner's leaked server, D-051 the MCP notification, D-058 the torn
+journal line, D-059 the test-sandbox leak, and the audit's own instrument defects).
+
+**THE ROOT PATTERN, and it is ONE mechanism:** every class above is a case where **the FORM of a
+check was present and the SUBSTANCE was not.** A default where a measurement belonged. A guard with
+a bypass. A rule applied at one site. A resource freed on one path. A mock standing in for the far
+side. A label naming the wrong cause. A fix that did not look downstream. A value trusted at the
+boundary. **The countermeasure is the same in every case: force the thing to show itself — run it,
+cross the boundary, revert the fix, break the guard — instead of reasoning about whether it would
+work.**
+
