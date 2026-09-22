@@ -1807,3 +1807,28 @@ add` and `target ls` now print `registry <path>`. One line, and the mistake cann
 - **THE PATTERN:** a fix applied to the reported sites is a PATCH; a fix applied to the invariant is
   a REPAIR. The audit read the fix rather than the bug report, and found what the fix had missed.
 - **Pinned:** `tests/phantom-artifacts.test.ts`, 8 cases / 30 expects.
+
+## EN-072 — D-058: one torn journal line erased the whole record after it
+- **FOUND BY:** probing the WATCH surface adversarially — four cases (a vanished root, a corrupt
+  journal line, two concurrent ticks, a path-traversal index name). Three behaved; one did not.
+- **SYMPTOM:** `jm journal` on a journal containing one malformed line:
+  `JM_ERROR: JSON Parse error: Unterminated string`, **exit 1**.
+- **THE WORSE HALF:** a GOOD line appended AFTER the torn one was **also unreadable**. The reader
+  died at the first bad line, so every subsequent tick was lost — **the daemon's durable record
+  disappeared from the point of corruption onward**, which is the one failure an append-only log
+  exists to prevent.
+- **ROOT CAUSE:** `src/watch.ts:78` — `lines.slice(-limit).map((l) => JSON.parse(l))`. One `parse`
+  over the whole array.
+- **WHY IT WAS INVISIBLE:** every journal in every test was well-formed, and a well-formed journal
+  cannot exercise this. The defect needs the shape a CRASH produces — which is exactly what an
+  append-only log is built to survive.
+- **FIX:** the reader skips a malformed line, **COUNTS it, and the CLI NAMES the count**
+  (`JM_JOURNAL_CORRUPT: 1 malformed line(s) skipped`) — the ledger's own rule. A silent skip would
+  make a damaged journal indistinguishable from a short one, which is the defect one level down.
+- **VERIFIED:** the torn line is named, the good entries on BOTH sides are read, and a clean journal
+  prints no warning.
+- **PINNED:** `tests/watch.test.ts` → `test_journal_survives_a_torn_line` (asserts the count AND that
+  the entry after the corruption is readable).
+- **THE THREE THAT BEHAVED, recorded so silence is not proof:** a VANISHED target root reports
+  `errors=1` on the tick rather than crashing; two concurrent ticks both complete; an index name
+  containing `../../` is sanitised and nothing escapes.

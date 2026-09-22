@@ -1,7 +1,7 @@
 // tests/watch.test.ts — W6: the daemon surface (S19). A tick is idempotent, journaled, and
 // the journal is REAL JSONL (a defect found by running: the separators were literal "\n" bytes).
 import { test, expect, describe } from "bun:test";
-import { readFileSync, mkdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { makeSandbox, fill } from "./helpers.ts";
@@ -51,7 +51,7 @@ describe("W6 watch daemon", () => {
       const lines = raw.split("\n").filter(Boolean);
       expect(lines.length).toBe(2);                      // two ticks, two lines
       for (const l of lines) expect(() => JSON.parse(l)).not.toThrow();
-      expect(readJournal(5).length).toBe(2);
+      expect(readJournal(5).rows.length).toBe(2);
     } finally { sb.cleanup(); }
   });
 
@@ -65,7 +65,7 @@ describe("W6 watch daemon", () => {
       const r = await tick();
       expect(r.errors.length).toBe(1);
       expect(r.errors[0]).toMatch(/JM_SQLITE_MISSING/);
-      expect(readJournal(1)[0].errors.length).toBe(1);   // and it is on the record
+      expect(readJournal(1).rows[0].errors.length).toBe(1);   // and it is on the record
     } finally { sb.cleanup(); }
   });
 
@@ -89,7 +89,7 @@ describe("W6 watch daemon", () => {
     try {
       seed(sb.home, sb.root);
       await tick();                                         // a clean tick writes a clean record
-      const clean = readJournal(1)[0];
+      const clean = readJournal(1).rows[0];
       expect(clean.errors).toEqual([]);
 
       // make the state pointer unwritable: a DIRECTORY at the state path
@@ -98,10 +98,36 @@ describe("W6 watch daemon", () => {
       const r = await tick();
       expect(r.errors.length).toBe(1);                      // exactly once, not duplicated
       expect(r.errors[0]).toMatch(/state_file/);
-      const last = readJournal(1)[0];
+      const last = readJournal(1).rows[0];
       expect(last.errors.length).toBe(1);                   // and the JOURNAL carries it too
       expect(last.errors[0]).toMatch(/state_file/);
       rmSync(statePath(), { force: true, recursive: true });
+    } finally { sb.cleanup(); }
+  });
+});
+
+describe("D-058 — a torn journal line must not erase the record after it", () => {
+  test("test_journal_survives_a_torn_line", async () => {
+    // The journal is APPEND-ONLY, so a crash mid-append leaves exactly one malformed line. The
+    // reader used `lines.map((l) => JSON.parse(l))`, which threw on the FIRST bad line and returned
+    // NOTHING — so one torn entry made every later tick unreadable and the daemon's durable record
+    // was lost from the corruption onward. Found by probing the watch surface adversarially.
+    const sb = makeSandbox();
+    try {
+      const dir = join(sb.root, "c");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "a.md"), "a body");
+      saveTargets([{ name: "w", kind: "fs", root: dir }]);
+      await tick({ in: "w" });
+      // a torn append, then a good entry
+      const jp = join(process.env.JM_HOME ?? "", "watch", "journal.jsonl");
+      appendFileSync(jp, '{"at":"2026-01-01T00:00:00.000Z","targets":1,"ro');
+      appendFileSync(jp, '\n{"at":"2026-01-01T01:00:00.000Z","targets":9,"rows":9,"changed":9,"ms":1,"actions":[],"errors":[]}\n');
+
+      const { rows, corrupt } = readJournal(10);
+      expect(corrupt).toBe(1);                       // the damage is COUNTED, never swallowed
+      expect(rows.length).toBe(2);                   // the good entries survive, before AND after
+      expect(rows[1].targets).toBe(9);               // the entry AFTER the torn line is readable
     } finally { sb.cleanup(); }
   });
 });

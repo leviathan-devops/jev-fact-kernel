@@ -71,11 +71,26 @@ export async function tick(opts: { index?: string; in?: string } = {}): Promise<
   return res;
 }
 
-export function readJournal(limit = 20): TickResult[] {
+/**
+ * The journal is APPEND-ONLY, so a TORN LINE IS EXPECTED — a crash mid-append produces exactly the
+ * shape that used to kill this read. `lines.map((l) => JSON.parse(l))` threw on the FIRST bad line
+ * and returned NOTHING, so one torn entry made every later tick unreadable: the durable record of
+ * the daemon's life was lost from the corruption onward (D-058).
+ *
+ * The rule is the ledger's rule: SKIP the malformed line, COUNT it, and REPORT the count — a silent
+ * skip would be its own defect, and the number is what tells an operator the file is damaged.
+ */
+export function readJournal(limit = 20): { rows: TickResult[]; corrupt: number } {
   const p = journalPath();
-  if (!existsSync(p)) return [];
+  if (!existsSync(p)) return { rows: [], corrupt: 0 };
   const lines = readFileSync(p, "utf8").trim().split("\n").filter(Boolean);
-  return lines.slice(-limit).map((l) => JSON.parse(l) as TickResult);
+  const rows: TickResult[] = [];
+  let corrupt = 0;
+  for (const l of lines.slice(-limit)) {
+    try { rows.push(JSON.parse(l) as TickResult); }
+    catch { corrupt++; }
+  }
+  return { rows, corrupt };
 }
 
 /** The loop. `once: true` runs a single tick (tests and cron both use this shape). */

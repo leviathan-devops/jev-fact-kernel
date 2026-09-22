@@ -532,7 +532,11 @@ async function main(): Promise<number> {
   }
 
   if (verb === "journal") {
-    const rows = readJournal(flag("limit") ? Number(flag("limit")) : 20);
+    const { rows, corrupt } = readJournal(flag("limit") ? Number(flag("limit")) : 20);
+    // A TORN LINE IS REPORTED, NEVER SWALLOWED (D-058). The journal is append-only, so a crash
+    // mid-append leaves one malformed line; the reader skips it and this line says so. A silent skip
+    // would make a damaged journal indistinguishable from a short one.
+    if (corrupt > 0) console.error(`JM_JOURNAL_CORRUPT: ${corrupt} malformed line(s) skipped (a torn append is expected in an append-only log)`);
     if (has("json")) console.log(JSON.stringify(rows, null, 2));
     else for (const r of rows) console.log(`${r.at}\ttargets=${r.targets}\trows=${r.rows}\tchanged=${r.changed}\t${r.ms}ms`);
     return 0;
