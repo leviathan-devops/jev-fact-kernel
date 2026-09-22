@@ -121,6 +121,100 @@ export function saveTargets(list: Target[]): void {
   renameSync(tmp, p);
 }
 
+/** THE NAMESPACES AN INDEX HOLDS — recorded per (PREFIX -> ROOT), and why.
+ *
+ *  FOUND BY RUNNING EVERY MCP USE CASE against the live store: every search returned each hit TWICE.
+ *  The index held 125 rows for 68 real files — 68 bare (a bare-path run) and 57 `reports/`-prefixed
+ *  (a target run) over the SAME directory. `files.path` is the row key and carries NO provenance, and
+ *  the tombstone sweep only touches its own namespace (D-060/D-061), so two path-spaces coexist
+ *  forever and nothing reconciles them. The operator asked for "point at X, find all of Y" and got
+ *  every Y twice.
+ *
+ *  THE IDENTITY IS THE NAMESPACE, NOT THE RUN. A bare-path walk owns the prefix `""`; target Y owns
+ *  `Y/`. That granularity is load-bearing: it is what lets the DOCUMENTED per-target refresh
+ *  (`--in A,B` then `@A --name combined`, D-060) keep working — `A/` is unchanged, so the run is
+ *  idempotent for its own namespace and the sweep never touches `B/`.
+ *
+ *  REFUSED, in two cases:
+ *    · a recorded prefix whose ROOT MOVED          -> the same namespace now names different content
+ *    · a NEW prefix whose ROOT IS ALREADY RECORDED -> the same directory under a second path-space,
+ *      which is exactly the duplication this found (bare + `reports/` over one directory)
+ *  `--rebuild` is the operator's explicit authority to replace: the rows and the record are cleared
+ *  first, so what is left is the run's own sources and nothing else.
+ *
+ *  THE ROOTS ARE VALIDATED BEFORE ANYTHING IS WRITTEN. A refusal must not have touched the disk
+ *  (D-054/D-055/D-056); a run whose root does not exist throws the engine's own missing-root token
+ *  and leaves the store byte-identical. */
+export interface NamespaceEntry {
+  prefix: string;
+  root: string;
+  /** The adapter that will read this root. ONLY an `fs` (or unspecified) root is validated HERE —
+   *  `JM_INDEX_MISSING` is the fs walker's token. A `sqlite`/`jsonl` root is validated by its OWN
+   *  adapter, whose token is the one a caller already handles (proven consumers:
+   *  `src/adapters/sqlite.ts:11` throws `JM_SQLITE_MISSING`; `tests/adapters.test.ts:108` asserts it
+   *  from `ingestTarget`, and `test_watch_tick_survives_a_bad_registry` asserts it from the watch
+   *  tick). Pre-validating with the fs token would answer a documented scenario with the wrong name. */
+  kind?: "fs" | "sqlite" | "jsonl";
+}
+
+export function reconcileRoots(db: Database, entries: NamespaceEntry[], rebuild = false): "recorded" | "same" | "rebuilt" {
+  // 1 · VALIDATE FIRST — before a single write, and with the token the KIND owns.
+  for (const e of entries) {
+    if ((e.kind === undefined || e.kind === "fs") && !existsSync(e.root)) {
+      throw new Error(`JM_INDEX_MISSING: ${e.root} does not exist`);
+    }
+  }
+  const stored = (db.query("SELECT value FROM meta WHERE key = 'roots'").get() as { value?: string } | null)?.value;
+  let rec: Record<string, string> = {};
+  if (stored !== undefined) {
+    try { const parsed = JSON.parse(stored) as unknown; if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) rec = parsed as Record<string, string>; }
+    catch { rec = {}; }
+  }
+  // 3 · THE CONFLICTS, decided before any mutation.
+  // HOW MANY ROWS ARE ACTUALLY THERE. `--rebuild` means REPLACE WHAT IS HERE, so the purge has to
+  // fire for a store that has rows but no record too — exactly the OLD store this check was written
+  // for. (A ROW COUNT IS NOT A REFUSAL TRIGGER: `indexFile` is a shared internal —
+  // `tests/regression.test.ts:19` seeds a row by calling it directly — so rows may legitimately exist
+  // before any target-level record. Refusing on them broke that consumer; purging them on an explicit
+  // `--rebuild` does not.)
+  const rows = (db.query("SELECT COUNT(*) AS n FROM files").get() as { n: number }).n;
+  const conflicts: string[] = [];
+  for (const e of entries) {
+    if (rec[e.prefix] !== undefined) {
+      if (rec[e.prefix] !== e.root) conflicts.push(`namespace "${e.prefix || "(bare)"}" was rooted at ${rec[e.prefix]}, this run would root it at ${e.root}`);
+    } else if (Object.values(rec).includes(e.root)) {
+      const owner = Object.entries(rec).find(([, r]) => r === e.root)?.[0] ?? "?";
+      conflicts.push(`root ${e.root} is already indexed as "${owner || "(bare)"}" and this run would add it again as "${e.prefix || "(bare)"}" — the same directory in two path-spaces`);
+    }
+  }
+  if (conflicts.length && !rebuild) {
+    throw new Error(
+      `JM_INDEX_ROOTS_CHANGED: ${conflicts.join("; ")}. Stored paths are RELATIVE TO THE ROOT WALKED, so ` +
+      `this would ADD a second copy rather than update the corpus. Re-index into a fresh store ` +
+      `(--name <new>), or pass --rebuild to replace what is here.`,
+    );
+  }
+  if (rebuild && (conflicts.length > 0 || rows > 0)) {
+    purgeIndex(db);                                   // the operator authorised the replacement
+    db.run("DELETE FROM meta WHERE key = 'roots'");
+    rec = {};
+  }
+  const next = { ...rec };
+  for (const e of entries) next[e.prefix] = e.root;
+  db.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('roots', ?)", [JSON.stringify(next)]);
+  if (rebuild) return "rebuilt";
+  return conflicts.length ? "rebuilt" : (stored === undefined ? "recorded" : "same");
+}
+
+/** Clear every ROW SPACE of an index. Meta (schema_version, roots) belongs to the caller — the run
+ *  logs (runs/decisions/cache) are the engine's own history and are NOT a row space. */
+export function purgeIndex(db: Database): void {
+  db.run("DELETE FROM files");
+  db.run("DELETE FROM docs");
+  db.run("DELETE FROM docs_fts");
+  db.run("DELETE FROM tags");
+}
+
 /** Resolve an argument to {name, root}: `@name` via the registry, else a path. */
 export function resolveTarget(arg: string): { name: string; root: string } {
   if (arg.startsWith("@")) {

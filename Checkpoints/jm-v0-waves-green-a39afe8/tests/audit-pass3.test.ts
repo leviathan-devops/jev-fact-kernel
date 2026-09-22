@@ -893,3 +893,101 @@ describe("query.ts — a NUMERIC column with a non-numeric value must refuse, no
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("mcp jev_decide — the same question-type guard as the CLI (one validator, two callers)", () => {
+  test("test_mcp_decide_refuses_non_noul_before_the_network", async () => {
+    // FOUND BY RUNNING EVERY MCP USE CASE against the live server, not by reading the code. The CLI's
+    // recipe path refused a non-`noul` question AT LOAD as JM_RECIPE_INVALID; the `jev_decide`
+    // passthrough had NO guard and relayed the API's raw JM_JUDGE_HTTP_422. MEASURED on the live
+    // mount, this session:
+    //   MCP jev_decide + {type:"choice"} -> JM_JUDGE_HTTP_422  (a raw API body relayed)
+    //   CLI decision-tree + the same    -> JM_RECIPE_INVALID   (named, BEFORE any call)
+    // The guard existed on one surface and not the other — the same-semantics violation (§18.8).
+    // After the fix BOTH emit JM_RECIPE_INVALID with the identical message, and NEITHER makes a call.
+    const { handle } = await import("../src/mcp.ts");
+    const call = (questions: unknown) => handle({
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "jev_decide", arguments: { state: { text: "x" }, questions } },
+    });
+    // a `choice` question is refused by name, before the network
+    const r1 = await call({ kind: { type: "choice", instructions: "pick", choices: ["a", "b"] } });
+    const t1 = JSON.stringify(r1);
+    expect(t1).toContain("JM_RECIPE_INVALID");
+    expect(t1).not.toContain("JM_JUDGE_HTTP");        // NOT a relayed HTTP body
+    // an EMPTY questions object is refused too (it judges nothing and would noop every row)
+    expect(JSON.stringify(await call({}))).toContain("JM_RECIPE_INVALID");
+    // and a malformed (non-object) questions value
+    expect(JSON.stringify(await call("nope"))).toContain("JM_RECIPE_INVALID");
+  });
+});
+
+describe("index.ts — a root-set change must never silently duplicate the corpus", () => {
+  test("test_index_refuses_a_changed_root_set", () => {
+    // FOUND BY RUNNING EVERY MCP USE CASE against the real store: every search returned each hit
+    // TWICE. The index held 125 rows for 68 real files — 68 bare (a bare-path run) and 57
+    // `reports/`-prefixed (a target run) over the SAME directory. `files.path` is the row key and
+    // carries NO root provenance, and the tombstone sweep only touches its own namespace
+    // (D-060/D-061), so two root-spaces coexist forever and nothing reconciles them.
+    // The contract is ONE index, ONE root-set; a change is refused BY NAME, and `--rebuild`
+    // authorises replacing what is there.
+    const home = mkdtempSync(join(tmpdir(), "jm-roots-"));
+    const a = join(home, "alpha"); const b = join(home, "beta");
+    mkdirSync(a, { recursive: true }); mkdirSync(b, { recursive: true });
+    writeFileSync(join(a, "one.md"), "alpha one");
+    writeFileSync(join(b, "two.md"), "beta two");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      expect(run("index", a, "--name", "g").exitCode).toBe(0);            // records path:<a>
+      // a DIFFERENT root into the SAME index is refused, at exit 2, BY NAME
+      const bad = run("index", b, "--name", "g");
+      expect(bad.exitCode).toBe(2);
+      expect(bad.stderr.toString()).toContain("JM_INDEX_ROOTS_CHANGED");
+      // and the refusal did NOT add rows — the corpus is untouched
+      const q = run("query", "g", "--where", "size>0");
+      expect(q.stdout.toString()).toContain("one.md");
+      expect(q.stdout.toString()).not.toContain("two.md");
+      // the SAME root again is idempotent (no refusal)
+      expect(run("index", a, "--name", "g").exitCode).toBe(0);
+      // --rebuild authorises the replacement, and the old rows are GONE (not unioned)
+      expect(run("index", b, "--name", "g", "--rebuild").exitCode).toBe(0);
+      const q2 = run("query", "g", "--where", "size>0");
+      expect(q2.stdout.toString()).toContain("two.md");
+      expect(q2.stdout.toString()).not.toContain("one.md");
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
+
+describe("index.ts — --rebuild must PURGE an old store, not just record the new root", () => {
+  test("test_rebuild_purges_an_index_with_no_recorded_roots", async () => {
+    // FOUND BY RUNNING the repair, not by reading the code: `--rebuild` on a store with rows but NO
+    // recorded roots reprinted `changed=0` — the purge was gated on a recorded CONFLICT, and an old
+    // store has no record to conflict with, so nothing was cleared and the re-index found every file
+    // 'unchanged'. `--rebuild` means REPLACE WHAT IS HERE, so the row count alone is sufficient
+    // authority. (Rows are NOT sufficient authority to REFUSE: `indexFile` is a shared internal —
+    // tests/regression.test.ts:19 seeds a row by calling it directly — so a refusal on row count
+    // would break a proven consumer. Purge on explicit request, never refuse on rows alone.)
+    const home = mkdtempSync(join(tmpdir(), "jm-purge-"));
+    const c1 = join(home, "c1"); mkdirSync(c1, { recursive: true });
+    writeFileSync(join(c1, "old.md"), "old");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 60000 });
+    try {
+      run("index", c1, "--name", "p");
+      // simulate an OLD store: rows present, no roots record
+      const db = new Database(join(home, "index", "p.sqlite"));
+      db.run("DELETE FROM meta WHERE key = 'roots'");
+      db.close();
+      // --rebuild must PURGE (changed=68-shaped, not 0) and the new root must own the rows
+      const c2 = join(home, "c2"); mkdirSync(c2, { recursive: true });
+      writeFileSync(join(c2, "new.md"), "new");
+      const r = run("index", c2, "--name", "p", "--rebuild");
+      expect(r.exitCode).toBe(0);
+      const q = run("query", "p", "--where", "size>0");
+      expect(q.stdout.toString()).toContain("new.md");
+      expect(q.stdout.toString()).not.toContain("old.md");        // the purge really removed it
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});

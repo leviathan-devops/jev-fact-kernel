@@ -1,10 +1,10 @@
 // src/verbs/index.ts — the index verb: walk · hash · incremental · tombstones.
 // Deterministic op: NO network, NO key (bible L4 / T9). Ledger row written by the CLI.
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
-import { join, relative, extname } from "node:path";
+import { join, relative, extname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
-import { loadTargets } from "../store/db.ts";
+import { loadTargets, reconcileRoots } from "../store/db.ts";
 
 export interface IndexOpts {
   include?: string[];
@@ -17,6 +17,7 @@ export interface IndexOpts {
   // index.ts, ...) would COLLIDE and silently lose rows, so a multi-target ingest passes
   // "<target>/" here and every stored path is namespaced by its target.
   prefix?: string;
+  rebuild?: boolean;   // authorise replacing a DIFFERENT root-set in this index
 }
 
 export interface IndexStats {
@@ -195,6 +196,9 @@ export function indexFile(db: Database, root: string, abs: string, opts: IndexOp
 export function listFiles(root: string, opts: IndexOpts = {}): string[] { return walk(root, opts); }
 
 export function indexTarget(db: Database, name: string, root: string, opts: IndexOpts = {}): IndexStats {
+  // A BARE-PATH WALK OWNS THE `path:<root>` IDENTITY (see reconcileRoots). The CLI resolves the root
+  // before this call, so it is already absolute; one call site, one namespace.
+  reconcileRoots(db, [{ prefix: opts.prefix ?? "", root: resolve(root) }], opts.rebuild ?? false);
   const prefix = opts.prefix ?? "";
   const t0 = Date.now();
   const maxText = opts.maxTextBytes ?? 262_144;      // 256 KB

@@ -15,6 +15,38 @@ export interface Recipe {
   policy?: Partial<Policy>;
 }
 
+/** Validate the QUESTION TYPES of a judge request — ONE validator, TWO callers.
+ *
+ *  WHY IT IS SHARED (found by running EVERY MCP use case, not by reading the code): the CLI's recipe
+ *  path refused a non-`noul` question AT LOAD as `JM_RECIPE_INVALID`, but the MCP `jev_decide`
+ *  passthrough had NO such guard — it handed the questions straight to the judge and relayed the
+ *  API's raw `JM_JUDGE_HTTP_422`. MEASURED, this session:
+ *
+ *    CLI  decision-tree  + a `choice` question  -> JM_RECIPE_INVALID   (named, zero calls)
+ *    MCP  jev_decide     + a `choice` question  -> JM_JUDGE_HTTP_422   (a raw API body relayed)
+ *
+ *  The guard existed on one surface and not the other — the same-semantics violation (§18.8) this
+ *  codebase keeps finding. A duplicate copy would drift the moment either surface changed, so the
+ *  check lives HERE and BOTH callers run it.
+ *
+ *  THE UNDERLYING API FACT (D-034, measured against api.typesafe.ai): the live judge accepts `noul`
+ *  ONLY. `choice` and `mcq` both return HTTP 400/422. Accepting them would validate a shape that
+ *  cannot run — checking the request against the CODE's idea of the API rather than against the API. */
+export function validateQuestions(q: unknown): void {
+  if (!q || typeof q !== "object" || Array.isArray(q) || Object.keys(q).length === 0) {
+    throw new Error("JM_RECIPE_INVALID: `questions` must be a NON-EMPTY object (an empty one judges nothing and silently noops every row)");
+  }
+  for (const [name, question] of Object.entries(q as Record<string, unknown>)) {
+    const t = (question as { type?: unknown } | null)?.type;
+    if (t !== "noul") {
+      throw new Error(
+        `JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} — the live judge accepts ` +
+        `"noul" ONLY (measured: choice/mcq -> HTTP 400). Express a choice as one noul per candidate.`,
+      );
+    }
+  }
+}
+
 /** Validate a recipe BEFORE any work. A malformed recipe used to run to completion: no
  *  questions -> no judge calls -> every row `noop`, exit 0 — a silent wrong answer that reads as
  *  a successful triage (D-020). A recipe is a CLIENT artifact: a bad one is a client error. */
@@ -23,24 +55,7 @@ export function validateRecipe(r: unknown): Recipe {
   if (!o || typeof o !== "object") throw new Error("JM_RECIPE_INVALID: not an object");
   if (typeof o.recipe !== "string" || o.recipe.length === 0) throw new Error("JM_RECIPE_INVALID: `recipe` must be a non-empty string");
   if (typeof o.version !== "number" || !Number.isFinite(o.version)) throw new Error("JM_RECIPE_INVALID: `version` must be a number");
-  const q = o.questions;
-  if (!q || typeof q !== "object" || Array.isArray(q) || Object.keys(q).length === 0) {
-    throw new Error("JM_RECIPE_INVALID: `questions` must be a NON-EMPTY object (an empty one judges nothing and silently noops every row)");
-  }
-  for (const [name, question] of Object.entries(q as Record<string, unknown>)) {
-    const t = (question as { type?: unknown } | null)?.type;
-    // THE LIVE API ACCEPTS `noul` ONLY (D-034, measured against api.typesafe.ai: `choice` and
-    // `mcq` both return HTTP 400 "Invalid request."). Accepting them here validated a shape that
-    // cannot run — the validator was checking the recipe against the CODE's idea of the API rather
-    // than against the API. A recipe using either type is refused AT LOAD, with the reason, instead
-    // of failing later on every call.
-    if (t !== "noul") {
-      throw new Error(
-        `JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} — the live judge accepts ` +
-        `\"noul\" ONLY (measured: choice/mcq -> HTTP 400). Express a choice as one noul per candidate.`,
-      );
-    }
-  }
+  validateQuestions(o.questions);
   if (o.policy !== undefined) {
     const p = o.policy as Partial<Policy>;
     for (const [k, v] of Object.entries(p)) {

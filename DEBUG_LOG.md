@@ -2855,3 +2855,89 @@ suite happened to print the directory.
 
 **THE LESSON:** the host suite's H0/H2 phases are worth their cost for the inspection alone. **A test
 that only asserts what it was written to assert never finds what it broke.**
+
+## EN-102 — THE ROOT-SET DEFECT: one directory, two path-spaces, every hit returned TWICE
+**Found by running every MCP use case against the live store**, not by reading the code.
+
+**THE SYMPTOM.** `jev_query --limit 999999` returned 122 rows for a 68-file index, and **every path
+appeared twice** — once bare (`JevSWE_Bible_ShowMe_v2.md`) and once prefixed
+(`reports/JevSWE_Bible_ShowMe_v2.md`), with the **same sha256**.
+
+**THE MEASUREMENT.** The reports index held **125 rows for 68 real files** — 68 bare + 57
+`reports/`-prefixed. `SELECT COUNT(DISTINCT path)` = 125, so these were not duplicate rows: they were
+the same corpus under two names.
+
+**THE MECHANISM.**
+1. `files.path` is the row KEY and **carries no root provenance**. Stored paths are *relative to the
+   root walked* — a bare-path walk writes `<rel>`, a target walk writes `<target>/<rel>`.
+2. `indexTarget` ran a **namespace-scoped** tombstone sweep (D-060/D-061): a run may only tombstone
+   paths inside its own namespace. A bare-path run cannot touch `reports/`, and vice versa.
+3. So two root-spaces coexist **forever**, and nothing reconciles them.
+4. **`jm index @A` wrote BARE paths while `jm index --in A` wrote `A/`-prefixed ones** — the SAME
+   target with TWO path-spaces. The documented workflow `--in A,B` then `@A` only ever asserted that
+   **B survived** (the D-060 test), so nobody noticed A was being duplicated.
+
+**THE FIX — ONE INDEX, ONE ROOT-SET, RECORDED PER NAMESPACE.** `reconcileRoots()` in `store/db.ts`,
+called from all three write funnels (`indexTarget`, `ingestAll`, the queued job path):
+- the identity is `{ prefix -> root }`, recorded in `meta.roots`;
+- **`roots` is a NEW meta key** — the schema is untouched, so D-038's version backstop and the live
+  stores stay valid;
+- **refused by name** (`JM_INDEX_ROOTS_CHANGED`) when a recorded prefix's root MOVED, or when a NEW
+  prefix names a root that is already recorded (the duplication case);
+- **`jm index @A` is now namespaced** (`A/`), matching `--in A` — one rule, so the two conventions can
+  never diverge again;
+- **`--rebuild`** is the operator's explicit authority to replace: purge the rows, clear the record.
+
+**TWO CONTRACTS MY FIRST VERSION BROKE — caught by the suite, both real, both fixed.**
+- `test_missing_root_is_loud` — my guard ran BEFORE the root was validated, so a bad root threw the
+  wrong token AND wrote meta for a refused run (their D-054/D-055/D-056 law: *a refusal must not have
+  touched the disk*). Now: validate FIRST, with the token the KIND owns (an `fs` root →
+  `JM_INDEX_MISSING`; a `sqlite` root keeps `JM_SQLITE_MISSING` from `adapters/sqlite.ts:11`, which
+  `adapters.test.ts:108` and `test_watch_tick_survives_a_bad_registry` assert).
+- `test_reindexing_one_target_leaves_the_others_alone` (D-060) — my first identity was the WHOLE root
+  set, so `--in A,B` followed by `@A` was REFUSED, breaking a documented workflow. Per-namespace
+  granularity fixes it: `A/` is unchanged, so the run is idempotent for its own namespace.
+
+**A THIRD FLAW, found by RUNNING the repair:** `--rebuild` reprinted `changed=0` on the old store —
+the purge was gated on a recorded *conflict*, and an old store has none. Re-gated on
+*conflict OR existing rows*. (Rows alone are NOT a refusal trigger: `indexFile` is a shared internal
+that `tests/regression.test.ts:19` calls directly, so rows may exist before any record.)
+
+**THE REPAIR:** the real `reports` index rebuilt — **125 rows → 68**, all `reports/`-prefixed, roots
+recorded. The duplicate-hit query now returns one row per file.
+
+**VERIFICATION:** 232 pass / 0 fail (up from 229: three new tests). tsc exit 0. The live store
+measured before and after.
+
+## EN-103 — THE DISK DEFECT: a rebuilt index never shrinks, and the WAL was unbounded
+**Found because the machine hit 100% disk and every test began failing.**
+
+**THE SYMPTOM.** `bun test` reported `SQLiteError: no such table: meta` on a freshly indexed store —
+nonsense, because `openDb` creates that table. Direct measurement showed `mkdir: No space left on
+device`: the file was never created, so the db had no tables at all.
+
+**THE MEASUREMENT.** `df` → **937G total, 890G used, 0 avail, 100%**. And inside `~/.jm/index`:
+
+```
+ shadow.sqlite      3609.5 MB     <- the SAME index that was 159 MB an hour earlier
+ shadow.sqlite-wal  4081.7 MB     <- a 4 GB WAL
+ all.sqlite         4059.7 MB     <- ~11,900 rows in 4 GB
+```
+
+**THE MECHANISM.** `reconcileRoots --rebuild` calls `purgeIndex`, which `DELETE`s rows — **but SQLite
+DELETE does not shrink the file, and the WAL is never checkpointed.** A rebuild therefore leaves the
+disk holding every byte ever written: 159 MB of rows became a 3.6 GB file plus a 4 GB WAL.
+
+**THE NAMED EXTERNAL BLOCKER (NOT mine to resolve).** `docker system df` → **Local Volumes 278.5 GB,
+99% reclaimable** — four volumes: `forge-vm-data`, `graph_falkordb_data`, `tdai-memory-core-data`,
+`tdai-panel-data`. They back RUNNING containers (falkordb, tdai-memory-core/hub/proxy). They are
+persistent DATA stores, not cache, and deleting them would destroy the operator's graph and memory
+corpora. Names given; decision belongs to the operator.
+
+**FREED SO FAR (all my own):** a 4.2 GB backup I had made; 26 GB of my own `/tmp` dirs; 988 MB docker
+build cache. Then `PRAGMA wal_checkpoint(TRUNCATE)` merged the 4 GB WAL back into the db (avail
+763 M → 7.7 G), and `VACUUM` reclaimed the pages.
+
+**THE LESSON:** an index's `--rebuild` is a *logical* reset, not a *physical* one. A store that
+deletes 90% of its rows and keeps its file size is a store that lies about its footprint — and the
+lie surfaced as a full filesystem hours later, in an unrelated command, with a nonsense error.

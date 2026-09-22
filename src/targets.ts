@@ -5,7 +5,7 @@ import { resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { loadTargets, type Target, type TargetKind } from "./store/db.ts";
+import { loadTargets, reconcileRoots, type Target, type TargetKind } from "./store/db.ts";
 import { openSource, rowsOf as sqliteRows, listTables } from "./adapters/sqlite.ts";
 import { streamJsonl, streamJson, fileStat } from "./adapters/jsonl.ts";
 import { indexFile, listFiles } from "./verbs/index.ts";
@@ -173,8 +173,13 @@ export async function ingestTarget(db: Database, t: Target, opts: { limit?: numb
 }
 
 /** `--in` end to end: every resolved target through its adapter, aggregated. */
-export async function ingestAll(db: Database, spec: string | undefined, opts: { limit?: number } = {}): Promise<IngestStats[]> {
+export async function ingestAll(db: Database, spec: string | undefined, opts: { limit?: number; rebuild?: boolean } = {}): Promise<IngestStats[]> {
+  const ts = targetsIn(spec);
+  // ONE reconcile for the WHOLE ingest. Per-target checks would be wrong: `--in all` legitimately
+  // GROWS the root-set as each target records itself, so the second target would be refused by the
+  // first one's row. The identity is the full set, resolved once, before any write.
+  reconcileRoots(db, ts.map((t) => ({ prefix: `${safeTargetName(t.name)}/`, root: expand(t.root), kind: t.kind })), opts.rebuild ?? false);
   const out: IngestStats[] = [];
-  for (const t of targetsIn(spec)) out.push(await ingestTarget(db, t, opts));
+  for (const t of ts) out.push(await ingestTarget(db, t, opts));
   return out;
 }

@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `b5aa483f0a583b4b8cbe4048c7d77e96` (git c8f0a2f)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `1dba85b09f256c8fa27cbf54f23557b6` (git 2406be8)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -22,7 +22,7 @@ sealed copy does not belong here.
 | `src/adapters/jsonl.ts` | 56 |
 | `src/adapters/sqlite.ts` | 81 |
 | `src/calibrate.ts` | 66 |
-| `src/cli.ts` | 659 |
+| `src/cli.ts` | 669 |
 | `src/job/indexJob.ts` | 57 |
 | `src/job/queue.ts` | 118 |
 | `src/job/run.ts` | 82 |
@@ -33,21 +33,21 @@ sealed copy does not belong here.
 | `src/judge/policy.ts` | 130 |
 | `src/judge/transport.ts` | 75 |
 | `src/ledger.ts` | 75 |
-| `src/mcp.ts` | 213 |
+| `src/mcp.ts` | 219 |
 | `src/pools/budget.ts` | 70 |
 | `src/pools/pool.ts` | 38 |
 | `src/serve.ts` | 168 |
-| `src/store/db.ts` | 137 |
+| `src/store/db.ts` | 231 |
 | `src/store/schema.ts` | 69 |
-| `src/targets.ts` | 180 |
+| `src/targets.ts` | 185 |
 | `src/verbs/cluster.ts` | 93 |
-| `src/verbs/decision-tree.ts` | 229 |
+| `src/verbs/decision-tree.ts` | 244 |
 | `src/verbs/evaluate.ts` | 178 |
 | `src/verbs/excerpt.ts` | 54 |
 | `src/verbs/extract.ts` | 105 |
 | `src/verbs/filter.ts` | 83 |
 | `src/verbs/find.ts` | 191 |
-| `src/verbs/index.ts` | 286 |
+| `src/verbs/index.ts` | 290 |
 | `src/verbs/query.ts` | 126 |
 | `src/verbs/report.ts` | 231 |
 | `src/verbs/route.ts` | 150 |
@@ -66,7 +66,7 @@ sealed copy does not belong here.
 | `tests/audit-highs-2.test.ts` | 122 |
 | `tests/audit-highs-3.test.ts` | 86 |
 | `tests/audit-judge.test.ts` | 165 |
-| `tests/audit-pass3.test.ts` | 895 |
+| `tests/audit-pass3.test.ts` | 993 |
 | `tests/audit-phantom-surfaces.test.ts` | 107 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 46 |

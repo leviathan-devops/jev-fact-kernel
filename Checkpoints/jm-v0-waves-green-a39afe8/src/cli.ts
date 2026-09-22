@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
-import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, targetsPath, type Target } from "./store/db.ts";
-import { targetsIn, ingestAll } from "./targets.ts";
+import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, targetsPath, reconcileRoots, type Target } from "./store/db.ts";
+import { targetsIn, ingestAll, safeTargetName } from "./targets.ts";
 import type { Database } from "bun:sqlite";
 import { resolveKey } from "./judge/key.ts";
 import { JEV_NO_KEY } from "./judge/client.ts";
@@ -21,7 +21,7 @@ import { find } from "./verbs/find.ts";
 import { startServer } from "./serve.ts";
 import { calibrate, recordTruth, recordCalibration } from "./calibrate.ts";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { queryIndex } from "./verbs/query.ts";
 import { withLedger } from "./ledger.ts";
@@ -204,7 +204,7 @@ async function main(): Promise<number> {
         // This is the PER-TARGET ARRAY (one entry per resolved target), not a stats object — the
         // old name made an auditor read it as one and file a HIGH that execution refutes.
         const perTarget = await withLedger("index", { in: spec, name: indexName }, async () => {
-          const r = await ingestAll(db, spec);
+          const r = await ingestAll(db, spec, { rebuild: has("rebuild") });
           return { result: r, stats: { targets: r.length, rows: r.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
         });
         db.close();
@@ -226,7 +226,7 @@ async function main(): Promise<number> {
         const db0 = openDb(indexPathFor(idxName));
         try {
           const r = await withLedger("index", { target: t.name, kind: t.kind, name: idxName }, async () => {
-            const st = await ingestAll(db0, t.name);
+            const st = await ingestAll(db0, t.name, { rebuild: has("rebuild") });
             return { result: st, stats: { targets: st.length, rows: st.reduce((n, x) => n + x.rows, 0) }, costUsd: 0 };
           });
           db0.close();
@@ -240,13 +240,23 @@ async function main(): Promise<number> {
     const indexName = flag("name") ?? name;
     const dbPath = indexPathFor(indexName);
     const db = openDb(dbPath);
+    // A TARGET IS ALWAYS NAMESPACED; ONLY A DIRECT PATH IS BARE. `jm index @A` used to write BARE
+    // paths while `jm index --in A` wrote `A/`-prefixed ones — the SAME target with TWO path-spaces,
+    // which is the duplication defect at its source (the operator's store held 68 bare + 57
+    // `reports/`-prefixed rows over one directory). The documented workflow `--in A,B` then `@A`
+    // only ever ASSERTED that B survived, so nobody noticed A was landing twice. One rule now.
+    const prefix = arg.startsWith("@") ? `${safeTargetName(name)}/` : "";
     const opts = {
       include: flag("include")?.split(","),
       exclude: flag("exclude")?.split(","),
       limit: flag("limit") ? Number(flag("limit")) : undefined,
+      prefix,
     };
     if (has("queued")) {
       const jobId = flag("job") ?? `idx-${indexName}`;
+      // THE QUEUED FUNNEL RECONCILES TOO — its worker calls indexFile directly and bypasses both
+      // other funnels, so the guard has to fire here or the third path stays unguarded.
+      reconcileRoots(db, [{ prefix, root: resolve(root) }], has("rebuild"));
       const q = await withLedger("index", { arg, name: indexName, root, queued: true, job: jobId }, async () => {
         const r = await runIndexJob({
           indexDb: db, jobId,
@@ -265,7 +275,7 @@ async function main(): Promise<number> {
       return q.budgetStopped ? 3 : 0;
     }
     const stats = await withLedger("index", { arg, name: indexName, root }, async () => {
-      const s = indexTarget(db, indexName, root, opts);
+      const s = indexTarget(db, indexName, root, { ...opts, rebuild: has("rebuild") });
       return { result: s, stats: { ...s } as Record<string, unknown>, costUsd: 0 };
     });
     db.close();

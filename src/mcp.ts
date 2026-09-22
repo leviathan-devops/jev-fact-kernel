@@ -5,6 +5,7 @@
 import { openDb, openIndexExisting, indexPathFor } from "./store/db.ts";
 import { queryIndex } from "./verbs/query.ts";
 import { find } from "./verbs/find.ts";
+import { validateQuestions } from "./verbs/decision-tree.ts";
 import { Judge } from "./judge/client.ts";
 import { targetsIn, ingestAll } from "./targets.ts";
 
@@ -164,6 +165,11 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
     }
     if (name === "jev_decide") {
       if (!args.state || !args.questions) throw new Error("JM_ARGS: state + questions required");
+      // THE SAME VALIDATOR THE CLI'S RECIPE PATH USES (found by running every use case): this
+      // passthrough had no question-type guard, so a `choice` question was handed to the API and the
+      // caller got a raw JM_JUDGE_HTTP_422 — while the CLI refused the identical shape AT LOAD as
+      // JM_RECIPE_INVALID, before any network call. One validator, two callers; no drift.
+      validateQuestions(args.questions);
       const judge = new Judge(db, {});
       const res = await judge.ask(args.state, args.questions as Record<string, unknown>, (args.schema as string) ?? "mcp@v1");
       return JSON.stringify({ answers: res.answers, cached: res.cached, model: res.model, cost_usd: res.costUsd }, null, 2);
