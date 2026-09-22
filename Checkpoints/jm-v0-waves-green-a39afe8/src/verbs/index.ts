@@ -190,9 +190,19 @@ export function indexTarget(db: Database, name: string, root: string, opts: Inde
       // needs its own delete. Found by the audit (H-9).
       const purgeDocs = db.query("DELETE FROM docs WHERE path = ?");
       const purgeFts = db.query("DELETE FROM docs_fts WHERE path = ?");
-      for (const r of all) {
+        for (const r of all) {
           const inOwnNamespace = (ownPrefix === "" || r.path.startsWith(ownPrefix)) && !foreignPrefixes.some((f: string) => r.path.startsWith(f));
           if (!inOwnNamespace || seen.has(r.path)) continue;
+          // A PATH THE RUN'S OWN FILTERS WOULD NOT ADMIT IS NOT A DELETION CANDIDATE (audit
+          // index.ts:74). `--include`/`--exclude` NARROW THE WALK, so an excluded file is never
+          // `seen` — and the sweep read that as "deleted". MEASURED: `jm index <dir> --include '*.md'`
+          // marked the previously indexed `b.txt` gone AND PURGED its text. The rule is the same one
+          // `--limit` needed (D-061): **"not seen this run" is only evidence of deletion if the run
+          // would have seen it.** A path the filter excludes is simply out of scope, so it is left
+          // alone; a deleted file the filter WOULD admit is still tombstoned.
+          const rel = ownPrefix !== "" && r.path.startsWith(ownPrefix) ? r.path.slice(ownPrefix.length) : r.path;
+          if (opts.include && opts.include.length > 0 && !matchesAny(rel, opts.include)) continue;
+          if (matchesAny(rel, opts.exclude)) continue;
           gone.run(now, r.path); purgeDocs.run(r.path); purgeFts.run(r.path);
         }
     }

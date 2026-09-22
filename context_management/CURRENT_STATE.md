@@ -1,6 +1,6 @@
 # CURRENT_STATE — JM (2026-09-21, waves W0–W7 + the audit fix pass)
 
-**TREE SHA: `bf5e6f1b3a3c47f465a829735f0a2d89` (git b808e72)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `8ee67fc77c60d29e831e01500c21c711` (git afe290a)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 The current truth of the system: what exists, what works, what does not. Overwrite doc — it
 describes NOW. (Anchors are `file:line`; every claim has a run behind it in EVIDENCE_STATE.)
 

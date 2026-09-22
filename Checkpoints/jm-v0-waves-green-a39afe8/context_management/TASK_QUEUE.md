@@ -1,6 +1,6 @@
 # TASK_QUEUE — the live queue (OVERWRITE semantics: completed moves to done, active to next)
 
-**TREE SHA: `bf5e6f1b3a3c47f465a829735f0a2d89` (git b808e72)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `8ee67fc77c60d29e831e01500c21c711` (git afe290a)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 The queue is ORDERED by dependency, not by appeal. A task is `DONE` only when its done-when
 criterion resolves mechanically; "worked on" is a status, never a completion.
 

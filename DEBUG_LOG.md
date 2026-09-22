@@ -2086,3 +2086,57 @@ JM_HOME/JM_LEDGER/KEY/URL. The sandbox home (a DELETED temp dir by cleanup time)
 later test, so the launcher tests — which read `$HOME/.bun/bin/bun` — began failing with **exit 127 =
 no bun found**, in a run where they pass alone. **Reproduced with two files, minutes after writing
 the rule.** The fix is in the test; the rule stands: restore EVERY variable you set.
+
+## EN-080 — THE THIRD PASS: a full-file SCAN of all 34 src files, and 15 more highs
+The first two passes were DIFF reviews. This one is `ocr scan --path src --no-plan` — a WHOLE-FILE
+review with no diff, which reaches code the diff-shaped passes had already "covered".
+
+```
+RUN        ocr scan --path src --no-plan --provider verboo --model deepseek-v4.1-flash
+STATUS     completed_with_errors   (NOT `partial` — the first run to complete every file)
+FILES      34/34   COMMENTS 133   TOKENS 13,880,064   ELAPSED 24m13s
+WARNINGS   4 x `scan_subtask_error: context deadline exceeded` (src/job/indexJob.ts,
+           src/judge/client.ts, src/adapters/sqlite.ts, src/targets.ts)
+           ZERO memory-compression failures — `--no-plan` avoided the endpoint that rejected
+           requests in both earlier passes
+ARTIFACT   artifacts/scan-2026-09-22-src-completed.json
+DISTINCT   133 findings: 2 critical · 13 high · 57 medium · 61 low
+```
+
+**IT FOUND A CRITICAL IN CODE I WROTE THIS SAME DAY.**
+
+**ledger.ts:58 · CRITICAL · the success-path check was swallowed by its own catch.**
+My EN-077 fix put `if (ledgerFailed) throw new Error('JM_LEDGER_FAILED: …')` INSIDE the `try` — so
+the `catch` immediately below caught it and re-wrapped it, producing the doubled message I had
+already SEEN in my own probe output and read past:
+`JM_LEDGER_FAILED: … (while reporting: Error: JM_LEDGER_FAILED: …)`. The behaviour was right by
+accident (the catch throws its own `JM_LEDGER_FAILED` when the flag is set); the mechanism was
+wrong. **The fix for a swallowed failure contained a swallowed failure.**
+*Fix:* the outcome is held outside the `try` and the check runs AFTER the `catch`. **Verified:** the
+message now appears ONCE, in full — `the run COMPLETED but its ledger row was not written — L3 "no
+row, no run"` — exit 2.
+
+**pool.ts:26 · CRITICAL · a slot's VALUE was used to decide whether the slot was WRITTEN.**
+`slots.filter((x): x is O => x !== undefined)` dropped every slot whose worker legitimately resolved
+to `undefined` (valid whenever `O` is `undefined`/`void`/optional) — so results were LOST and the
+array stopped aligning with the input, breaking the documented *"results are returned in INPUT
+ORDER"* guarantee. MEASURED: a worker returning `undefined` for the middle of three items yielded
+**two** results. `runPool` has four live callers (`runQueued`, `decisionTree`, `filterIndex`, `find`)
+— the whole judged path plus the job runtime. *Fix:* a `filled[]` array records success per index.
+**Verified:** three items in, three slots out, the middle preserved.
+
+**index.ts:74 · HIGH · `--include` destroyed the files it excluded.**
+```
+$ jm index <dir> --name inc --include '*.md'     ->  gone=1
+   a.md -> new    b.txt -> GONE (and its text purged)    c.md -> new
+```
+**The THIRD instance of one over-broad rule — "not seen this run means deleted"** — after D-060
+(another target's namespace) and D-061 (a capped walk). *Fix:* a path the run's own filters would
+not admit is not a deletion candidate, and a real deletion the filter WOULD admit is still swept.
+**Verified both ways:** `--include '*.md'` leaves `b.txt` live; deleting `a.md` still yields `gone=1`.
+
+**AND THE RULE, NOW STATED ONCE FOR ALL THREE:**
+> **"Not seen this run" is only evidence of deletion if the run WOULD have seen it.**
+
+Three separate repairs were needed because the rule was applied three times to three different kinds
+of not-seen — a cap, a namespace, and a filter — without ever being written down.
