@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { runPool } from "../src/pools/pool";
 
@@ -221,5 +221,80 @@ describe("extract.ts:51 — `--field` must work for the adapter whose rows ARE J
       expect(parsed.empty).toBe(0);
       expect(parsed.rows.map((r) => r.values[0])).toEqual(["alice", "bob"]);
     } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
+
+describe("job/queue.ts:22 — a re-enqueued FAILED row must become claimable", () => {
+  test("test_reenqueue_returns_a_failed_row_to_the_queue", async () => {
+    // MEASURED BEFORE THE FIX: enqueue f1 -> claim (1 row) -> fail -> re-enqueue (reports
+    // `updated: 1`, adopts the new payload) -> **claim returns 0 rows**. The update left
+    // `state='failed'` and `claim()` selects only `state='pending'`, so the retry silently never ran
+    // while reporting the success-shaped `updated: 1` that says it did.
+    const home = mkdtempSync(join(tmpdir(), "jm-rq-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { openJob } = await import("../src/job/store");
+      const { Queue } = await import("../src/job/queue");
+      const { db } = openJob("rq");
+      const q = new Queue(db, "rq");
+      q.enqueue("t", [{ fingerprint: "f1", payload: { a: 1 } }]);
+      const c1 = q.claim(1);
+      expect(c1.length).toBe(1);
+      q.fail(c1[0].id, "boom");
+      expect((db.query("SELECT state FROM queue WHERE fingerprint='f1'").get() as { state: string }).state).toBe("failed");
+
+      const r = q.enqueue("t", [{ fingerprint: "f1", payload: { a: 2 } }]);
+      expect(r.updated).toBe(1);
+      const c2 = q.claim(1);
+      expect(c2.length).toBe(1);                        // THE RETRY RUNS
+      const row = db.query("SELECT state, payload, error FROM queue WHERE fingerprint='f1'").get() as { state: string; payload: string; error: string | null };
+      expect(row.state).toBe("running");
+      expect(row.error).toBeNull();                     // the old failure message is cleared
+      expect(row.payload).toBe(JSON.stringify({ a: 2 })); // and the new payload was adopted
+
+      // a DONE row is still left untouched
+      q.complete(c2[0].id, { ok: true }, c2[0].attempts);
+      expect(q.enqueue("t", [{ fingerprint: "f1", payload: { a: 3 } }]).skipped).toBe(1);
+      db.close();
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("job/store.ts:9 — no job id may resolve to the SHARED jobs root", () => {
+  test("test_job_ids_cannot_collapse_onto_shared_state", async () => {
+    // MEASURED BEFORE THE FIX: `id=""` and `id="."` both survived the replacements, and
+    // `join(jobsDir(), "")` / `join(jobsDir(), ".")` resolve to the JOBS ROOT itself — every job's
+    // queue.sqlite landing in ONE directory. And the sanitiser was not injective: `"a/b"` and `"a b"`
+    // both became `a_b`, so two different jobs silently shared a store.
+    const home = mkdtempSync(join(tmpdir(), "jm-jd-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { jobDir, jobsDir } = await import("../src/job/store");
+      const root = resolve(jobsDir());
+      for (const id of ["", "."]) {
+        expect(() => jobDir(id)).toThrow(/JM_JOB_ID_INVALID/);
+      }
+      for (const id of ["..", "...", "a/b", "a b", "..//..", "x".repeat(100)]) {
+        const d = resolve(jobDir(id));
+        expect(d).not.toBe(root);                       // never the shared root
+        expect(d.startsWith(root + "/")).toBe(true);    // always INSIDE it
+        expect(d.slice(root.length)).toMatch(/^\/[^/]+$/);   // exactly one segment
+      }
+      // injective: different ids, different directories
+      expect(jobDir("a/b")).not.toBe(jobDir("a b"));
+      expect(jobDir("p.q")).not.toBe(jobDir("p/q"));
+      // an already-safe id keeps its exact path
+      expect(jobDir("shadow")).toBe(join(root, "shadow"));
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

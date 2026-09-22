@@ -12,15 +12,23 @@ export class Queue {
   job(): string { return this.jobId; }
 
   /** Enqueue items. A re-enqueue of a PENDING/FAILED fingerprint ADOPTS the new payload
-   *  (never silently keeping the stale one); a DONE row is left untouched. */
+   *  (never silently keeping the stale one) AND RETURNS A FAILED ROW TO THE QUEUE; a DONE row is
+   *  left untouched. */
   enqueue(kind: string, items: { fingerprint: string; payload: unknown }[]): { added: number; updated: number; skipped: number } {
     const now = new Date().toISOString();
     const exists = this.db.query("SELECT state FROM queue WHERE fingerprint = ?");
     const ins = this.db.query(
       "INSERT INTO queue(fingerprint, kind, payload, state, created_at, updated_at) VALUES (?,?,?, 'pending', ?, ?)",
     );
+    // A FAILED ROW GOES BACK TO 'pending', AND THAT IS THE WHOLE POINT OF RE-ENQUEUING IT
+    // (audit queue.ts:22). The update adopted the new payload and left `state='failed'` — and
+    // `claim()` selects only `state='pending'`, so the row could NEVER be claimed again.
+    // MEASURED: enqueue f1 -> claim (1 row) -> fail -> re-enqueue (reports `updated: 1`, adopts the
+    // new payload) -> claim returns **0 rows**. The retry silently never ran, while reporting the
+    // success-shaped `updated: 1` that says it did. `error` is cleared with it: a row returned to
+    // the queue must not still carry the message from the attempt it is being retried after.
     const upd = this.db.query(
-      "UPDATE queue SET payload = ?, updated_at = ? WHERE fingerprint = ? AND state IN ('pending','failed')",
+      "UPDATE queue SET payload = ?, state = 'pending', error = NULL, updated_at = ? WHERE fingerprint = ? AND state IN ('pending','failed')",
     );
     let added = 0, updated = 0, skipped = 0;
     const tx = this.db.transaction(() => {

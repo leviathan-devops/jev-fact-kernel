@@ -2297,3 +2297,47 @@ import. Small change, and it is the same class as the rest: **a value that exist
 value that will disagree with itself.**
 
 **THE THIRD PASS IS NOW FULLY ADJUDICATED AT THE HIGH/CRITICAL TIER: 15 of 15 confirmed and fixed.**
+
+## EN-087 — the MEDIUM tier: five more confirmed, and one measured NARROWER than reported
+Continuing the adjudication past the high/critical tier. Each is a hypothesis until a probe settles it.
+
+**job/queue.ts:22 · the retry SILENTLY NEVER RAN — the worst shape found in the medium tier.**
+```
+enqueue f1 -> claim (1 row) -> fail -> re-enqueue (reports {"updated":1}, adopts the new payload)
+-> claim: 0 rows
+```
+The re-enqueue updated the payload and left `state='failed'`; `claim()` selects only
+`state='pending'`, so the row could **never be claimed again**. The retry reported the success-shaped
+`updated: 1` that says it did. *Fix:* a failed row returns to `pending` with `error` cleared.
+**Verified:** the retry claims (1 row, `error=null`, new payload), and a DONE row is still `skipped: 1`.
+
+**job/store.ts:9 · two job ids collapsed onto the SHARED jobs root — worse than the audit reported.**
+```
+id=""  -> ~/jobs        id="."  -> ~/jobs        (the shared root: every job's queue.sqlite in ONE dir)
+id="a/b" -> a_b         id="a b" -> a_b          (not injective: two jobs, one store)
+```
+The audit named the collision; the probe found that the EMPTY and `.` cases resolve to the jobs root
+ITSELF. *Fix:* an id that produces no directory name is refused by name, and a sanitised id carries a
+digest of the original so two ids cannot collide; an already-safe id keeps its exact path.
+**Verified: ZERO ids resolve to the shared root** across `""`, `"."`, `".."`, `"..."`, `"a/b"`,
+`"a b"`, `"..//.."`, a 100-char id and `"%2e%2e"`.
+
+**cli.ts:383 / 423 / 504 · three store handles leaked on the error path.**
+`scan` and `cluster` returned from their `catch` WITHOUT `db.close()`, unlike every sibling verb
+(`query`, `filter`, `find`, `route`, `evaluate`, `report`, `decision-tree` all close in their catch);
+and `report --job` handed a store to `jobReport`, which closes only the queue db it opens itself and
+never the `db` ARGUMENT. *Fix:* all three close. **Bounded honestly:** the practical impact is smaller
+than it looks — the CLI process exits, and the long-lived surfaces (HTTP, MCP) call the verb
+FUNCTIONS rather than `main`, so they never reach these sites. It is a real defect with a narrow
+blast radius, recorded as such rather than inflated.
+
+**AND ONE MEASURED NARROWER THAN REPORTED — recorded because a finding's SIZE matters:**
+the audit's `cli.ts:504` note implied a per-request leak in a server. It is not: `jobReport` is
+reached only from `main`'s `report --job` branch. **The defect is real; the severity claim was
+larger than the measurement.** Same treatment as the composite-key finding earlier (mechanism right,
+example benign).
+
+**AND A TEST THAT ASSERTED AN INCIDENTAL LITERAL:** `test_guard_job_dir_traversal` checked
+`endsWith("_escape")` — which the injectivity fix changed (a sanitised name now carries a digest). It
+now asserts the LAW directly and more strongly: the resolved path is INSIDE the jobs directory,
+carries no traversal segment, and is exactly one segment deep.

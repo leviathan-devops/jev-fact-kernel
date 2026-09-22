@@ -2,6 +2,7 @@
 // src/cli.ts — the JM CLI router. Every run prints its cost line and writes ONE ledger row.
 import { openDb, openIndexExisting, indexPathFor, indexExists, resolveTarget, loadTargets, saveTargets, targetsPath, type Target } from "./store/db.ts";
 import { targetsIn, ingestAll } from "./targets.ts";
+import type { Database } from "bun:sqlite";
 import { resolveKey } from "./judge/key.ts";
 import { JEV_NO_KEY } from "./judge/client.ts";
 import { serveStdio } from "./mcp.ts";
@@ -382,7 +383,15 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else for (const c of r.candidates) console.log(`${c.hits}\t${c.size}\t${c.path}\t${c.excerpt.slice(0, 90)}`);
       return 0;
-    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
+    } catch (err) {
+      // THE STORE IS CLOSED ON THE ERROR PATH TOO (audit cli.ts:383/423). Every sibling verb
+      // (`query`, `filter`, `find`, `route`, `evaluate`, `report`, `decision-tree`) closes it in
+      // its catch; `scan` and `cluster` returned without closing, leaking one sqlite handle per
+      // failed invocation. In a long-lived caller (the daemon, a shell loop) that is a leak that
+      // grows with every typo.
+      db.close();
+      console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err);
+    }
   }
 
   if (verb === "cluster") {
@@ -422,7 +431,15 @@ async function main(): Promise<number> {
       if (flag("out")) { writeFileSync(flag("out")!, out); console.log(`wrote ${flag("out")} (${r.total} values, ${r.rowsWithValues} rows)`); }
       else process.stdout.write(out + (out.endsWith("\n") ? "" : "\n"));
       return 0;
-    } catch (err) { console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
+    } catch (err) {
+      // THE STORE IS CLOSED ON THE ERROR PATH TOO (audit cli.ts:383/423). Every sibling verb
+      // (`query`, `filter`, `find`, `route`, `evaluate`, `report`, `decision-tree`) closes it in
+      // its catch; `scan` and `cluster` returned without closing, leaking one sqlite handle per
+      // failed invocation. In a long-lived caller (the daemon, a shell loop) that is a leak that
+      // grows with every typo.
+      db.close();
+      console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err);
+    }
   }
 
   if (verb === "route") {
@@ -500,12 +517,19 @@ async function main(): Promise<number> {
       if (!jobId) { console.error("JM_JOB_NONE: no job has a queue yet (run `jm index @t --queued --job <id>`)"); return 2; }
       const idxName = flag("name") ?? "all";
       let jr;
+      // THE STORE HANDED TO `jobReport` IS CLOSED HERE (audit cli.ts:504). `jobReport` closes only the
+      // queue db it opens itself (`report.ts:129`) and never closes the `db` ARGUMENT, so this handle
+      // leaked on every `report --job` — the one verb whose store lifetime the CALLER owns.
+      let reportDb: Database | null = null;
       try {
-        jr = jobReport(indexExists(idxName) ? openDb(indexPathFor(idxName)) : null, jobId);
+        if (indexExists(idxName)) reportDb = openDb(indexPathFor(idxName));
+        jr = jobReport(reportDb, jobId);
       } catch (err) {
+        reportDb?.close();
         console.error(`JM_ERROR: ${String(err)}`);
         return 2;                                   // a client named a job that is not there
       }
+      reportDb?.close();
       if (has("json")) console.log(JSON.stringify(jr, null, 2));
       else console.log(renderJobReport(jr));
       return jr.reconciled ? 0 : 3;   // a duplicate or a running row is a NON-ZERO reconciliation

@@ -2,11 +2,29 @@
 // One store per job (bible T6). Never a repo, never shared mutable state.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { Database } from "bun:sqlite";
 
 export const jmHome = (): string => process.env.JM_HOME ?? join(process.env.HOME ?? ".", ".jm");
 export const jobsDir = (): string => join(jmHome(), "jobs");
-export const jobDir = (id: string): string => join(jobsDir(), id.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").slice(0, 64));
+// THE SANITISER MUST NOT COLLAPSE ROWS ONTO SHARED STATE, AND MUST BE INJECTIVE (audit
+// job/store.ts:9). Two measured defects: `id=""` and `id="."` both survived the replacements, and
+// `join(jobsDir(), "")` / `join(jobsDir(), ".")` resolve to the **shared jobs root** — every job's
+// queue.sqlite landing in ONE directory; and the sanitiser was not injective, so `"a/b"` and
+// `"a b"` both became `a_b` and two different jobs silently shared a store. Measured after the
+// fix: **zero** ids resolve to the shared root. (`".."` and `"..."` are handled by the `\.\.+`
+// replacement, which turns them into `_` plus a digest; the empty/`.` cases are what needed the
+// explicit refusal.) An already-safe id is returned UNCHANGED, so existing job directories keep
+// their paths.
+export const jobDir = (id: string): string => {
+  const cleaned = id.replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.\.+/g, "_").slice(0, 64);
+  if (!cleaned || cleaned === ".") {
+    throw new Error(`JM_JOB_ID_INVALID: ${JSON.stringify(id)} — a job id must produce a directory name (not empty, not ".")`);
+  }
+  if (cleaned === id) return join(jobsDir(), cleaned);
+  const digest = createHash("sha256").update(id).digest("hex").slice(0, 8);
+  return join(jobsDir(), `${cleaned.slice(0, 48)}-${digest}`);
+};
 
 export interface JobPaths { dir: string; dbPath: string; ledgerPath: string; resultsDir: string; }
 

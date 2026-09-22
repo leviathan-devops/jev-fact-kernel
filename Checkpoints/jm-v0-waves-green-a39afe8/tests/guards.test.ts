@@ -2,7 +2,7 @@
 import { test, expect } from "bun:test";
 import { makeSandbox, fill } from "./helpers.ts";
 import { openDb, indexPathFor, safeName, resolveTarget, saveTargets, loadTargets } from "../src/store/db.ts";
-import { jobDir } from "../src/job/store.ts";
+import { jobDir, jobsDir } from "../src/job/store.ts";
 import { signalOf } from "../src/judge/policy.ts";
 import { queryIndex } from "../src/verbs/query.ts";
 import { indexTarget } from "../src/verbs/index.ts";
@@ -86,8 +86,15 @@ function test_guard_corrupt_registry_is_loud() {
 
 function test_guard_job_dir_traversal() {
   test("test_guard_job_dir_traversal", () => {
+    // THE LAW IS CONTAINMENT, not an incidental suffix. This asserted `endsWith("_escape")`, which
+    // the audit's injectivity fix changed (a name that needed sanitising now carries a digest of the
+    // original, so two different ids cannot collide on one directory). The property the test exists
+    // for is asserted directly and more strongly: the resolved path is INSIDE the jobs directory and
+    // carries no traversal segment.
     const d = jobDir("../escape");
     expect(d).not.toContain("..");
-    expect(d.endsWith("_escape")).toBe(true);
+    expect(d.startsWith(jobsDir())).toBe(true);
+    expect(d.slice(jobsDir().length)).toMatch(/^\/[^/]+$/);   // exactly one path segment under jobs/
+    expect(d).toContain("_escape");                            // the sanitised stem is still readable
   });
 }
