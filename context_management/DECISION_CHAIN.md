@@ -1,6 +1,6 @@
 # DECISION_CHAIN — JM (append-only; every ruling with its cost-if-wrong)
 
-**TREE SHA: `f579c3ccc31938775339bc1dbb86aefc` (git 7158425)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `d387f989c86348ff28c88cd61f4a01a7` (git b5720d8)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## PART 1 — OPERATOR RULINGS (verbatim intent, never re-litigated)
 
 **R-01** *"i need to be able to semantically and deterministically index massive fucking mountains

@@ -14,11 +14,15 @@ export async function* streamJsonl(path: string, opts: { maxLineBytes?: number; 
     for await (const raw of rl) {
       if (n >= limit) break;
       n++;
-      const line = raw.length > maxLine ? raw.slice(0, maxLine) : raw;
+      const line = raw;                        // PARSE THE WHOLE LINE, THEN BOUND THE STORED TEXT.
       if (line.trim().length === 0) continue;
+      // Truncating BEFORE the parse turned every VALID line wider than `maxLine` into invalid JSON,
+      // which the catch below then reclassified as `{ __malformed: true }` — so a legitimate 70 KB
+      // record was indexed as garbage, and its payload was cut to 200 chars on top. MEASURED: one
+      // valid 70,038-byte line became `{"__malformed":true,...}`. Found by the audit (M-A).
       let value: unknown = null;
       try { value = JSON.parse(line); } catch { value = { __malformed: true, raw: line.slice(0, 200) }; }
-      yield { line: n, text: typeof value === "string" ? value : JSON.stringify(value).slice(0, maxLine), value };
+      yield { line: n, text: typeof value === "string" ? value.slice(0, maxLine) : JSON.stringify(value).slice(0, maxLine), value };
     }
   } finally { rl.close(); }
 }

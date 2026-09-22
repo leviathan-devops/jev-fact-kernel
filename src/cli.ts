@@ -49,7 +49,13 @@ function judgeKeyMissing(): boolean {
   return true;
 }
 
-const VALUE_FLAGS = new Set(["name", "include", "exclude", "limit", "where", "fts", "tag", "rows", "recipe", "context", "criteria", "out", "escalation", "concurrency", "budget-calls", "job", "question", "min-p", "common", "structure", "in", "index", "port", "truth", "truth-value", "apply-note", "phrase"]);
+const VALUE_FLAGS = new Set(["name", "include", "exclude", "limit", "where", "fts", "tag", "rows", "recipe", "context", "criteria", "out", "escalation", "concurrency", "budget-calls", "job", "question", "min-p", "common", "structure", "in", "index", "port", "truth", "truth-value", "apply-note", "phrase",
+  // FLAGS THE VERBS ACTUALLY CONSUME BUT WHICH WERE ABSENT HERE (audit M-B): `positionals()`
+  // only skips the next token for names in this set, so the VALUE of any missing flag was
+  // treated as a POSITIONAL. `jm scan <idx> --lex tombstone` therefore put "tombstone" in
+  // positionals — harmless for `scan` (it ignores extras) and a real bug for any verb that
+  // reads positional[1], which is exactly the kind of defect that hides behind one verb.
+  "lex", "re", "min", "field", "include-glob", "exclude-glob"]);
 function positionals(): string[] {
   const out: string[] = [];
   for (let i = 1; i < argv.length; i++) {

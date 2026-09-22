@@ -89,6 +89,16 @@ p.write_text(s, encoding="utf-8")
 print("  BUILD_STATE inventories: src=" + str(len(srows)) + " tests=" + str(len(trows)))
 PY3
 
+# 3d. RE-COPY THE REWRITTEN DOCS INTO THE SEAL. Steps 3b/3c rewrite the LIVE canon docs (the TREE SHA
+# line, BUILD_STATE's inventories) — but step 1 copied `context_management` to $CP BEFORE that, so the
+# SEALED copy kept the PREVIOUS sha. MEASURED: after a content change the live doc read `d387f989…`
+# while the sealed doc still read `f579c3cc…` — the checkpoint shipped docs that disagree with the tree
+# they describe, and the seal's own gate passed because it reads the LIVE copies. Found by the audit
+# (M-C). The seal must ship what it just stamped.
+rm -rf "$CP/context_management"
+cp -r context_management "$CP/context_management"
+echo "  canon re-copied into the seal AFTER the sha rewrite"
+
 # 4. the manifest's volatile lines
 python3 - "$CP" "$SHA" "$GIT" <<'PY'
 import re, sys, pathlib

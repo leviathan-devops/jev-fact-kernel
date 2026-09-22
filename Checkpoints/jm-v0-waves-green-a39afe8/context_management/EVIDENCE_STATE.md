@@ -1,6 +1,6 @@
 # EVIDENCE_STATE — JM (append-only; the summary section is refreshed in place)
 
-**TREE SHA: `f579c3ccc31938775339bc1dbb86aefc` (git ff2f253)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `d387f989c86348ff28c88cd61f4a01a7` (git b5720d8)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 Every entry: the run, its verbatim output, the artifact. Nothing here is a claim without a run.
 
 ## SUMMARY (current)
