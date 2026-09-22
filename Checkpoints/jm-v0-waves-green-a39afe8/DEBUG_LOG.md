@@ -3127,3 +3127,75 @@ and the correct response is to find which side owns it. Averaging it away ("it u
 would have shipped a handle leak into a daemon whose whole job is long-running reconciliation.
 **The baseline measurement found it before the build started, which is exactly what a re-measured
 baseline is for.**
+
+## EN-110 — THE SECOND FLAKE CLASS: hardcoded test ports (and why the fd fix was not the whole story)
+**The fd fix (EN-109) measured 0/10 — then a LATER 10-run window read 3/10, and a third read 2/10.**
+A flake measured once is not measured. Three independent windows, each 10 runs, caught what one
+window missed.
+
+**THE INSTANCES, caught by name:**
+```
+run 6  -> test_D036_oversized_body_is_refused_and_the_surface_survives   (wave-gates.test.ts:176)
+RUN2   -> test_serve_decide                                              (wave-gates.test.ts)
+```
+Different tests each time — the signature of a RESOURCE conflict, not a logic error.
+
+**THE ROOT CAUSE, found by sweeping the CLASS rather than chasing instances:**
+```
+tests/wave-gates.test.ts:89   startServer({ port: 7897, name: "wg" })
+tests/wave-gates.test.ts:128  startServer({ port: 7898, name: "never-built" })
+tests/wave-gates.test.ts:176  startServer({ port: 7896, name: "wg" })
+```
+Three FIXED ports. The lesson *"a fixed port in a test is a flake — `port: 0` lets the OS assign one
+and `server.port` reports it"* was ALREADY written in `judge-policy.test.ts:20` and
+`judge-outage.test.ts:17` — **this file never got it.** When a port is still in TIME_WAIT from a
+sibling test or another process on the box, the bind fails and the test reports a logic error that
+is actually a port clash.
+
+**THE FIX:** all three to `port: 0`, plus the law written into the file's header so it cannot
+regress. **Verified: `wave-gates.test.ts` 8/8 clean in isolation; the full battery 0/10 failures in
+EACH of three consecutive 10-run windows (30 runs, zero failures).**
+
+**THE LESSON (the durable one).** Two of the four flake hunts chased INSTANCES; the one that found
+the real class swept for the CLASS (`grep -rn "port: [0-9]" tests/*.ts`) and found all three sites
+at once. **A flaky test is a measurement of a real non-determinism; and when the non-determinism is
+a shared resource, the fix belongs to the class, not the symptom.**
+
+## EN-111 — THE THIRD FLAKE CLASS: `process.env` raced between CONCURRENT test files
+**The pin's own ANTI-DERAIL named this before it happened: "MEASURING ONCE AND CONCLUDING."**
+
+**THE MEASUREMENT THAT CAUGHT IT.** While the pin was being written, a background 10-run window
+returned `1/10 run10=test_cache_zero_calls`. That CONTRADICTED the pin's stated baseline (`0/30`) —
+and the correct response was not to reconcile the two by preference, it was to find out which was
+true. The pin's baseline had been measured in windows that happened to miss it.
+
+**THE DISCRIMINATOR (isolation vs the full battery):**
+```
+bun test -t test_cache_zero_calls   ->  0 failures in 20 runs   (ISOLATED)
+bun test                            ->  ~1 failure in 10 runs   (THE FULL BATTERY)
+```
+A test that is deterministic alone and flaky in the suite is not testing the same environment.
+
+**THE MECHANISM.**
+1. `process.env` is **per-PROCESS**, not per-test-file.
+2. `bun test --max-concurrency` **defaults to 20** — up to twenty test FILES run concurrently.
+3. **TWENTY-TWO test files mutate `process.env.JM_*`**, five of them `JM_MOCK_DIR` (the judge's
+   transport switch).
+So one file's `JM_MOCK_DIR` (or `JM_HOME`, or `JM_JUDGE_URL`) lands in a sibling file's judge call
+**mid-flight**, and the cache test reads another file's fixtures. The race is invisible in isolation
+by construction.
+
+**THE FIX** (`bunfig.toml`): `concurrency = 1` under `[test]`. Test files run one at a time.
+Wall clock 29s -> ~44s. **A deterministic suite beats a fast flaky one** — the alternative is a
+green that means nothing.
+
+**THE THREE FLAKE CLASSES, and what each taught:**
+| # | class | the discriminator that found it |
+|---|---|---|
+| EN-109 | an fd released on a later tick | the failure was intermittent IN ISOLATION too |
+| EN-110 | a fixed port in TIME_WAIT | the failing test CHANGED between windows |
+| EN-111 | `process.env` raced between files | it passed 0/20 ALONE and failed in the SUITE |
+
+**THE LESSON.** Three flakes, three different discriminators. "It usually passes" would have hidden
+all three, and the third one — env leakage between concurrent test files — is the class that makes
+a whole suite's green untrustworthy rather than one test's.

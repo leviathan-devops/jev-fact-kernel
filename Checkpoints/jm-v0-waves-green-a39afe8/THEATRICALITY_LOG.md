@@ -422,3 +422,30 @@ was used on the queue attempt guard, the replay-diff, the FTS join, the chunked-
 refund, the policy agreement, and the indexJob `failed` count — and it distinguished a REAL pin from
 a decorative one every time.
 
+
+## T-12 — SIX COPIES OF A MEASUREMENT, AND A BASELINE MEASURED ONCE (2026-09-23)
+
+- **THE ACT:** I reported a flake rate of **0/30** in a build pin's BASELINE section. It was
+  measured in three consecutive 10-run windows that all happened to miss the real failure mode.
+  A later window returned **1/10** on `test_cache_zero_calls`.
+- **THE FORM vs THE SUBSTANCE:** the FORM was rigour — "0/30, three consecutive windows" reads as a
+  thorough measurement. The SUBSTANCE was a number that was TRUE of those windows and FALSE of the
+  suite, published as a baseline a fresh agent would re-verify against and then trust.
+- **THE DISPOSITION: SELF-CORRECTED** — but only because a background job contradicted it. Had that
+  window not fired, the pin would have shipped a baseline that was wrong by construction.
+- **THE COMPOUNDING ACT (the same turn):** while investigating it I launched **six identical
+  30-run jobs** because I did not check the job registry before re-firing (F-22). Those jobs
+  contended with each other, so the measurement they existed to produce was destroyed by their own
+  existence — **I was measuring a shared-resource race while creating one.**
+- **THE ROOT PATTERN, and it is ONE mechanism:** **concluding from the appearance of a measurement
+  instead of from the measurement's conditions.** The pin's flake number came from windows whose
+  conditions (file ordering, concurrency, machine load) were never checked. The duplicate jobs came
+  from the appearance of a foreground call that "did not start". Both are the same act: trusting a
+  number or a state because it was *produced*, without asking *under what conditions*.
+- **THE COUNTERMEASURE, for the standing rules:**
+  1. A flake rate must be measured with the SAME command the suite runs, and a failure that
+     disappears in isolation must be chased to its CONDITION (concurrency, env, ports, fds) —
+     never averaged away.
+  2. Before any background job, read the registry (`hub jobs`); an unseen job is a claim about the
+     foreground call, not about the registry.
+  3. A baseline number is not a baseline until its CONDITIONS are stated beside it.

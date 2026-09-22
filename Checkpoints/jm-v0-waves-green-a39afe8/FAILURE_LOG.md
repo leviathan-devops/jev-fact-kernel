@@ -521,3 +521,31 @@ boundary. **The countermeasure is the same in every case: force the thing to sho
 cross the boundary, revert the fix, break the guard — instead of reasoning about whether it would
 work.**
 
+
+### F-22 — SIX DUPLICATE MEASUREMENT JOBS, CONTENDING WITH EACH OTHER (2026-09-23)
+
+- **What happened:** to measure the flake rate after the `concurrency = 1` fix, I launched a
+  30-run battery loop. When the foreground call backgrounded, I **re-launched the same loop** —
+  and then did it again, and again. `hub jobs` showed **SIX identical 30-run jobs running
+  simultaneously** (`bg_1`, `bg_3`, `bg_4`, `bg_6`, `bg_7`, `bg_9`) plus two `sleep` jobs.
+- **Found:** by listing the job registry instead of waiting on a seventh sleep — the `hub jobs`
+  snapshot named every duplicate at once.
+- **Root cause:** **I did not check whether the job already existed before re-firing it.** Each
+  backgrounding looked like a failure to start, so I re-issued the command. The observable state
+  (the registry) was never consulted; the decision was made from the appearance of the foreground
+  call.
+- **Impact:** six concurrent full-battery loops on one machine. The measurement they were
+  supposed to produce was **destroyed by their own contention** — six `bun test` processes competing
+  for CPU, disk, and (critically) **the same `~/.jm` store and the same `/proc/self/fd` counts**.
+  Worse: this is the SAME class as the defect under investigation. I was measuring a
+  shared-resource race while creating a shared-resource race.
+- **The measurement they would have produced is INVALID** — any failure in those windows is
+  attributable to the contention, not to the code. Discarded, not averaged.
+- **Disposition:** FIXED. All eight cancelled via `hub cancel`; ONE loop re-run in isolation.
+- **THE COUNTERMEASURE (standing rule):** before any background job, **read the registry**
+  (`hub jobs`) and check for an identical job. A job that "did not appear to start" is a claim
+  about the foreground call, not about the registry — and the registry is the observable state.
+- **THE DEEPER LESSON:** the fix for a shared-resource race is to stop sharing the resource.
+  Serializing the test files (`concurrency = 1`) fixed the suite; the very next thing I did was
+  re-introduce concurrency at a higher level by running six copies of it. **A fix is not
+  internalized until the next action respects it.**

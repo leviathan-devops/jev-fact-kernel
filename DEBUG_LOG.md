@@ -3160,3 +3160,42 @@ EACH of three consecutive 10-run windows (30 runs, zero failures).**
 the real class swept for the CLASS (`grep -rn "port: [0-9]" tests/*.ts`) and found all three sites
 at once. **A flaky test is a measurement of a real non-determinism; and when the non-determinism is
 a shared resource, the fix belongs to the class, not the symptom.**
+
+## EN-111 — THE THIRD FLAKE CLASS: `process.env` raced between CONCURRENT test files
+**The pin's own ANTI-DERAIL named this before it happened: "MEASURING ONCE AND CONCLUDING."**
+
+**THE MEASUREMENT THAT CAUGHT IT.** While the pin was being written, a background 10-run window
+returned `1/10 run10=test_cache_zero_calls`. That CONTRADICTED the pin's stated baseline (`0/30`) —
+and the correct response was not to reconcile the two by preference, it was to find out which was
+true. The pin's baseline had been measured in windows that happened to miss it.
+
+**THE DISCRIMINATOR (isolation vs the full battery):**
+```
+bun test -t test_cache_zero_calls   ->  0 failures in 20 runs   (ISOLATED)
+bun test                            ->  ~1 failure in 10 runs   (THE FULL BATTERY)
+```
+A test that is deterministic alone and flaky in the suite is not testing the same environment.
+
+**THE MECHANISM.**
+1. `process.env` is **per-PROCESS**, not per-test-file.
+2. `bun test --max-concurrency` **defaults to 20** — up to twenty test FILES run concurrently.
+3. **TWENTY-TWO test files mutate `process.env.JM_*`**, five of them `JM_MOCK_DIR` (the judge's
+   transport switch).
+So one file's `JM_MOCK_DIR` (or `JM_HOME`, or `JM_JUDGE_URL`) lands in a sibling file's judge call
+**mid-flight**, and the cache test reads another file's fixtures. The race is invisible in isolation
+by construction.
+
+**THE FIX** (`bunfig.toml`): `concurrency = 1` under `[test]`. Test files run one at a time.
+Wall clock 29s -> ~44s. **A deterministic suite beats a fast flaky one** — the alternative is a
+green that means nothing.
+
+**THE THREE FLAKE CLASSES, and what each taught:**
+| # | class | the discriminator that found it |
+|---|---|---|
+| EN-109 | an fd released on a later tick | the failure was intermittent IN ISOLATION too |
+| EN-110 | a fixed port in TIME_WAIT | the failing test CHANGED between windows |
+| EN-111 | `process.env` raced between files | it passed 0/20 ALONE and failed in the SUITE |
+
+**THE LESSON.** Three flakes, three different discriminators. "It usually passes" would have hidden
+all three, and the third one — env leakage between concurrent test files — is the class that makes
+a whole suite's green untrustworthy rather than one test's.
