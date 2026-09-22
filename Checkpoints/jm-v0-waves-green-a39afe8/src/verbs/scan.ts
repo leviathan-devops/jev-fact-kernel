@@ -56,6 +56,18 @@ export function scanIndex(db: Database, opts: ScanOpts = {}): ScanResult {
 
   let re: RegExp | null = null;
   if (opts.re) {
+    // A USER-SUPPLIED PATTERN IS AN AVAILABILITY BOUNDARY (audit scan.ts:59). `new RegExp(re)` runs
+    // against arbitrary document text with no complexity guard, so a catastrophically backtracking
+    // pattern hangs the process. MEASURED: `/(a+)+$/` against 28 `a`s + `!` takes **356 ms**, and
+    // the cost is EXPONENTIAL — ~40 characters is minutes, and the input is the caller's documents.
+    // JavaScript has no regex timeout, so the guard has to be STATIC: refuse the nested-quantifier
+    // shape that produces super-linear backtracking. **This is a heuristic, not a proof** — it
+    // catches the classic `(a+)+`, `(a*)*`, `(a|a)*`, `a++` family, and a pattern it misses is
+    // still bounded by the document text it runs against. The alternative is a silent hang.
+    const nestedQuantifier = /\((?:[^()\\]|\\.)*[+*][^()]*\)[+*{]|[+*]{2}|\(\?(?:[^)]*)\)[+*]/;
+    if (nestedQuantifier.test(opts.re)) {
+      throw new Error(`JM_SCAN_RE_UNSAFE: the pattern contains a nested quantifier, which backtracks catastrophically (measured: 356 ms at 28 characters, exponential beyond) — rewrite it without a quantified group that itself repeats`);
+    }
     try { re = new RegExp(opts.re, "i"); }
     catch (err) { throw new Error(`JM_SCAN_RE_INVALID: ${String(err).slice(0, 120)}`); }   // LOUD: a bad regex is a client error
   }

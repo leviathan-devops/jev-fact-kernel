@@ -2227,3 +2227,30 @@ accept (the parameter is `budgetCalls`). It was IGNORED, so the assertion ran wi
 passed for no reason. **tsc caught it** (`'budget' does not exist in type …`) — which is what a typed
 boundary is for — and the corrected test FAILED against the wrong refund and passes against the right
 one, so it now bites in both directions.
+
+## EN-084 — two more: a daemon that dies on one error, and a regex that can hang the process
+Both are availability defects — the class where the software is CORRECT and simply stops working.
+
+**watch.ts:100 · HIGH · one transient error ended the daemon forever.**
+`await tick(...)` was unguarded, so any throw — `openDb` on a locked or briefly-unavailable store,
+the journal `appendFileSync` on a full disk — terminated the loop. **The PROCESS stayed up**, which a
+systemd unit reports as `active (running)`, while it never reconciled again: the *alive-but-doing-
+nothing* shape, which is worse than a crash because nothing restarts it. *Fix:* the failure is
+REPORTED (`TICK_FAILED` on stderr) and the loop continues; `once` still rethrows so a cron tick
+surfaces its error by exit code. **Verified live:** with an unwritable store, a `--interval 500`
+daemon emitted **10** `TICK_FAILED` lines and was **still running** five seconds later.
+
+**scan.ts:59 · HIGH · a user-supplied regex could hang the process.**
+`new RegExp(opts.re)` runs against arbitrary document text with no complexity guard.
+**MEASURED:** `/(a+)+$/` against 28 `a`s + `!` takes **356 ms**, and the cost is **exponential** — ~40
+characters is minutes, and the input is the CALLER'S documents. JavaScript has no regex timeout, so
+the guard must be static. *Fix:* the nested-quantifier family (`(a+)+`, `(a*)*`, `(a|a)*`, `a++`) is
+refused by name as `JM_SCAN_RE_UNSAFE`. **Stated honestly as a HEURISTIC, not a proof:** it catches
+the classic shape, and a pattern it misses is still bounded by the text it runs against. The
+alternative is a silent hang. **Verified:** the three evil patterns are refused, three ordinary
+patterns (`tombstone`, `tomb[a-z]+`, `^(ledger|harvest)$`) are unaffected, and the rig's T7 hostile-
+input angle still passes.
+
+**THE THROUGH-LINE FOR BOTH:** the failure mode is not a wrong answer, it is a service that stops —
+and in both cases the code was doing exactly what it was written to do. A guard that only covers the
+HAPPY input is not a guard; it is a guard for the tests.

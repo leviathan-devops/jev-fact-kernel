@@ -169,3 +169,32 @@ describe("watch.ts:100 — a transient tick failure must not end the daemon", ()
     } finally { rmSync(home, { recursive: true, force: true }); }
   }, 30000);
 });
+
+describe("scan.ts:59 — a user-supplied pattern is an availability boundary", () => {
+  test("test_catastrophic_backtracking_patterns_are_refused", () => {
+    // MEASURED: `/(a+)+$/` against 28 `a`s + `!` takes **356 ms**, and the cost is EXPONENTIAL — ~40
+    // characters is minutes, and the input is the CALLER'S documents. JavaScript has no regex
+    // timeout, so the guard has to be static. It is a HEURISTIC (documented as one): it catches the
+    // classic nested-quantifier family, and a pattern it misses is still bounded by the text it runs
+    // against. The alternative is a silent hang.
+    const home = mkdtempSync(join(tmpdir(), "jm-re-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "a.md"), "tombstone alpha");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    delete env.JM_LEDGER;
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env, timeout: 30000 });
+    try {
+      run("index", corpus, "--name", "r");
+      for (const evil of ["(a+)+$", "(a*)*", "a++"]) {
+        const r = run("scan", "r", "--re", evil);
+        expect(r.stdout.toString() + r.stderr.toString()).toContain("JM_SCAN_RE_UNSAFE");
+      }
+      // and ordinary patterns are unaffected
+      for (const ok of ["tombstone", "tomb[a-z]+", "^(ledger|harvest)$"]) {
+        const r = run("scan", "r", "--re", ok);
+        expect(r.stdout.toString() + r.stderr.toString()).not.toContain("JM_SCAN_RE_UNSAFE");
+      }
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
