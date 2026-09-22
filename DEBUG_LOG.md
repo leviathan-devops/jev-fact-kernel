@@ -2671,3 +2671,43 @@ added here. **Not reproducible in 8 attempts.** Consistent with the T5-style tim
 EN-082 (a claim lease / sweep interaction under load). **State: OPEN, one occurrence in 8 runs, no
 name captured — the resume condition is the next occurrence, and the runner now prints failing rows
 (EN-070) so it will name itself.**
+
+## EN-098 — the medium tier: four more, all "accepted garbage"
+Continuing the 113 mediums. Five adjudicated this turn, four confirmed; the common shape is a value
+the code TRUSTS that nobody checked.
+
+**cli.ts:132 · MEDIUM · `kind` was CAST, not validated.**
+`list.push({ name, kind: kind as Target["kind"], root })` told the type system to trust an
+operator-supplied string, so `jm target add x bogus /path` registered a target **whose kind has no
+adapter** — and the mistake surfaced much later at index time with no connection to the command that
+caused it. *Fix:* unknown kinds are refused by name. **Verified:** `bogus` →
+`JM_TARGET_KIND: "bogus" has no adapter (known: fs, jsonl, sqlite)`, exit 2.
+
+**cli.ts:121 · MEDIUM · the tilde was expanded for the CHECK and not for the STORE.**
+The existence check expanded `~`, then the registry stored the **raw** `~/…` — so validation passed
+against `$HOME/...` while every later reader saw a different string, and any reader that forgot to
+expand saw a path that does not exist. *Fix:* one expansion, stored absolute. **Verified:**
+`target add tl fs '~/jmtilde'` → the registry holds `/home/leviathan/jmtilde`.
+
+**cli.ts:46/52 · MEDIUM · `VALUE_FLAGS` was STILL missing eight flags.**
+The earlier fix (M-B) added four (`lex`, `re`, `min`, `field`) and left eight: `cases`, `interval`,
+`k`, `key`, `questions`, `replay`, `schema`, `task`. `positionals()` only skips the next token for
+names in the set, so those flags' VALUES leaked into positionals — and `evaluate --cases <file>` is
+exactly a call where a stray positional matters. *Fix:* all eight added, taken from the CODE.
+**AND THE SET IS HAND-MAINTAINED, SO IT WILL DRIFT AGAIN** — the remedy is not vigilance but
+derivation, so the pin **derives** the check (every `flag("…")` in the source must be declared) and
+the next drift fails there instead of silently at a call site. `missing == []`, 37 flags.
+
+**schema.ts:4 · MEDIUM · `SCHEMA_VERSION` was written and never read.**
+`INSERT OR IGNORE INTO meta('schema_version', …)` on every open, and **no comparison anywhere**.
+`SCHEMA_SQL` is all `CREATE TABLE IF NOT EXISTS`, which leaves an existing table's shape untouched —
+so a version bump would **silently reuse an old store** and the first symptom would be a confusing
+`no such column` from deep inside a verb. *Fix:* the stored version is read back and a mismatch is
+refused by name, at the one moment the operator can act on it. **Verified:** forcing a store to claim
+v99 → `JM_SCHEMA_MISMATCH: … was built with schema v99 but this build expects v1 — re-index into a
+fresh store`.
+
+**THE PATTERN, AND IT IS NOW THE DOMINANT ONE IN THIS TIER:** not wrong answers, but **trusted
+inputs** — a cast string, an unexpanded path, a hand-maintained set, a written-and-unread version.
+Each is a check that the code LOOKS like it performs. **A value that crosses a boundary unchecked is
+a value the boundary does not exist for.**

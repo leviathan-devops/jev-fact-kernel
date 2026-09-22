@@ -40,6 +40,18 @@ export function openDb(path: string): Database {
   // indexers: rounds 1-5 clean, round 6 lost a run. `INSERT OR IGNORE` is idempotent and lets the
   // database arbitrate the race instead of the application.
   db.run("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+  // ...AND THE VERSION IS READ BACK (audit schema.ts:4). It was written and never compared, so a
+  // future `SCHEMA_VERSION` bump would REUSE an old store silently: `SCHEMA_SQL` is all
+  // `CREATE TABLE IF NOT EXISTS`, which leaves an existing table's shape untouched, so the code would
+  // run against a schema it was not written for and the first symptom would be a confusing
+  // `no such column` from deep inside a verb. A store built by a different version is refused BY NAME,
+  // with the remedy in the message, at the one moment the operator can act on it.
+  const stored = (db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value?: string } | null)?.value;
+  const storedVersion = stored === undefined ? SCHEMA_VERSION : Number(stored);
+  if (!Number.isFinite(storedVersion) || storedVersion !== SCHEMA_VERSION) {
+    db.close();
+    throw new Error(`JM_SCHEMA_MISMATCH: ${path} was built with schema v${stored} but this build expects v${SCHEMA_VERSION} — re-index into a fresh store (the old one needs an explicit migration)`);
+  }
   return db;
 }
 

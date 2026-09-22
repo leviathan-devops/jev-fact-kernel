@@ -56,7 +56,14 @@ const VALUE_FLAGS = new Set(["name", "include", "exclude", "limit", "where", "ft
   // treated as a POSITIONAL. `jm scan <idx> --lex tombstone` therefore put "tombstone" in
   // positionals — harmless for `scan` (it ignores extras) and a real bug for any verb that
   // reads positional[1], which is exactly the kind of defect that hides behind one verb.
-  "lex", "re", "min", "field", "include-glob", "exclude-glob"]);
+  "lex", "re", "min", "field", "include-glob", "exclude-glob",
+  // THE REST OF THEM, taken from the CODE rather than from a reading of it: every remaining name that
+  // `flag("…")` actually consumes. The first pass added four (`lex`, `re`, `min`, `field`) and missed
+  // these eight, so `--cases`, `--interval`, `--k`, `--key`, `--questions`, `--replay`, `--schema` and
+  // `--task` still leaked their VALUES into positionals — and `evaluate --cases <file>` is exactly the
+  // kind of call where a stray positional matters. **A hand-maintained set that must mirror the code
+  // will drift from it; the remedy is to derive it, and this comment is the note that it was derived.**
+  "cases", "interval", "k", "key", "questions", "replay", "schema", "task"]);
 function positionals(): string[] {
   const out: string[] = [];
   for (let i = 1; i < argv.length; i++) {
@@ -128,15 +135,29 @@ async function main(): Promise<number> {
     if (sub === "add") {
       const [name, kind, root] = [argv[2], argv[3], argv[4]];
       if (!name || !kind || !root) { console.error("usage: jm target add <name> <kind> <root>"); return 2; }
-      // FAIL WHERE THE MISTAKE IS MADE: registering a root that does not exist used to succeed
-      // silently, so the surprise arrived at INDEX time (the drill's G2b). A registry is a
-      // pointer store, and a pointer to nothing is a client error at the moment it is written.
-      if (!existsSync(root.replace(/^~(?=\/|$)/, homedir()))) {
+      // THE KIND IS VALIDATED, NOT CAST (audit cli.ts:132). `kind as Target["kind"]` told the type
+      // system to trust an operator-supplied string, so `jm target add x bogus /path` registered a
+      // target whose kind has NO ADAPTER — and the mistake surfaced much later, at index time, as a
+      // failure with no connection to the command that caused it. The cast removed exactly the check
+      // that would have caught it. This is the same "accepted garbage" class as the budget key, the
+      // recipe `fail` value and the job id.
+      const KINDS = ["fs", "jsonl", "sqlite"];
+      if (!KINDS.includes(kind)) {
+        console.error(`JM_TARGET_KIND: "${kind}" has no adapter (known: ${KINDS.join(", ")})`);
+        return 2;
+      }
+      // THE TILDE IS EXPANDED ONCE, HERE, FOR EVERYTHING THAT FOLLOWS (audit cli.ts:121). The
+      // existence check expanded it and the REGISTRY then stored the RAW `~/…`, so the stored pointer
+      // and the validated path disagreed: validation passed against `$HOME/...` while every later
+      // reader had to expand it again — and any reader that forgot saw a path that does not exist.
+      // Storing the ABSOLUTE path is what makes "the registry stores pointers" true.
+      const expandedRoot = root.replace(/^~(?=\/|$)/, homedir());
+      if (!existsSync(expandedRoot)) {
         console.error(`JM_TARGET_MISSING: ${root} does not exist (the registry stores pointers, not promises)`);
         return 2;
       }
       const list = loadTargets().filter((t) => t.name !== name);
-      list.push({ name, kind: kind as Target["kind"], root });
+      list.push({ name, kind: kind as Target["kind"], root: expandedRoot });
       saveTargets(list);
       // NAME THE REGISTRY THAT WAS WRITTEN. A registry is a pointer store, and an operator with two
       // stores (a scratch JM_HOME and the real ~/.jm) cannot tell from `target X -> root` WHICH one

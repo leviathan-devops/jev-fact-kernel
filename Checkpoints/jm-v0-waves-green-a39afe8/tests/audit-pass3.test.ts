@@ -4,7 +4,7 @@
 // more high/critical findings — including two in code written the SAME DAY. Each probe below is the
 // settlement that turned a hypothesis into a defect.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
@@ -605,5 +605,79 @@ describe("evaluate.ts — the replay diff, the dead parameter, and the unchecked
     expect(replayDiff(mk(0.9, 0.2) as never, mk(0.1, 0.2) as never).length).toBe(1);
     expect(replayDiff(mk(0.7) as never, mk(0.3) as never).length).toBe(1);
     expect(replayDiff(two(0.9, 0.1) as never, two(0.9, 0.8) as never).map((d) => d.id)).toEqual(["c2"]);
+  });
+});
+
+describe("cli.ts — accept-garbage: the kind, the tilde, and the flag set", () => {
+  test("test_target_add_validates_kind_and_stores_an_expanded_root", () => {
+    // THREE defects in one handler, all the "accepted garbage" class:
+    //  · `kind as Target["kind"]` CAST an operator string, so `target add x bogus /path` registered a
+    //    target with NO adapter and the failure surfaced much later at index time.
+    //  · the existence check expanded `~` and the registry then stored the RAW path, so validation
+    //    passed against one path while every later reader saw another.
+    //  · `VALUE_FLAGS` (hand-maintained) had drifted from the code: eight consumed flags were absent,
+    //    so their VALUES leaked into positionals.
+    const home = mkdtempSync(join(tmpdir(), "jm-kind-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { loadTargets } = require("../src/store/db") as typeof import("../src/store/db");
+      const dir = join(home, "c");
+      mkdirSync(dir, { recursive: true });
+      const run = (...args: string[]) => Bun.spawnSync({ cmd: [...CLI, ...args], cwd: REPO, env: { ...process.env } as Record<string, string>, timeout: 60000 });
+
+      // (1) a bogus kind is refused BY NAME
+      const bad = run("target", "add", "x", "bogus", dir);
+      expect(bad.exitCode).toBe(2);
+      expect(bad.stderr.toString()).toContain("JM_TARGET_KIND");
+      // (2) a real kind registers, and the stored root is ABSOLUTE (no `~` left for a reader to forget)
+      expect(run("target", "add", "ok", "fs", dir).exitCode).toBe(0);
+      const stored = loadTargets().find((t) => t.name === "ok")!;
+      expect(stored.root.startsWith("/")).toBe(true);
+      expect(stored.root).toBe(dir);                      // the realpath, not a `~` form
+      expect(stored.kind).toBe("fs");
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("test_value_flags_cover_every_consumed_flag", () => {
+    // `positionals()` only skips the next token for names IN the set, so a consumed flag that is
+    // absent puts its VALUE into positionals. The set is hand-maintained and had drifted (first four
+    // missing, then eight more). This DERIVES the check from the source rather than restating it, so
+    // the next drift fails here instead of silently at a call site.
+    const src = readFileSync(join(REPO, "src", "cli.ts"), "utf8");
+    const start = src.indexOf("const VALUE_FLAGS");
+    const setText = src.slice(start, src.indexOf("]);", start));
+    const declared = new Set([...setText.matchAll(/"([a-z-]+)"/g)].map((m) => m[1]));
+    const consumed = new Set([...src.matchAll(/flag\("([a-z-]+)"\)/g)].map((m) => m[1]));
+    const missing = [...consumed].filter((f) => !declared.has(f)).sort();
+    expect(missing).toEqual([]);                          // every consumed flag must be declared
+  });
+});
+
+describe("store/db.ts:4 — a store built by another SCHEMA_VERSION is refused by name", () => {
+  test("test_schema_version_mismatch_is_refused", () => {
+    // `SCHEMA_VERSION` was written into `meta` on open and NEVER read back. `SCHEMA_SQL` is all
+    // `CREATE TABLE IF NOT EXISTS`, which leaves an existing table's shape untouched — so a version
+    // bump would REUSE an old store silently and the first symptom would be a confusing `no such
+    // column` from deep inside a verb. Now the stored version is compared, and a mismatch is named at
+    // the one moment the operator can act on it.
+    const home = mkdtempSync(join(tmpdir(), "jm-sv-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { openDb, indexPathFor } = require("../src/store/db") as typeof import("../src/store/db");
+      const db = openDb(indexPathFor("sv"));
+      db.run("UPDATE meta SET value='99' WHERE key='schema_version'");
+      db.close();
+      expect(() => openDb(indexPathFor("sv"))).toThrow(/JM_SCHEMA_MISMATCH/);
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
