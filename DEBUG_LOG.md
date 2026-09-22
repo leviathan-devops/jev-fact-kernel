@@ -2803,3 +2803,55 @@ drifted copy (FAILS) and reverting (PASSES).
 this session. `fatalJudgeError` was extracted in D-041 precisely to end it, and `decision-tree` kept
 its own copies because they predated the extraction and nothing forced a reconciliation. **A shared
 policy only binds the callers that use it.**
+
+## EN-101 — THE HOST SUITE: the deployed surface proven, and a test-isolation defect it found by accident
+**Triggered by the operator: "write the host testing suite".** The deep-host-testing law inverts the
+container rig: the subject is the DEPLOYED surface, not the source tree, and the evidence bar is a tool
+result / a store row / a process — never prose.
+
+**WHAT THE SUITE IS.** `scripts-host-suite.sh` — 12 checks over six phases. It differs from the
+container rig in the one way that matters: it invokes the launcher **the registry names**, with **the
+registry's own env**, against **the REAL store**. The rig proves the code works; this proves the
+DEPLOYMENT works.
+
+```
+$ ./scripts-host-suite.sh
+  H0  the deploy ground truth      launcher executable · JM_HOME exists · bundle sha 2f3294c3
+  H1  the protocol, REGISTRY env   tools/list -> jev_query,jev_find,jev_decide,jev_index
+  H2  THE RECEIPT                  a real row from the real 159 MB shadow index, with a sha256
+  H3  THE BEHAVIOR DELTA           the same call missing vs present -> JM_INDEX_MISSING vs rows
+  H4  THE SEAM                     the store's own counts: files=11832 docs=11306
+  H5  the CLI shim, cwd=/          21 verbs from a foreign directory
+  H6  the launcher adverse         no PATH/HOME -> a named 127 · a SYMLINK works · a null frame
+                                   is named and the server SURVIVES
+  JM_HOST_SUITE PASS — PASS 12 · FAIL 0
+```
+
+**THE EVIDENCE CLASSES ARE THE POINT** (per the skill's non-circular bar): H2 is a RECEIPT — the row
+carries a path and a sha256 the server could not fabricate. H3 is the BEHAVIOR DELTA — the same tool
+call against an index that exists and one that does not must behave DIFFERENTLY, or the surface is not
+reading the store at all. H4 is the SEAM — the store's own row counts, read directly with sqlite, not
+the tool's word for it.
+
+**AND THE SUITE FOUND A TEST-ISOLATION DEFECT BY ACCIDENT — in my own work.**
+Its H2 phase prints what the real store holds, and it held **TWENTY-TWO indexes**:
+```
+  all.sqlite 162MB · shadow-kill.sqlite 159MB · shadow-budget.sqlite · shadow-probe.sqlite ·
+  adv · decisions · ev · h5-Closed · h5-closed · h5-opne · leak · live · nu · ok ·
+  two · two2 · work            (plus leak.sqlite-shm and shadow.sqlite-shm WAL sidecars)
+```
+**Only THREE were real** (the registry's targets: `shadow`, `reports`, `demo`). Every other one was
+litter from a probe that ran with the DEFAULT `JM_HOME` (`~/.jm`) instead of a scratch one —
+**465 MB of it, in the operator's own store, accumulated silently over hours.**
+
+**THE CLASS, and the skill names it:** *"does my test corrupt the system under test?"* — the
+test-isolation audit. A suite that runs against shared storage must use an env-overridden path. I used
+scratch stores in most probes and MISSED IT in several, and nothing surfaced the damage until the host
+suite happened to print the directory.
+
+**FIXED AND VERIFIED:** 310 MB removed; `shadow.sqlite` (159 MB) and `reports.sqlite` (2.8 MB) kept;
+**the suite re-run 12/12 against the cleaned store** and the real index still reads
+`files: 11832 live · 0 gone · 11306 with text`.
+
+**THE LESSON:** the host suite's H0/H2 phases are worth their cost for the inspection alone. **A test
+that only asserts what it was written to assert never finds what it broke.**
