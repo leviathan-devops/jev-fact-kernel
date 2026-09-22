@@ -20,7 +20,17 @@ export function redact(value: unknown): unknown {
       .replace(/[\w.+-]{1,64}@[\w-]{1,255}\.[\w.]{1,255}/g, "[email]")
       .replace(/\b[a-f0-9]{32,128}\b/gi, "[hex]")
       .replace(/\b(sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,128}/g, "[secret]")
-      .replace(/\+?\d[\d ()-]{7,20}\d/g, "[phone]");
+      // THE PHONE PATTERN REQUIRES PHONE STRUCTURE (audit cache.ts:23). The loose form
+      // `/\+?\d[\d ()-]{7,20}\d/` matched any 9–22 character run of digits — so an ordinary
+      // numeric ID was redacted to `[phone]`, and **two states differing only in such an ID
+      // produced the SAME fingerprint**: MEASURED, `{session_id: "123456789"}` and
+      // `{session_id: "987654321"}` hashed identically, so the cache served one state's answer for
+      // the other. A redactor inside a CACHE KEY must not erase the difference between two inputs;
+      // the marker has to be narrower than the data it stands for. A real phone number carries a
+      // leading `+`, a space, a parenthesis or a dash — a bare digit run does not, and is left
+      // intact. This is the same rule as the email/hex ordering above it: REDACT THE SECRET, NOT
+      // THE SHAPE.
+      .replace(/(?:\(\d{1,4}\)[\d -]{5,18}\d|\+\d[\d ()-]{6,20}\d|\d{1,4}[ -]\d{2,4}[ -]?\d{2,4}(?:[ -]\d{2,4})?)/g, "[phone]");
   }
   if (Array.isArray(value)) return value.map(redact);
   if (value instanceof Date) return { __date: value.toISOString() };          // Date has no enumerable keys; collapse would erase it

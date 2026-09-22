@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { callSystemOne } from "../src/judge/transport";
 import { Judge } from "../src/judge/client";
 import { openDb, indexPathFor } from "../src/store/db";
+import { fingerprint } from "../src/judge/cache";
 
 describe("transport:49 — the oversized-payload cap must not be disableable by a typo", () => {
   test("test_body_cap_override_is_validated", async () => {
@@ -72,6 +73,27 @@ describe("client.ts:61 — an UNMEASURED response must not be cached", () => {
       if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
       if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+describe("cache.ts:23 — a redactor inside a CACHE KEY must not erase the input's identity", () => {
+  test("test_redaction_does_not_collapse_distinct_states", () => {
+    // MEASURED BEFORE THE FIX: `{session_id: "123456789"}` and `{session_id: "987654321"}` produced
+    // the SAME fingerprint, because the phone pattern `/\+?\d[\d ()-]{7,20}\d/` matched any 9–22
+    // character digit run and redacted an ordinary ID to `[phone]`. The cache then served one
+    // state's answer for the other — a wrong answer to the wrong question, with nothing erroring.
+    // A redactor inside a cache key has to be NARROWER than the data it stands for.
+    const mk = (id: string) => ({ session_id: id });
+    expect(fingerprint("m", "v1", mk("123456789"))).not.toBe(fingerprint("m", "v1", mk("987654321")));
+    expect(fingerprint("m", "v1", mk("1234567890123456"))).not.toBe(fingerprint("m", "v1", mk("9999999999999999")));
+  });
+
+  test("test_redaction_still_covers_real_phone_shapes", () => {
+    // The other half: the marker must still do its job. Two states differing only in a REAL phone
+    // number share a fingerprint, because the number is the secret being kept out of the key.
+    const mk = (c: string) => ({ contact: c });
+    for (const [a, b] of [["+1 555 123 4567", "+1 555 999 8888"], ["(555) 123-4567", "(555) 999-8888"], ["555-123-4567", "555-999-8888"], ["+44 20 7946 0958", "+44 20 7000 0000"]]) {
+      expect(fingerprint("m", "v1", mk(a))).toBe(fingerprint("m", "v1", mk(b)));
     }
   });
 });
