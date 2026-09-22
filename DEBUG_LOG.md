@@ -1977,3 +1977,35 @@ The sweep's rule was never wrong about DELETION; it was wrong about what counts 
   under the COPY's `Checkpoints/`, so it is inert.
 - **PROVEN:** `./scripts-seal.sh` → exit 0, `context_management: 11 canon present + extras:
   RUNTIME_SEAT`, and the copy's battery **0 fail**.
+
+## EN-077 — two more of the deeper pass's highs: a silent ledger, and a field nobody read
+Both are the shape this build keeps meeting — **an ABSENT value read as a specific one, and reported
+as a measurement.**
+
+**ledger:51 · HIGH · a run that could not be RECORDED reported clean success.**
+```
+$ JM_LEDGER=/proc/nonexistent/ledger.jsonl jm index <dir> --name lg
+JM_INDEX_OK files=1 changed=1 gone=0 text=1 ms=2 db=…     exit=0        <- and NO row anywhere
+```
+`ledgerSafe()` captures a write failure into `ledgerFailed`, and **only the catch branch inspected
+it** — so on the success path the failure was discarded. L3 is *"no row, no run"*: the ledger is the
+record of what ran, and a run that cannot be recorded was reporting exactly the clean success the law
+exists to prevent. *Fix:* the success path throws `JM_LEDGER_FAILED` with a message stating what
+actually happened — **"the run COMPLETED but its ledger row was not written"** — because the work HAS
+happened by that point. **Verified:** unwritable ledger → exit 2 with `JM_LEDGER_FAILED` and no
+`JM_INDEX_OK`; writable ledger → exit 0 and one row.
+
+**evaluate:35 · HIGH · `pOf` read a field the judge never writes.**
+`pOf` read `a.probs`; the canonical field everywhere else is **`probabilities`** (`policy.ts:17`,
+`policy.ts:92`, `JudgeResponse`). A choice-shaped answer therefore fell through EVERY branch and
+scored **0** — a confident "no" — for every case, and `evaluate` computed its agreement rate and
+Brier score over those fabricated zeros, which still look like measurements.
+*Fix:* read `probabilities` (canonical) with `probs` kept as a legacy alias.
+**Verified against a local judge returning the canonical shape:** `agreement=100.0% brier=0.0100`
+(0.9 vs an oracle of 1). With the field unread it is `agreement=0% brier=1.0000` — **the arithmetic
+is the evidence**, so the pin asserts the numbers rather than a proxy.
+
+**AND A TEST-HARNESS DEFECT FOUND WHILE PINNING IT:** the first version of the pin used
+`Bun.spawnSync` against a judge served **by the test process itself** — `spawnSync` blocks the event
+loop, so the child's request could never be answered and the run produced **empty output**. An
+awaited `Bun.spawn` leaves the loop free. (The same class as D-059: the instrument, not the product.)

@@ -28,14 +28,20 @@ export interface EvalResult { cases: CaseResult[]; metrics: EvalMetrics; ms: num
 
 /** Answers may be a probability or a label; both are normalised to a number for scoring. */
 function pOf(answered: unknown, threshold: number): number {
-  const a = answered as { noul?: number; probs?: Record<string, number>; answer?: string; bool?: boolean } | undefined;
+  // `probabilities` IS THE CANONICAL FIELD (`policy.ts:17`, `policy.ts:92`, `JudgeResponse`), and
+  // this reader only knew `probs` — so a choice-shaped answer fell through every branch and scored
+  // **0**, a confident "no", for EVERY case. The Brier score and the agreement rate were then
+  // computed over those fabricated zeros and still looked like measurements. `probs` is kept as a
+  // legacy alias. Found by the audit (evaluate:35) — the same renamed-field class as D-039/D-042.
+  const a = answered as { noul?: number; probabilities?: Record<string, number>; probs?: Record<string, number>; answer?: string; bool?: boolean } | undefined;
   if (!a) return 0;
   if (typeof a.noul === "number") return a.noul;
   if (typeof a.bool === "boolean") return a.bool ? 1 : 0;
-  if (a.probs) {
-    const yes = Object.entries(a.probs).find(([k]) => /^(yes|true|act|1)$/i.test(k));
+  const dist = a.probabilities ?? a.probs;
+  if (dist) {
+    const yes = Object.entries(dist).find(([k]) => /^(yes|true|act|1)$/i.test(k));
     if (yes) return yes[1];
-    const vals = Object.values(a.probs);
+    const vals = Object.values(dist);
     if (vals.length) return Math.max(...vals);
   }
   if (typeof a.answer === "string" && /^none$/i.test(a.answer)) return 0;
