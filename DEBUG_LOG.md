@@ -1889,3 +1889,23 @@ CODE, and the conclusion — that a read therefore mutates the store — **does 
 the index's mtime is **UNCHANGED** across a query. The writes it names are idempotent on an existing
 index (the file exists, the schema already matches, WAL is already set). **An audit is a SOURCE, not a
 verdict** — and this is the sixth claim in this session that a probe settled against the reviewer.
+
+## EN-074 — D-059: the test sandbox leaked a DELETED path into every later test
+- **HOW IT SURFACED:** writing the M-J pin. The test spawned a real `jm index @j --queued --job j1`,
+  which reported **`JM_QUEUED done=1 pending=0 running=0 files=1`** — a successful job — and then its
+  own sandbox contained **no `ledger.jsonl`**. Alone the test passed; in the full suite it failed.
+- **ROOT CAUSE — a defect in the TEST INFRASTRUCTURE, not the product:** `tests/helpers.ts`'s
+  `makeSandbox()` set `process.env.JM_HOME` and `process.env.JM_LEDGER` **process-globally** and
+  `cleanup()` removed only the DIRECTORIES. So after any sandbox-using test, the environment pointed
+  at a path that no longer existed. A later test that spawns a child inherits it — and
+  `ledgerPath()` honours **`JM_LEDGER` before `JM_HOME`** (`src/ledger.ts:5`), so the child wrote its
+  ledger into the PREVIOUS test's deleted sandbox.
+- **WHY IT MATTERS BEYOND ONE TEST:** this is the H-6/H-7 class — an environment variable set and
+  never restored — in the layer that verifies everything else. It means test ORDER could silently
+  change outcomes, which is the definition of a suite you cannot trust.
+- **FIX:** `cleanup()` now restores both variables (by **DELETE** when they were unset — assigning
+  `undefined` stores the literal string and `??` would treat it as present), and the M-J test deletes
+  `JM_LEDGER` from its child's env so it does not depend on that fix.
+- **PROVEN:** the suite went from `186 pass / 1 fail` to **`187 pass / 0 fail`**, and the failing
+  case's own diagnostic is what identified the leak (`home contents=[index .bun c targets.json jobs]`
+  — no ledger, while the job reported success).

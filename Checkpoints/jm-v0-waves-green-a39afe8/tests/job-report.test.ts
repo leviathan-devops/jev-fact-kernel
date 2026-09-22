@@ -51,7 +51,13 @@ describe("C8 job reconciliation", () => {
       jdb.close();
       const r = jobReport(db, "j2");
       expect(r.queue.running).toBe(1);
-      expect(r.reconciled).toBe(false);              // a leftover claim is NOT reconciled
+      // THE PROPERTY IS UNCHANGED; ITS NAME IS NOW HONEST. A leftover claim is not a C8 failure —
+      // C8 is "the ledger accounts for the work", and a stuck queue row does not make the ledger
+      // lie. It is the DUP LAW's territory, so the assertion moved to `dup_clean` when the audit
+      // showed `reconciled` had been computing that law all along while claiming C8. Both fields
+      // are now computed and both are asserted: this test owns `dup_clean`, the C8 test owns
+      // `reconciled`.
+      expect(r.dup_clean).toBe(false);               // a leftover claim is NOT dup-clean
       expect(r.note).toContain("1 rows left running");
       db.close();
     } finally { sb.cleanup(); }

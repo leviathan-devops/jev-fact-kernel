@@ -5,12 +5,14 @@
 // the next reader can re-run the settlement rather than trust this file.
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openSource, rowsOf } from "../src/adapters/sqlite";
 import { validateRecipe } from "../src/verbs/decision-tree";
 import { safeName } from "../src/store/db";
+
+const REPO = join(import.meta.dir, "..");
 
 describe("H-2 — a table without a PRIMARY KEY must not collapse its rows", () => {
   test("test_sqlite_rows_without_a_pk_keep_their_identity", () => {
@@ -76,5 +78,54 @@ describe("M-H — safeName must be INJECTIVE, like safeTargetName", () => {
     }
     // deterministic: the same name always resolves the same way
     expect(safeName("my index")).toBe(safeName("my index"));
+  });
+});
+
+describe("M-J — `reconciled` must implement C8, not a different property", () => {
+  test("test_job_reconciliation_reports_the_DOCUMENTED_predicate", () => {
+    // The spec's C8 is "rows == decisions + runs". The field computed `dup === 0 && running === 0`
+    // — the DUP LAW, a real property but NOT the criterion its name claims — so a ledger holding a
+    // row its own arithmetic could not explain still reported `reconciled: YES`. The two properties
+    // are now computed and reported separately, with the OPERANDS shown so the equality is
+    // checkable rather than trusted.
+    const home = mkdtempSync(join(tmpdir(), "jm-mj-"));
+    const corpus = join(home, "c");
+    mkdirSync(corpus, { recursive: true });
+    writeFileSync(join(corpus, "a.md"), "alpha");
+    const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home } as Record<string, string>;
+    // `ledgerPath()` honours `JM_LEDGER` BEFORE `JM_HOME`, so an inherited one would send this job's
+    // ledger to ANOTHER test's sandbox — which is exactly how this test failed once, reporting
+    // `JM_QUEUED done=1` with no ledger in its own home. helpers.ts now restores the env on cleanup;
+    // this line makes the case independent of that.
+    delete env.JM_LEDGER;
+    const J = [process.execPath, "run", "src/cli.ts"];
+    const run = (...args: string[]) => Bun.spawnSync({ cmd: [...J, ...args], cwd: REPO, env, timeout: 60000 });
+
+    // PROVE THE SETUP. The first draft asserted `reconciled: YES` here — which is ALSO what an
+    // EMPTY ledger reports (0 === 0), so the assertion passed whether or not the job ran, and the
+    // test only failed later on an ENOENT that looked like a mystery. Each step is now checked.
+    const add = run("target", "add", "j", "fs", corpus);
+    expect(add.exitCode).toBe(0);
+    const idx = run("index", "@j", "--queued", "--job", "j1");
+    expect(idx.exitCode).toBe(0);
+    const lp = join(home, "ledger.jsonl");
+    if (!existsSync(lp)) throw new Error(`the job wrote no ledger: idx.exit=${idx.exitCode} stdout=${idx.stdout.toString().trim().slice(0,120)} | home contents=[${readdirSync(home).join(" ")}]`);
+
+    const ok = run("report", "--job", "j1", "--name", "j").stdout.toString();
+    expect(ok).toMatch(/C8 operands:\s+rows=1 decisions=0 runs=1/);   // one run, no decisions
+    expect(ok).toMatch(/reconciled:\s+YES/);
+
+    // THE NEGATIVE HALF IS AN UNACCOUNTED KIND, not an empty ledger: emptying it gives
+    // rows=0 decisions=0 runs=0 and 0 === 0 is vacuously reconciled — the honest reading of
+    // "nothing in the ledger is unaccounted for". The failure C8 can catch is a row that names the
+    // job and is NEITHER a decision NOR a run.
+    const rows = readFileSync(lp, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
+    rows.push({ verb: "mystery", kind: "tool", status: "ok", cost_usd: 0, args: { job: "j1" } });
+    writeFileSync(lp, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const bad = run("report", "--job", "j1", "--name", "j").stdout.toString();
+    rmSync(home, { recursive: true, force: true });
+    expect(bad).toMatch(/C8 operands:\s+rows=2 decisions=0 runs=1/);   // the operands are SHOWN
+    expect(bad).toMatch(/reconciled:\s+NO/);                          // and the predicate BITES
+    expect(bad).toMatch(/dup clean:\s+YES/);                          // the other property is unchanged
   });
 });

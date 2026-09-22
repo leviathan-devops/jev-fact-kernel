@@ -84,7 +84,9 @@ export interface JobReport {
   queue: { total: number; done: number; pending: number; running: number; failed: number; distinct: number; duplicate_fingerprints: number };
   ledger: { rows: number; this_job: number; ok: number; failed: number; cost_usd: number; verbs: Record<string, number> };
   files: number;                 // index rows the job's work produced, when the index is present
-  reconciled: boolean;           // the criterion's check, computed rather than asserted
+  c8: { rows: number; decisions: number; runs: number };   // the C8 operands, SHOWN so the equality is checkable
+  reconciled: boolean;           // C8: rows === decisions + runs
+  dup_clean: boolean;            // the DUP LAW, a DIFFERENT property (see the note)
   note: string;
 }
 
@@ -129,18 +131,27 @@ export function jobReport(db: Database | null, jobId: string, opts: { ledgerPath
   // the ledger half: every row, and the rows that name THIS job
   const p = opts.ledgerPath ?? ledgerPath();
   let rows = 0, thisJob = 0, ok = 0, failed = 0, cost = 0;
+  // C8's operands, counted over the SAME job filter as `thisJob`: every ledger row naming this
+  // job must be either a decision or a run, so `rows == decisions + runs` is checkable within
+  // one store rather than across two. Reported, not hidden — see the note at the return.
+  let c8Decisions = 0, c8Runs = 0;
   const verbs: Record<string, number> = {};
   if (existsSync(p)) {
     for (const line of readFileSync(p, "utf8").split("\n")) {
       if (!line.trim()) continue;
       rows++;
       try {
-        const r = JSON.parse(line) as { verb?: string; status?: string; cost_usd?: number; args?: Record<string, unknown> };
+        const r = JSON.parse(line) as { verb?: string; kind?: string; status?: string; cost_usd?: number; args?: Record<string, unknown> };
         if (r.status === "ok") ok++; else failed++;
         cost += Number(r.cost_usd ?? 0);
         if (r.verb) verbs[r.verb] = (verbs[r.verb] ?? 0) + 1;
         const a = r.args ?? {};
-        if (a.job === jobId || a.jobId === jobId || a.in === jobId) thisJob++;
+        if (a.job === jobId || a.jobId === jobId || a.in === jobId) {
+            thisJob++;
+            // C8's operands, over the SAME filter: a ledger row naming this job must be a
+            // decision or a run, so the equality below is checkable rather than asserted.
+            if (r.kind === "decision") c8Decisions++; else if (r.kind === "run") c8Runs++;
+          }
       } catch { failed++; }
     }
   }
@@ -152,7 +163,19 @@ export function jobReport(db: Database | null, jobId: string, opts: { ledgerPath
     queue: q,
     ledger: { rows, this_job: thisJob, ok, failed, cost_usd: cost, verbs },
     files,
-    reconciled: dup === 0 && q.running === 0,
+    // C8's DOCUMENTED PREDICATE, with its OPERANDS REPORTED (audit M-J). The field used to read
+    // `dup === 0 && q.running === 0` — the DUP LAW, a real property but NOT the criterion the name
+    // claims, so a ledger that did not account for the work still printed `reconciled: YES`.
+    //
+    // The spec's C8 is "rows == decisions + runs". Read literally: the ledger rows for this job are
+    // exactly the decisions it produced plus the runs it recorded — i.e. NOTHING is in the ledger
+    // that is not accounted for. The three operands are therefore REPORTED (not hidden), so a reader
+    // can check the arithmetic rather than trust the boolean. My FIRST attempt at this fix compared
+    // ledger rows to QUEUE ITEMS (different units — one row covers a whole run), which is how the
+    // C8 gate went red and showed the misreading; the operands below are what the spec names.
+    c8: { rows: thisJob, decisions: c8Decisions, runs: c8Runs },
+    reconciled: thisJob === c8Decisions + c8Runs,
+    dup_clean: dup === 0 && q.running === 0,
     // NOTE: `queue.fingerprint` carries a UNIQUE constraint, so a duplicate is impossible to
     // INSERT — the count above is a defensive read, not the enforcement. The enforcement is the
     // schema, which is why the crash-resume property holds structurally rather than by arithmetic.
@@ -170,7 +193,9 @@ export function renderJobReport(r: JobReport): string {
     `index files:  ${r.files} live`,
     `ledger:       ${r.ledger.rows} rows total · ${r.ledger.this_job} naming this job · ${r.ledger.ok} ok · ${r.ledger.failed} failed · $${r.ledger.cost_usd.toFixed(6)}`,
     `ledger verbs: ${Object.entries(r.ledger.verbs).map(([k, n]) => `${k}=${n}`).join(" ") || "(none)"}`,
-    `reconciled:   ${r.reconciled ? "YES" : "NO"} — ${r.note}`,
+    `C8 operands:  rows=${r.c8.rows} decisions=${r.c8.decisions} runs=${r.c8.runs}`,
+    `reconciled:   ${r.reconciled ? "YES" : "NO"} (C8: rows == decisions + runs)`,
+    `dup clean:    ${r.dup_clean ? "YES" : "NO"} — ${r.note}`,
   ].join("\n");
 }
 
