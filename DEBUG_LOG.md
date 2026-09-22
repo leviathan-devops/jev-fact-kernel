@@ -2397,3 +2397,43 @@ case — a corpus of JSONL files with no leading blanks behaves identically. The
 in the case that matters: `--limit` is how an operator bounds a sample, and a file whose first blank
 line appears before its data silently returns fewer rows than asked, or none. **Severity is a claim
 about frequency, not about whether the code does what it says** — and this one did not.
+
+## EN-091 — E1: the guard I built was bypassed by its own caller, and the OPTIONAL parameter was the defect
+**FOUND IN THE STATUS REPORT, FIXED HERE.** The status report's §5 error ledger named it E1 as the
+highest-value open item — *"a guard that looks present but is bypassed by its only production caller
+is worse than no guard"*.
+
+**THE DEFECT.** `Queue.complete(id, result, attempt?)` matched `attempts` against the claim — so a
+stale process whose row had been swept and re-claimed could not overwrite the live result. But the
+parameter was **OPTIONAL with a permissive fallback**, and the only production caller —
+`job/run.ts:55` — **omitted it**:
+```
+if (!q.complete(item.id, out)) {   // took the `attempt === undefined` branch: no generation check
+```
+So the runner's acks were **unprotected**, and the comment beside the call names exactly the condition
+the guard detects: *"the row was swept mid-work: someone else owns it now"*. In `runQueued` the
+attempt was even in scope (`item.attempts`) — it simply was not passed.
+
+**THE FIX, AND IT IS THE STRONGER ONE.** `attempt` is now **REQUIRED** on both `complete` and `fail`.
+**A guard that can be switched off by LEAVING OUT AN ARGUMENT is not a guard** — the same rule as
+H-5 (*"a guard whose override can disable it with a typo"*). The type system then enumerated every
+bypass: **exactly three call sites**, all in tests, all updated.
+- `run.ts:62` → `q.complete(item.id, out, item.attempts)`, with the refusal message naming the attempt
+- `run.ts:66` → `q.fail(item.id, …, item.attempts)`
+- three test sites, each given the generation it holds
+
+**AND THE PROOF THAT IT BITES, not merely passes.** A test drives the real scenario through the real
+runner — a work function that sweeps its own row mid-call and lets a competing worker re-claim it,
+after which the original worker acks. Then the test was run against a **temporarily restored
+permissive ack**:
+```
+permissive form  -> FAIL  (the stale ack was accepted: Expected true, Received false)
+required form    -> PASS
+```
+**A test that cannot fail is not evidence, and this one demonstrably can.**
+
+**THE GENERAL LESSON, AND IT IS THE THIRD TIME THIS SESSION:** an escape hatch added "for callers that
+do not track generations" was used by the ONLY caller within one turn. Optionality in a guard is not
+flexibility; it is a documented bypass. H-5's cap had the same shape (a typo disabled it), and the
+seal's traversal guard had it twice (a glob that matched `..`, then a fallback that restored the raw
+string). **When the guard's job is to stop something, its off-switch must not exist.**

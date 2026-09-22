@@ -52,11 +52,18 @@ export async function runQueued<I, O>(opts: {
         if (!claimSlot()) return null;               // simulated crash point: leave the row 'running'
         try {
           const out = await opts.work(item.payload as I, item.fingerprint);
-          if (!q.complete(item.id, out)) {   // the row was swept mid-work: someone else owns it now
-            throw new Error(`JM_ACK_REFUSED: row ${item.id} left 'running' while we worked it`);
+          // THE ATTEMPT IS PASSED THROUGH, OR THE GUARD DOES NOT APPLY (queue.ts:61). `complete`
+          // matches `attempts` against the generation being acked, and OMITTING the argument takes
+          // the PERMISSIVE branch — so the runner's acks were unprotected: a stale worker whose row
+          // had been swept and re-claimed could still overwrite the live result. The comment beside
+          // this call names exactly the condition the guard detects; it needs the number to detect
+          // it. Same for `fail` below — a stale process must not mark a row failed while a live one
+          // owns it.
+          if (!q.complete(item.id, out, item.attempts)) {   // the row was swept mid-work: someone else owns it now
+            throw new Error(`JM_ACK_REFUSED: row ${item.id} left 'running' while we worked it (claim attempt ${item.attempts})`);
           }
           return out;
-        } catch (err) { q.fail(item.id, String(err).slice(0, 200)); throw err; }   // record, never orphan
+        } catch (err) { q.fail(item.id, String(err).slice(0, 200), item.attempts); throw err; }   // record, never orphan
       }, { concurrency: opts.concurrency });
       if (errors.length > 0 && opts.stopOnError) throw new Error(errors[0].error);
       if (processed >= budget) break;                // rows stay 'running' on purpose

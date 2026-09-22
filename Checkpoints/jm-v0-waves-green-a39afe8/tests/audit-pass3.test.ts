@@ -241,7 +241,7 @@ describe("job/queue.ts:22 — a re-enqueued FAILED row must become claimable", (
       q.enqueue("t", [{ fingerprint: "f1", payload: { a: 1 } }]);
       const c1 = q.claim(1);
       expect(c1.length).toBe(1);
-      q.fail(c1[0].id, "boom");
+      q.fail(c1[0].id, "boom", c1[0].attempts);   // the attempt is REQUIRED: an ack names its generation
       expect((db.query("SELECT state FROM queue WHERE fingerprint='f1'").get() as { state: string }).state).toBe("failed");
 
       const r = q.enqueue("t", [{ fingerprint: "f1", payload: { a: 2 } }]);
@@ -349,5 +349,104 @@ describe("jsonl.ts:18 — `limit` bounds ROWS, not physical lines", () => {
       expect(all.rows.length).toBe(3);                       // everything past the blanks
       expect(all.lines).toEqual([6, 7, 8]);                  // and the physical line NUMBERS stay honest
     } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
+
+describe("queue.ts:61/75 — the attempt guard closes the sweep's window", () => {
+  test("test_a_stale_ack_cannot_overwrite_a_live_result", async () => {
+    // `sweep()` resets EVERY running row with no lease check, so a live worker's claim can be returned
+    // to pending and re-claimed (audit queue.ts:75). That part is BY DESIGN — the sweep cannot tell a
+    // dead process from a slow one, and a heartbeat/lease would be a new mechanism the spec does not
+    // ask for. What must hold is that the DAMAGE cannot happen: the attempt guard on `complete`
+    // rejects the stale ack.
+    // MEASURED: A claims (attempts=0) -> B sweeps -> B re-claims (attempts=1) -> A acks with its OLD
+    // attempt 0 -> **accepted=false**, and the live worker's row survives.
+    const home = mkdtempSync(join(tmpdir(), "jm-sw-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { openJob } = await import("../src/job/store");
+      const { Queue } = await import("../src/job/queue");
+      const { db } = openJob("sw");
+      const q = new Queue(db, "sw");
+      q.enqueue("t", [{ fingerprint: "f1", payload: {} }]);
+      const a = q.claim(1);
+      expect(a.length).toBe(1);
+      q.sweep();                                        // the live worker's row goes back to pending
+      const b = q.claim(1);                             // a second worker takes it
+      expect(b.length).toBe(1);
+      expect(b[0].id).toBe(a[0].id);
+      expect(b[0].attempts).toBeGreaterThan(a[0].attempts);
+      // THE ASSERTION THAT MATTERS: the stale ack is REFUSED
+      expect(q.complete(a[0].id, { from: "stale" }, a[0].attempts)).toBe(false);
+      // and the live worker's ack is accepted
+      expect(q.complete(b[0].id, { from: "live" }, b[0].attempts)).toBe(true);
+      const row = db.query("SELECT state, result FROM queue WHERE id=" + a[0].id).get() as { state: string; result: string };
+      expect(row.state).toBe("done");
+      expect(row.result).toContain("live");              // the LIVE result, not the stale one
+      db.close();
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("E1 / run.ts:62 — the runner's ack must NAME its generation, or the guard is bypassed", () => {
+  test("test_runner_ack_is_refused_when_the_row_was_swept_mid_work", async () => {
+    // THE DEFECT THIS PINS, found in the STATUS REPORT: `complete`'s attempt guard was correct, and
+    // the ONLY production caller — `job/run.ts:55` — omitted the argument, taking the permissive
+    // branch. **A guard that can be switched off by LEAVING OUT AN ARGUMENT is not a guard** (the
+    // same rule as H-5's typo-disableable cap). The parameter is now REQUIRED, so tsc enumerates any
+    // future bypass — this test proves the guard actually BITES through the runner.
+    //
+    // The scenario is the real one: a worker claims a row, its claim is swept back to pending, a
+    // competing worker re-claims it (attempts +1), and then the ORIGINAL worker tries to ack. Before
+    // the fix that ack overwrote the live result; now it must be refused.
+    const home = mkdtempSync(join(tmpdir(), "jm-e1-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME };
+    process.env.JM_HOME = home; process.env.HOME = home;
+    try {
+      const { runQueued } = await import("../src/job/run");
+      const { openJob } = await import("../src/job/store");
+      const { Queue } = await import("../src/job/queue");
+
+      // The work function simulates the competing worker mid-call: sweep the row, re-claim it.
+      let sawRefusal = false;
+      const res = await runQueued({
+        jobId: "e1",
+        kind: "unit",
+        items: [{ fingerprint: "f1", payload: { n: 1 } }],
+        stopOnError: true,
+        work: async () => {
+          const { db } = openJob("e1");
+          const q2 = new Queue(db, "e1");
+          q2.sweep();                     // this worker's own row goes back to pending…
+          const reclaimed = q2.claim(1);  // …and is re-claimed, bumping attempts
+          db.close();
+          expect(reclaimed.length).toBe(1);
+          return { worked: true };
+        },
+      }).catch((err: unknown) => {
+        // the runner's ack was refused, which is the CORRECT outcome
+        sawRefusal = String(err).includes("JM_ACK_REFUSED");
+        return null;
+      });
+
+      const { db } = openJob("e1");
+      const row = db.query("SELECT state, attempts, result FROM queue WHERE fingerprint='f1'").get() as { state: string; attempts: number; result: string | null };
+      db.close();
+      // the stale ack was REFUSED (the run surfaced JM_ACK_REFUSED)…
+      expect(sawRefusal).toBe(true);
+      // …so the row was NOT marked done by the stale worker, and its result is not the stale one
+      expect(row.state).not.toBe("done");
+      expect(row.result ?? "").not.toContain("worked");
+      expect(res).toBeNull();
+    } finally {
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

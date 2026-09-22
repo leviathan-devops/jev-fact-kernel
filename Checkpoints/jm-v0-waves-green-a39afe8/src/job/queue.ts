@@ -54,10 +54,17 @@ export class Queue {
       ).all(want) as { id: number; fingerprint: string; kind: string; payload: string; attempts: number }[];
       const upd = this.db.query("UPDATE queue SET state='running', attempts=attempts+1, updated_at=? WHERE id=?");
       for (const r of rows) upd.run(now, r.id);
+      // THE CLAIM REPORTS THE ATTEMPT IT TOOK, not the attempt that was there before it.
+      // `SELECT` runs the read BEFORE the `+1`, so returning `r.attempts` verbatim gave the caller a
+      // STALE generation number — and once `complete` began matching on it (the queue.ts:61 fix),
+      // every ack from a normal claim was REFUSED. MEASURED: claim -> attempts reported 0 while the
+      // row held 1 -> `complete(id, result, 0)` -> `accepted=false`, so the work never registered.
+      // A guard introduced to prevent a stale overwrite broke the normal path until the claim told
+      // the truth about which attempt it had taken.
       return rows.map((r) => {
         let payload: unknown = null;
         try { payload = JSON.parse(r.payload); } catch { payload = { __corrupt: true, raw: String(r.payload).slice(0, 120) }; }
-        return { ...r, payload };
+        return { ...r, attempts: r.attempts + 1, payload };
       });
     });
     return tx() as QueueItem[];
@@ -72,17 +79,28 @@ export class Queue {
    *  sweep returns it to pending → live process re-claims row 5 (attempts=2) → stale process acks"
    *  passes the state check and overwrites the live result. The row's `attempts` counter is the
    *  generation token, so the ack must name the attempt it is acking. */
-  complete(id: number, result: unknown, attempt?: number): boolean {
-    const r = attempt === undefined
-      ? this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running'",
-        [JSON.stringify(result ?? null), new Date().toISOString(), id])
-      : this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running' AND attempts=?",
-        [JSON.stringify(result ?? null), new Date().toISOString(), id, attempt]);
+  complete(id: number, result: unknown, attempt: number): boolean {
+    // `attempt` IS REQUIRED, AND THAT IS THE FIX FOR ITS OWN FIRST VERSION. It began optional with a
+    // permissive fallback — and within ONE TURN the only production caller (`job/run.ts:55`) omitted
+    // it, silently taking the branch that skips the guard. **A guard that can be switched off by
+    // LEAVING OUT AN ARGUMENT is not a guard** — the same rule as H-5 ("a guard whose override can
+    // disable it with a typo"). Every legitimate caller already holds the number, because `claim()`
+    // returns it; there is no caller that does not know which generation it is acking.
+    //
+    // It matches `attempts` against the claim, so "stale process claims row 5 (attempts=1) -> the
+    // sweep returns it to pending -> a live process re-claims row 5 (attempts=2) -> the stale process
+    // acks" is REFUSED instead of overwriting the live result.
+    const r = this.db.run("UPDATE queue SET state='done', result=?, updated_at=? WHERE id=? AND state='running' AND attempts=?",
+      [JSON.stringify(result ?? null), new Date().toISOString(), id, attempt]);
     return r.changes === 1;
   }
-  fail(id: number, error: string): boolean {
-    const r = this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=? AND state='running'",
-      [error, new Date().toISOString(), id]);
+  /** The same attempt guard as `complete`: a stale process must not mark a row failed while a live
+   *  process owns it. Required for the same reason — an optional parameter is a bypass. */
+  fail(id: number, error: string, attempt: number): boolean {
+    // Required, for the same reason as `complete`: an optional parameter is a bypass, and a stale
+    // process must not mark a row FAILED while a live one owns it.
+    const r = this.db.run("UPDATE queue SET state='failed', error=?, updated_at=? WHERE id=? AND state='running' AND attempts=?",
+      [error, new Date().toISOString(), id, attempt]);
     return r.changes === 1;
   }
 

@@ -22,7 +22,7 @@ function test_resume_no_dup() {
       q1.enqueue("unit", items);
       const batch = q1.claim(10);
       expect(batch.length).toBe(10);
-      q1.complete(batch[0].id, { crashed: false });
+      q1.complete(batch[0].id, { crashed: false }, batch[0].attempts);
       const stuck = q1.stats().running;         // 9 rows claimed, never acked — the crash
       expect(stuck).toBe(9);
       db.close();                               // the process "dies" here
@@ -75,7 +75,7 @@ function test_resume_no_dup() {
       const [claimed] = q.claim(1);
       expect(claimed.fingerprint).toBe("r1");
       expect(q.sweep()).toBe(1);                       // someone else sweeps our row back to pending
-      expect(q.complete(claimed.id, { stale: true })).toBe(false);   // the stale ack is REFUSED
+      expect(q.complete(claimed.id, { stale: true }, claimed.attempts)).toBe(false);   // the stale ack is REFUSED
       const row = db.query("SELECT state, result FROM queue WHERE id = ?").get(claimed.id) as { state: string; result: string | null };
       expect(row.state).toBe("pending");               // and the row is NOT marked done
       expect(row.result).toBeNull();
