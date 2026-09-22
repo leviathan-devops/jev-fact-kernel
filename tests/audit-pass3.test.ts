@@ -450,3 +450,50 @@ describe("E1 / run.ts:62 — the runner's ack must NAME its generation, or the g
     }
   });
 });
+
+describe("E3 / decision-tree.ts:85 — an unreadable answer is an UNKNOWN, never a zero", () => {
+  test("test_unrecognised_answer_is_not_routed_as_zero", async () => {
+    // MEASURED BEFORE THE FIX: `answersToPolicyValue` seeded `best = 0` and only raised it on a
+    // recognised field, so an answer whose shape nothing matched returned **0 — a confident "no"** —
+    // and that zero was routed, banded and STORED as a decision. Its sibling `noulFrom` already
+    // returns null on failure, and `pOf` was fixed for exactly this class; this one was missed.
+    // `best = 0` also swallowed a NON-FINITE value (`Math.max(0, NaN)` is NaN, and `typeof NaN ===
+    // "number"` let it through).
+    const home = mkdtempSync(join(tmpdir(), "jm-e3-"));
+    const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
+    process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
+    delete process.env.JM_LEDGER;
+    // a judge that answers with a shape NOTHING recognises
+    const server = Bun.serve({ port: 0, fetch() { return Response.json({ model: "m", usage: { input_tokens: 5 }, answers: { flag: { type: "noul", weird_field: 0.97 } } }); } });
+    process.env.JM_JUDGE_URL = `http://127.0.0.1:${server.port}/`;
+    try {
+      const { openDb, indexPathFor } = await import("../src/store/db");
+      const { decisionTree, validateRecipe } = await import("../src/verbs/decision-tree");
+      const rows = join(home, "rows.jsonl");
+      writeFileSync(rows, JSON.stringify({ i: 1, body: "x" }) + "\n");
+      const mk = (fail: string) => validateRecipe({ recipe: `e3-${fail}`, version: 1, questions: { flag: { type: "noul", instructions: "?" } }, policy: { act: 0.8, flag: 0.5, fail } } as never);
+
+      // fail=closed (the default): REFUSE — the same treatment as any other unreadable answer
+      const dbC = openDb(indexPathFor("e3-closed"));
+      await expect(decisionTree({ db: dbC, rowsPath: rows, recipe: mk("closed"), concurrency: 1 })).rejects.toThrow(/JM_JUDGE_NO_SIGNAL/);
+      dbC.close();
+
+      // fail=open: a MARKED row whose signal is NULL — not a fabricated 0
+      const dbO = openDb(indexPathFor("e3-open"));
+      const r = await decisionTree({ db: dbO, rowsPath: rows, recipe: mk("open"), concurrency: 1 });
+      const row = dbO.query("SELECT conf FROM decisions LIMIT 1").get() as { conf: number | null } | null;
+      dbO.close();
+      expect(r.bands.noop).toBe(1);
+      expect(row).not.toBeNull();
+      expect(row!.conf).toBeNull();                      // NULL = unknown; 0 would be a FABRICATED answer
+    } finally {
+      server.stop(true);
+      if (prev.home === undefined) delete process.env.JM_HOME; else process.env.JM_HOME = prev.home;
+      if (prev.homeDir === undefined) delete process.env.HOME; else process.env.HOME = prev.homeDir;
+      if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
+      if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
+      if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

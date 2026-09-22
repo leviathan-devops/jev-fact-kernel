@@ -2437,3 +2437,33 @@ do not track generations" was used by the ONLY caller within one turn. Optionali
 flexibility; it is a documented bypass. H-5's cap had the same shape (a typo disabled it), and the
 seal's traversal guard had it twice (a glob that matched `..`, then a fallback that restored the raw
 string). **When the guard's job is to stop something, its off-switch must not exist.**
+
+## EN-092 — E3: an unreadable answer was routed as a confident "no"
+**FOUND IN THE STATUS REPORT as open high E3.**
+`answersToPolicyValue` (decision-tree.ts:85) seeded `best = 0` and only raised it on a recognised
+field, so **an answer whose shape nothing matched returned 0 — a confident "no"** — and that zero was
+routed, banded and **STORED as a decision**. Two aggravating details:
+- Its **sibling** `noulFrom` (`judge/policy.ts:100`) already returns `null` on failure, and `pOf` was
+  fixed for exactly this class (D-042/D-046). This was the third member of the family and the one left
+  behind — the "fix the sites, not the rule" pattern this session has now met six times.
+- `best = 0` also swallowed a **NON-FINITE** value: `Math.max(0, NaN)` is NaN, and
+  `typeof NaN === "number"` let it through on the `noul` branch.
+
+**FIX:** the function returns `number | null`, and the caller honours the fail polarity exactly as it
+does for any other unreadable answer — `closed` (the default) **refuses** with `JM_JUDGE_NO_SIGNAL`,
+`open` **marks** the row with `signal: null`. `budget.settle` runs BEFORE either, because a real call
+was made and its cost is real regardless of whether we could read the answer. `DecisionRow.signal` was
+already `number | null` and the DB write already handled NULL, so nothing downstream changed.
+
+**VERIFIED, both polarities, against a judge answering with an unrecognised shape:**
+```
+fail=closed  -> REFUSED  JM_JUDGE_NO_SIGNAL
+fail=open    -> COMPLETED noop=1 decisions=1 stored conf=NULL (unknown, correct)
+```
+Before the fix both would have stored `conf=0` and routed it — a fabricated "no" indistinguishable
+from a real decision.
+
+**AND I REMOVED THE CAST AT THE BOUNDARY.** The call site read `answersToPolicyValue(res.answers as
+never)` — an unchecked cast that **disabled exactly the type checking which would catch a future field
+rename**, i.e. the defect class this function had just been fixed for. The parameter now takes
+`JudgeResponse["answers"]` and no cast is needed: the boundary is checked, not asserted.

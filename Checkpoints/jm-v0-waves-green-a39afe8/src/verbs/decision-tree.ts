@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { Judge } from "../judge/client.ts";
+import type { JudgeResponse } from "../judge/transport.ts";
 import { DEFAULT_POLICY, reasonForSignal, type Policy } from "../judge/policy.ts";
 import { runPool } from "../pools/pool.ts";
 import { Budget } from "../pools/budget.ts";
@@ -81,12 +82,26 @@ export interface DecisionTreeResult {
   out?: string; escalationOut?: string; budgetStopped: boolean;
 }
 
-function answersToPolicyValue(answers: Record<string, { noul?: number; probabilities?: Record<string, number>; confidence?: number }>): number {
-  let best = 0;
+/** THE AGGREGATE SIGNAL, OR `null` WHEN THERE IS NONE (audit decision-tree.ts:85).
+ *
+ * The first version seeded `best = 0` and only raised it on a recognised field — so an answer whose
+ * shape nothing matched returned **0, a confident "no"**, instead of "unknown". That is the same class
+ * as D-039/D-042 (`answersToPolicyValue`'s sibling `noulFrom` already returns `null` on failure, and
+ * `pOf` was fixed for exactly this), and it is the worse of the two shapes: a fabricated zero is
+ * routed, banded and stored as a DECISION. `best = 0` also swallows a NON-FINITE value: `Math.max(0,
+ * NaN)` is NaN, and `typeof NaN === "number"` let it through on the `noul` branch.
+ *
+ * Returning `null` lets the caller honour the fail polarity — refuse under `closed`, mark the row
+ * under `open` — which is what the sibling verbs do with an unreadable answer. */
+function answersToPolicyValue(answers: JudgeResponse["answers"]): number | null {
+  let best: number | null = null;
+  const raise = (v: unknown): void => {
+    if (typeof v === "number" && Number.isFinite(v)) best = best === null ? v : Math.max(best, v);
+  };
   for (const a of Object.values(answers)) {
-    if (typeof a.noul === "number") best = Math.max(best, a.noul);
-    if (a.probabilities) best = Math.max(best, ...Object.values(a.probabilities));
-    else if (typeof a.confidence === "number") best = Math.max(best, a.confidence);
+    raise(a?.noul);
+    if (a?.probabilities && typeof a.probabilities === "object") for (const v of Object.values(a.probabilities)) raise(v);
+    else raise(a?.confidence);
   }
   return best;
 }
@@ -129,15 +144,27 @@ export async function decisionTree(opts: {
         if (policy.fail === "open") return { i, route: "noop", reason: `gate_unavailable: ${String(err).slice(0, 100)}`, answers: null, cached: false, model: "", signal: null } as DecisionRow;
         throw err;    // fail-closed (the default): propagate, never a silent success
       }
-      const value = answersToPolicyValue(res.answers as never);
+      // No cast: `res.answers` IS the type the parameter declares, so the boundary is checked rather
+      // than asserted. The previous `as never` disabled exactly the checking that would catch a
+      // future field rename — the defect class this function was just fixed for.
+      const value = answersToPolicyValue(res.answers);
       // ONE signal source: the aggregate drives BOTH the route and the reason, and the reason now
       // comes from the SAME ladder the route does (a fixed template here made every row claim
       // ">= act", including the noops and the escalates — D-030).
-      const decided = reasonForSignal(value, policy);
-      const d: DecisionRow = { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model, signal: value };
+      //
+      // AN UNREADABLE ANSWER IS NOT A ZERO (audit decision-tree.ts:85). `value === null` means the
+      // response carried no usable signal, so there is nothing to route on — the row is built with
+      // `signal: null` and the FAIL POLARITY decides: `closed` (the default) refuses the run, `open`
+      // marks the row. `budget.settle` runs BEFORE either, because a real call WAS made and its cost
+      // is real regardless of whether we could read the answer.
+      const decided = value === null ? null : reasonForSignal(value, policy);
+      const d: DecisionRow = decided === null
+        ? { i, route: "noop", reason: "gate_no_signal: the response carried no usable signal (no noul/probabilities/confidence) — an unreadable answer cannot be routed", answers: res.answers, cached: res.cached, model: res.model, signal: null }
+        : { i, route: decided.route, reason: decided.reason, answers: res.answers, cached: res.cached, model: res.model, signal: value };
       budget.settle(res.costUsd, res.cached);
       settled = true;
       if (res.usageMissing) throw new Error(`JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)`);   // cached hits refund the claim; a real call converts it
+      if (decided === null && policy.fail === "closed") throw new Error(`JM_JUDGE_NO_SIGNAL: the response carried no usable signal, so row ${i} cannot be routed — the same refusal as any other unreadable answer (fail: "open" opts into a marked row instead)`);
       if (res.cached) cached++; else { calls++; costUsd += res.costUsd; }
       return d;
     } catch (err) {
