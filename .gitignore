@@ -5,3 +5,4 @@ ledger/
 *.sqlite-wal
 ~/.jm/
 dist/
+vendor/kev/
