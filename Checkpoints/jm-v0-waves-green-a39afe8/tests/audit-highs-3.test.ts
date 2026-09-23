@@ -56,13 +56,17 @@ describe("evaluate:35 — the canonical `probabilities` field must be read", () 
     // a local judge answering with the CANONICAL field, at 0.9 for the oracle's outcome
     const server = Bun.serve({
       port: 0,
-      fetch() {
-        return Response.json({
-          model: "m",
-          usage: { input_tokens: 10 },
-          answers: { q: { type: "choice", choice: "yes", probabilities: { yes: 0.9, no: 0.1 } } },
-        });
-      },
+        // ECHO THE REQUESTED KEYS (the wire's contract: "answers come back under the same keys").
+        // `evaluate` BATCHES, so its question keys are `"<caseId>__<questionName>"`; a fixed-key stub
+        // answers none of them and the engine correctly raises JM_JUDGE_ANSWER_COUNT.
+        async fetch(req: Request) {
+          const body = (await req.json().catch(() => ({}))) as { questions?: Record<string, unknown> };
+          const keys = Object.keys(body.questions ?? {});
+          const answers: Record<string, unknown> = {};
+          const a = { type: "choice", choice: "yes", probabilities: { yes: 0.9, no: 0.1 } };
+          if (keys.length === 0) answers.q = a; else for (const k of keys) answers[k] = a;
+          return Response.json({ model: "m", answers, usage: { input_tokens: 10 } });
+        },
     });
     const env: Record<string, string> = { ...process.env, JM_HOME: home, HOME: home, TYPESAFE_API_KEY: "sandbox", JM_JUDGE_URL: `http://127.0.0.1:${server.port}/` } as Record<string, string>;
     delete env.JM_LEDGER;

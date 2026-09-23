@@ -9,7 +9,10 @@ export interface JudgeResponse {
   usage: { input_tokens: number; output_tokens: number };
 }
 
+import { judgeLimiter } from "./limiter.ts";
+
 export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
+export const JM_JUDGE_RETRY_EXHAUSTED = "JM_JUDGE_RETRY_EXHAUSTED";
 
 /** The endpoint, overridable so the boundary can be TESTED and a mirror can be used. The timeout
  *  and error paths were unreachable with a hard-coded URL: the only way to make the judge fail was
@@ -86,16 +89,59 @@ export async function callSystemOne(key: string, body: unknown, timeoutMs = 30_0
   if (bytes > cap) {
     throw new JudgePayloadTooLarge(`JM_JUDGE_PAYLOAD_TOO_LARGE: ${bytes} bytes exceeds the ${cap}-byte cap (JM_JUDGE_MAX_BODY overrides) — the state is too large to judge; trim the row or the excerpt`);
   }
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(judgeUrl(), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`JM_JUDGE_HTTP_${res.status}: ${(await res.text()).slice(0, 200)}`);
-    return (await res.json()) as JudgeResponse;
-  } finally { clearTimeout(t); }
+  // ── THE RATE LIMITER + BOUNDED RETRY (W3) ──────────────────────────────────────────────────
+  //
+  // THE LIMITER GATES EVERY CALL (the chokepoint). `acquire()` waits for a token; `release()` in
+  // the `finally` returns the in-flight slot. A caller over the bound is DELAYED, not failed.
+  //
+  // THE RETRY POLICY, and the classification is the whole design:
+  //   RETRYABLE   429 (rate limited), 5xx (a transient server fault), and a network/abort error.
+  //               Exponential backoff with JITTER, bounded attempts, then a NAMED refusal.
+  //   TERMINAL    4xx other than 429 — and 402 IN PARTICULAR. MEASURED IN THE SEAT (RL-01): the
+  //               account hit `HTTP 402 billing_error: no available TypeSafe API credits`. A 402 is
+  //               a BILLING state: retrying it cannot succeed, and a retry loop against a billing
+  //               refusal turns a clear "add credits" into a slow hang. Refused immediately, named,
+  //               never retried.
+  //
+  // THE ATTEMPTS ARE BOUNDED because an unbounded retry loop IS the runaway this limiter exists to
+  // prevent — a retry storm is the same defect as an unthrottled burst, one layer up.
+  const attempts = Math.max(1, Number(process.env.JM_JUDGE_RETRIES ?? "3"));
+  const baseMs = Math.max(1, Number(process.env.JM_JUDGE_RETRY_BASE_MS ?? "250"));
+  const limiter = judgeLimiter();
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    await limiter.acquire();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(judgeUrl(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      if (res.ok) return (await res.json()) as JudgeResponse;
+      const text = (await res.text()).slice(0, 300);
+      // 402 IS NOT A TRANSIENT FAILURE — see the block comment above. Named, immediate, no retry.
+      if (res.status === 402) {
+        throw new Error(`JM_JUDGE_HTTP_402: ${text} — a BILLING refusal is terminal: no number of retries adds credits. Add credits at https://console.typesafe.ai/settings/billing (the request is NOT retried)`);
+      }
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt === attempts) {
+        throw new Error(`JM_JUDGE_HTTP_${res.status}: ${text}${retryable ? ` (retried ${attempt}/${attempts} attempts)` : " (not retryable)"}`);
+      }
+      lastErr = new Error(`JM_JUDGE_HTTP_${res.status}: ${text}`);
+      // EXPONENTIAL BACKOFF WITH JITTER: without jitter, N concurrent callers retry in lockstep and
+      // re-create the burst that caused the 429.
+      const backoff = Math.min(30_000, baseMs * 2 ** (attempt - 1));
+      await new Promise<void>((r) => setTimeout(r, backoff / 2 + Math.random() * (backoff / 2)));
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("JM_JUDGE_HTTP_402")) throw err;   // terminal, never retried
+      lastErr = err;
+      if (attempt === attempts) break;
+      const backoff = Math.min(30_000, baseMs * 2 ** (attempt - 1));
+      await new Promise<void>((r) => setTimeout(r, backoff / 2 + Math.random() * (backoff / 2)));
+    } finally { clearTimeout(t); limiter.release(); }
+  }
+  throw new Error(`${JM_JUDGE_RETRY_EXHAUSTED}: ${attempts} attempts all failed — last: ${lastErr instanceof Error ? lastErr.message.slice(0, 200) : String(lastErr)}`);
 }

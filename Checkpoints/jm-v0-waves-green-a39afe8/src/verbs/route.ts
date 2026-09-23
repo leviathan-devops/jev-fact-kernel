@@ -46,6 +46,8 @@ export interface RouteResult {
   shortlist: string[];          // what the lexical pre-score put in front of the judge
   rated: Rated[];               // every judged candidate, ranked
   calls: number;
+  /** HTTP REQUESTS made. `calls` counts judged entries; this counts ROUND TRIPS — the batching proof. */
+  requests: number;
   cached: boolean;
   costUsd: number;
   reason: string;
@@ -103,18 +105,47 @@ export async function route(db: Database, opts: RouteOpts): Promise<RouteResult>
   const rated: Rated[] = [];
   let stopped = false;
 
-  for (const e of shortlist) {
-    if (!budget.claim()) { stopped = true; break; }   // the same synchronous claim every pool uses
-    const res = await judge.ask(
-      { task: opts.task, ...(opts.context ? { context: opts.context } : {}), capability: e.id },
-      { applies: { type: "noul", instructions: `Does the capability "${e.id}" apply to the task? Answer with a probability in [0,1].` } },
-      "route@v2",
-    );
-    const p = noulFrom(res.answers, "applies");   // by SHAPE, never a bare `?? 0` (D-042)
-    budget.settle(res.costUsd, res.cached);
-    if (res.cached) cached = true; else { calls++; costUsd += res.costUsd; }
-    rated.push({ id: e.id, p });
-  }
+    // ── THE BATCH PATH (W2). MEASURED BEFORE: this loop made ONE HTTP REQUEST PER SHORTLIST ENTRY
+    // — 12 entries, 12 requests — while the API takes N questions in ONE request (measured: n=400
+    // in 2.39s, TIME FLAT in n). The capability VARIES PER ENTRY, so each entry becomes one
+    // question whose `instructions.item` carries ITS OWN capability; the question TEXT stays
+    // constant and refers to `item` — the documented shape ("put the data in the other fields and
+    // refer to them by name in backticks" — docs.typesafe.ai/api).
+    const items: { id: string; state: unknown }[] = [];
+    for (const e of shortlist) {
+      if (!budget.claim()) { stopped = true; break; }   // the same synchronous claim every pool uses
+      items.push({ id: e.id, state: { task: opts.task, ...(opts.context ? { context: opts.context } : {}), capability: e.id } });
+    }
+    let requests = 0;
+    if (items.length > 0) {
+      let bd: Awaited<ReturnType<typeof judge.askManyBatch>>;
+      try {
+        bd = await judge.askManyBatch(
+          items,
+          { applies: { type: "noul", instructions: "Does the capability named in `item` apply to the task described in `item`? Answer with a probability in [0,1]." } },
+          "route@v2",
+        );
+      } catch (err) {
+        for (let i = 0; i < items.length; i++) budget.settle(0, true);   // nothing was judged
+        throw err;   // route has no fail-open path; a judge failure is fatal here
+      }
+      if (bd.usageMissing > 0) {
+        for (let i = 0; i < items.length; i++) budget.settle(0, true);
+        throw new Error("JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)");
+      }
+      requests = bd.requests;
+      const cachedSet = new Set(bd.cachedKeys);
+      const share = bd.asked > 0 ? bd.costUsd / bd.asked : 0;   // one request's cost, split across its entries
+      for (const it of items) {
+        const key = `${it.id}__applies`;
+        const isCached = cachedSet.has(key);
+        budget.settle(isCached ? 0 : share, isCached);
+        const a = bd.answers[key];
+        if (a === undefined) continue;                        // no answer is not an answer
+        if (isCached) cached = true; else { calls++; costUsd += share; }
+        rated.push({ id: it.id, p: noulFrom({ applies: a }, "applies") });   // by SHAPE (D-042)
+      }
+    }
   rated.sort((a, b) => (b.p - a.p) || (a.id < b.id ? -1 : 1));
 
   const winner = rated[0] ?? { id: "none", p: 0 };
@@ -139,6 +170,7 @@ export async function route(db: Database, opts: RouteOpts): Promise<RouteResult>
     shortlist: shortlist.map((e) => e.id),
     rated,
     calls,
+      requests,
     cached,
     costUsd,
     reason: folded === "act"

@@ -52,9 +52,17 @@ describe("D-042 the answer reader", () => {
     // the answer by shape first.
     const server = Bun.serve({
       port: 0,
-      fetch() {
-        return Response.json({ model: "wrongkey", answers: { verdict: { type: "noul", noul: 0.95 } }, usage: { input_tokens: 5, output_tokens: 1 } });
-      },
+        // ECHO THE REQUESTED KEYS (the wire's contract: "answers come back under the same keys").
+        // `evaluate` BATCHES, so its question keys are `"<caseId>__<questionName>"`; a fixed-key stub
+        // answers none of them and the engine correctly raises JM_JUDGE_ANSWER_COUNT.
+        async fetch(req: Request) {
+          const body = (await req.json().catch(() => ({}))) as { questions?: Record<string, unknown> };
+          const keys = Object.keys(body.questions ?? {});
+          const answers: Record<string, unknown> = {};
+          const a = { type: "noul", noul: 0.95 };
+          if (keys.length === 0) answers.verdict = a; else for (const k of keys) answers[k] = a;
+          return Response.json({ model: "wrongkey", answers, usage: { input_tokens: 5, output_tokens: 1 } });
+        },
     });
     const sb = makeSandbox();
     const prev = process.env.JM_JUDGE_URL;

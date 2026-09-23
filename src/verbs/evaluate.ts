@@ -24,7 +24,12 @@ export interface EvalMetrics {
   variance: number; latencyMsMean: number; costPerCall: number; costUsdTotal: number;
   bins: { lo: number; hi: number; n: number; meanP: number; accuracy: number }[];
 }
-export interface EvalResult { cases: CaseResult[]; metrics: EvalMetrics; ms: number; }
+export interface EvalResult {
+  cases: CaseResult[]; metrics: EvalMetrics; ms: number;
+  /** HTTP REQUESTS made for the whole run. `metrics.n` counts cases; this counts ROUND TRIPS —
+   *  the batching proof (N cases cost ceil(N/batchSize), not N). */
+  requests: number;
+}
 
 /** Answers may be a probability or a label; both are normalised to a number for scoring. */
 // No `threshold` PARAMETER: it was `void threshold;` — accepted, documented, and never read, so every
@@ -59,31 +64,72 @@ export async function evaluate(db: Database, opts: EvalOpts): Promise<EvalResult
   const threshold = opts.threshold ?? 0.5;
   const judge = new Judge(db, {});
   const cases: CaseResult[] = [];
+  let requests = 0;   // HTTP round trips — the batching proof
 
-  for (const c of opts.cases) {
-    for (let r = 0; r < k; r++) {
-      const s = Date.now();
-      const res = await judge.ask(c.state, opts.questions, opts.schema ?? "eval@v1");
-      // THE USAGE GAP IS CHECKED, AS IN EVERY SIBLING (audit evaluate.ts:57). `filter`, `find` and
-      // `decision-tree` all treat a response with no `usage` block as a fatal judge failure (D-046: a
-      // budget cannot be enforced against an unmeasured cost). `evaluate` ignored the flag entirely,
-      // so a run could score an entire corpus and account for none of the spend — the exact hole
-      // D-046 closed on the other three verbs, left open here.
-      if (res.usageMissing) {
-        throw new Error("JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)");
+  // ── THE BATCH PATH (W2). MEASURED BEFORE: `evaluate` made ONE REQUEST PER (case x repetition) —
+  // 5 cases x 1 = 5 requests — while the API takes N questions in ONE request. Each case is judged
+  // against the WHOLE questions map, so items = the cases (repeated k times) and questions = the
+  // caller's map, unchanged. The per-case state goes in `instructions.item`, referenced by name.
+  // ── THE BATCH PATH (W2) — ONE REQUEST PER REPETITION, NOT ONE PER CASE ────────────────────────
+  //
+  // MEASURED BEFORE: `evaluate` made ONE REQUEST PER (case x repetition) — 5 cases x 1 = 5 requests.
+  // THE FIRST FIX WAS WRONG and a test caught it: I batched ALL k repetitions of all cases into ONE
+  // request, which destroys the cache contract this verb is pinned on (`k` repetitions of the same
+  // state must hit the cache, so the transport is touched ONCE — `test_evaluate_k_repetitions_cache_zero_calls`
+  // asserts `cached === k-1`). Batching across repetitions removes the "repeat" that the cache exists
+  // to serve. The correct shape is the wave-plan's own words — "the case set in ONE request per
+  // repetition": the OUTER loop is the repetition, the INNER batch is the whole case set. k=3 then
+  // costs ONE transport touch (r=0 misses, r=1 and r=2 are all cache hits) and the case count per
+  // request is the case count, not 1.
+  const qNames = Object.keys(opts.questions);
+  // THE CALLER'S INSTRUCTIONS ARE PASSED RAW — `askMany` owns the wrapping (it is the one place that
+  // knows the per-item field name). My first version wrapped them here too, and `String({...})` is
+  // `"[object Object]"`, so every question text reaching the model was garbage.
+  const batchedQuestions: Record<string, { type: string; instructions: unknown; criteria?: unknown }> = {};
+  for (const [qname, q] of Object.entries(opts.questions as Record<string, { type: string; instructions: unknown; criteria?: unknown }>)) {
+    batchedQuestions[qname] = {
+      type: q.type,
+      instructions: q.instructions,
+      ...(q.criteria !== undefined ? { criteria: q.criteria } : {}),
+    };
+  }
+  for (let r = 0; r < k; r++) {
+    const items: { id: string; state: unknown }[] = [];
+    const meta: { id: string; oracle: string | number; startedAt: number }[] = [];
+    for (const c of opts.cases) {
+      const id = k > 1 ? `${c.id}#${r}` : c.id;
+      items.push({ id, state: c.state });
+      meta.push({ id, oracle: c.oracle as string | number, startedAt: Date.now() });
+    }
+    if (items.length === 0) continue;
+    const bd = await judge.askManyBatch(items, batchedQuestions, opts.schema ?? "eval@v1");
+    if (bd.usageMissing > 0) {
+      throw new Error("JM_JUDGE_USAGE_MISSING: the response carried no usage block, so this call cannot be costed — a budget cannot be enforced against an unmeasured cost (D-046)");
+    }
+    requests += bd.requests;
+    const cachedSet = new Set(bd.cachedKeys);
+    const share = bd.asked > 0 ? bd.costUsd / bd.asked : 0;   // one request's cost, split across its cases
+    for (const m of meta) {
+      const answers: Record<string, unknown> = {};
+      let anyAnswered = false, allCached = true;
+      for (const qn of qNames) {
+        const a = bd.answers[`${m.id}__${qn}`];
+        if (a === undefined) { allCached = false; continue; }
+        anyAnswered = true;
+        if (!cachedSet.has(`${m.id}__${qn}`)) allCached = false;
+        answers[qn] = a;
       }
-      // RESOLVE BY SHAPE (D-042): reading `answers[questionKey]` directly meant a renamed key made
-      // every case score 0 — and a metric computed from fabricated zeros still LOOKS like a
-      // measurement. An answer with no usable signal throws instead.
-      const resolved = answerFrom(res.answers, opts.questionKey);
+      if (!anyAnswered) continue;                       // no answer is not an answer
+      const isCached = allCached;
+      const resolved = answerFrom(answers as Parameters<typeof answerFrom>[0], opts.questionKey);
       const answered = resolved.answer;
       const p = pOf(answered);
-      const truth = typeof c.oracle === "number" ? c.oracle : /^(yes|true|act|1)$/i.test(String(c.oracle)) ? 1 : 0;
+      const truth = typeof m.oracle === "number" ? m.oracle : /^(yes|true|act|1)$/i.test(String(m.oracle)) ? 1 : 0;
       cases.push({
-        id: c.id, oracle: c.oracle, p,
+        id: m.id, oracle: m.oracle, p,
         answer: (answered as { answer?: string })?.answer ?? String(Math.round(p)),
         agree: (p >= threshold ? 1 : 0) === (truth >= threshold ? 1 : 0),
-        latencyMs: Date.now() - s, cached: res.cached, costUsd: res.costUsd,
+        latencyMs: Date.now() - m.startedAt, cached: isCached, costUsd: isCached ? 0 : share,
       });
     }
   }
@@ -138,7 +184,8 @@ export async function evaluate(db: Database, opts: EvalOpts): Promise<EvalResult
       costPerCall: n ? cases.reduce((s, c) => s + c.costUsd, 0) / n : 0,
       costUsdTotal: cases.reduce((s, c) => s + c.costUsd, 0),
     },
-    ms: Date.now() - t0,
+      ms: Date.now() - t0,
+      requests,
   };
 }
 

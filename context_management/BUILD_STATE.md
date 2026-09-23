@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `595c7d14e89b4be9fb539db6210f06b5` (git d3bf4a2)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `a38ef7b5a9ce3d998cd8c89e7ce5f9a2` (git e30c412)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -15,7 +15,7 @@
 The chain exists so a future session can tell WHAT was proven WHEN. A row that cannot point at a
 sealed copy does not belong here.
 
-## THE MODULE INVENTORY (src/, 34 files)
+## THE MODULE INVENTORY (src/, 36 files)
 
 | file | lines |
 |------|-------|
@@ -28,10 +28,12 @@ sealed copy does not belong here.
 | `src/job/run.ts` | 82 |
 | `src/job/store.ts` | 56 |
 | `src/judge/cache.ts` | 74 |
-| `src/judge/client.ts` | 234 |
+| `src/judge/client.ts` | 221 |
 | `src/judge/key.ts` | 26 |
+| `src/judge/limiter.ts` | 127 |
 | `src/judge/policy.ts` | 130 |
-| `src/judge/transport.ts` | 101 |
+| `src/judge/transport.ts` | 147 |
+| `src/judge/types.ts` | 87 |
 | `src/ledger.ts` | 75 |
 | `src/mcp.ts` | 219 |
 | `src/pools/budget.ts` | 70 |
@@ -42,7 +44,7 @@ sealed copy does not belong here.
 | `src/targets.ts` | 185 |
 | `src/verbs/cluster.ts` | 93 |
 | `src/verbs/decision-tree.ts` | 260 |
-| `src/verbs/evaluate.ts` | 178 |
+| `src/verbs/evaluate.ts` | 225 |
 | `src/verbs/excerpt.ts` | 54 |
 | `src/verbs/extract.ts` | 105 |
 | `src/verbs/filter.ts` | 96 |
@@ -50,11 +52,11 @@ sealed copy does not belong here.
 | `src/verbs/index.ts` | 306 |
 | `src/verbs/query.ts` | 126 |
 | `src/verbs/report.ts` | 231 |
-| `src/verbs/route.ts` | 150 |
+| `src/verbs/route.ts` | 182 |
 | `src/verbs/scan.ts` | 105 |
 | `src/watch.ts` | 128 |
 
-## THE TEST INVENTORY (tests/, 44 files)
+## THE TEST INVENTORY (tests/, 46 files)
 
 | file | lines |
 |------|-------|
@@ -64,7 +66,7 @@ sealed copy does not belong here.
 | `tests/adversarial3.test.ts` | 242 |
 | `tests/audit-findings.test.ts` | 157 |
 | `tests/audit-highs-2.test.ts` | 122 |
-| `tests/audit-highs-3.test.ts` | 86 |
+| `tests/audit-highs-3.test.ts` | 90 |
 | `tests/audit-judge.test.ts` | 166 |
 | `tests/audit-pass3.test.ts` | 1020 |
 | `tests/audit-phantom-surfaces.test.ts` | 107 |
@@ -82,14 +84,16 @@ sealed copy does not belong here.
 | `tests/guards.test.ts` | 100 |
 | `tests/helpers.ts` | 71 |
 | `tests/index.test.ts` | 71 |
+| `tests/interfaces.test.ts` | 33 |
 | `tests/job-report.test.ts` | 107 |
-| `tests/judge-answer-shape.test.ts` | 79 |
+| `tests/judge-answer-shape.test.ts` | 87 |
 | `tests/judge-outage.test.ts` | 77 |
 | `tests/judge-policy.test.ts` | 138 |
 | `tests/judge-usage.test.ts` | 89 |
 | `tests/ladder-reason.test.ts` | 55 |
 | `tests/launcher.test.ts` | 94 |
 | `tests/ledger.test.ts` | 26 |
+| `tests/limiter.test.ts` | 53 |
 | `tests/mcp-notification.test.ts` | 70 |
 | `tests/mcp.test.ts` | 89 |
 | `tests/phantom-artifacts.test.ts` | 175 |

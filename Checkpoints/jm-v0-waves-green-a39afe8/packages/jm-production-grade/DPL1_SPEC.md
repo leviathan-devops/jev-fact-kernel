@@ -83,3 +83,46 @@ the container round              -> its own suite counts, pasted
 Every failure in §1 carries a MEASURED number from this session. §2's invariants each name the
 defect they prevent. No §3 wave is declared done without a pasted tool result. The spec claims
 nothing it did not observe.
+
+## §9 THE TERMINAL GATE — THREE INDEPENDENT AGENTS (the operator's ruling, verbatim)
+> *"THIS GOAL DOES NOT COMPLETE UNTIL THE ABOVE DESCRIBED CONDITIONS ARE VISIBLY TESTED AND
+> CONFIRMED WORKING IN RUNTIME FROM ACROSS 3 INDEPENDENT AGENTS - YOU BEING 1. IF THE EXACT TOOLS +
+> SKILLS CANNOT GIVE 2 FRESH SUBAGENTS FULLY UNDERSTAND HOW TO USE JEV MANAGER FIRST CLASS ~
+> REJECTED. THIS IS THE TARGET. NO SMOKE TEST BULLSHIT 4932 BATTERIES GREEN NOTHING FUCKING WORKS."*
+
+### §9.1 THE GATE, MECHANIZED
+```
+GATE-3OP:  THREE independent agents, EACH operating JevManager FIRST-CLASS on the live host,
+           with the ONLY input being the shipped tools + the shipped skill.
+  OPERATOR 1  the build session (this agent) — its operations are the reference
+  OPERATOR 2  a FRESH subagent, given ONLY: the skill `jev-manager-operator`, the MCP registry
+              entry, and a real task. ZERO conversation context. It must succeed.
+  OPERATOR 3  a SECOND fresh subagent, same conditions, a DIFFERENT real task. It must succeed.
+```
+THE GATE IS FAILED (and the build is REJECTED) if ANY of:
+- an operator cannot find the tools (the mount is not discoverable from the skill alone);
+- an operator cannot complete its task without asking a question the shipped docs answer;
+- an operator's result is unreproducible (a different operator gets a different answer for
+  the same input);
+- an operator needs information that exists ONLY in this session's conversation.
+
+### §9.2 THE DELIVERABLE THIS IMPLIES (the "first-class" definition, made checkable)
+A fresh agent has JevManager "first-class" when, from the shipped artifacts ALONE:
+1. it can NAME the entry points (the `jm` CLI, the 4 `jev_*` MCP tools) without being told;
+2. it can pick the RIGHT one for a task (keyless triage vs judged decision);
+3. it can run a real task end-to-end and READ the result (including the named refusals);
+4. it can VERIFY its own work (the `requests=`/counts it must check);
+5. it hits NO undocumented failure it cannot name.
+Every one of 1-5 is tested by an operator that was NOT told the answer.
+
+### §9.3 WHY THIS REPLACES A BATTERY AS THE TERMINAL GATE
+A green battery measures the code. §9 measures the PRODUCT: whether an agent that has never seen
+this session can USE it. The operator's exact complaint — *"4932 batteries green nothing fucking
+works"* — is the failure this gate exists to make impossible. **The gate is RUNTIME, it is THREE
+agents, and it is the ONLY thing that closes the goal.**
+
+### §9.4 THE FIX LOOP WHEN THE GATE FAILS
+An operator's failure is not a flake — it is a DEFECT in the shipped surface (the skill's wording,
+the tool's discoverability, a refusal that does not name its remedy). Fix the ARTIFACT, then
+re-dispatch a THIRD fresh operator that has never seen the failure. The gate passes only when TWO
+independent fresh operators each succeed on their first attempt.

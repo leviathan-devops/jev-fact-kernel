@@ -4,6 +4,10 @@ import { resolveKey } from "./key.ts";
 import { callSystemOne, judgeUrl, TYPESAFE_MODEL, type JudgeResponse } from "./transport.ts";
 import { fingerprint, cacheGet, cachePut } from "./cache.ts";
 import { createHash } from "node:crypto";
+// THE FROZEN CONTRACTS LIVE IN types.ts (W1) — re-exported here so every existing import path
+// keeps working while there is exactly ONE declaration site.
+import type { AskItem, AskManyResult } from "./types.ts";
+export type { AskItem, AskManyResult, JudgeAnswer, RateLimiter, RateLimiterStats, JobRecovery, JobRecoveryCounts, GateVerdict, GateFinding } from "./types.ts";
 
 export const JEV_NO_KEY = "JEV_NO_KEY";
 export const USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;   // published rate; no output charge
@@ -86,26 +90,9 @@ export class Judge {
 }
 
 /** ONE ITEM of a batch: an id (the caller's handle) and the payload to judge. */
-export interface AskItem { id: string; state: unknown; }
 
-export interface AskManyResult {
-  /** Answers keyed by `${item.id}__${questionName}`, exactly as the caller named them. */
-  answers: Record<string, JudgeResponse["answers"][string]>;
-  model: string;
-  /** How many HTTP REQUESTS were made (the whole point: N items, ~N/batchSize requests). */
-  requests: number;
-  /** How many (item, question) pairs were served from the cache without a request. */
-  cached: number;
-  /** WHICH pairs were cached, by `${item.id}__${questionName}` — the caller settles per item and a
-   *  count alone cannot tell it which item consumed budget. */
-  cachedKeys: string[];
-  /** How many (item, question) pairs were asked. */
-  asked: number;
-  inputTokens: number;
-  costUsd: number;
-  /** Pairs whose answer carried no `usage` — the caller's fail polarity decides what that means. */
-  usageMissing: number;
-}
+
+
 
 /** ASK MANY — THE BATCH PATH, and why it exists (MEASURED, not assumed).
  *

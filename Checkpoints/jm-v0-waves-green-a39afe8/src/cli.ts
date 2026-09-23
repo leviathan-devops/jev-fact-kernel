@@ -492,7 +492,7 @@ async function main(): Promise<number> {
       db.close();
       if (has("json")) console.log(JSON.stringify(r, null, 2));
       else {
-        console.log(`route=${r.route} choice=${r.choice || "(none)"} p=${r.p.toFixed(3)}${r.runnerUp ? ` runner-up=${r.runnerUp.id}(${r.runnerUp.p.toFixed(3)})` : ""}`);
+        console.log(`route=${r.route} choice=${r.choice || "(none)"} p=${r.p.toFixed(3)} requests=${r.requests}${r.runnerUp ? ` runner-up=${r.runnerUp.id}(${r.runnerUp.p.toFixed(3)})` : ""}`);
         console.log(`judged: ${r.rated.length} of a ${r.candidates}-entry catalogue (shortlist: ${r.shortlist.slice(0, 4).join(", ")}${r.shortlist.length > 4 ? ", …" : ""})`);
         console.log(`reason: ${r.reason}`);
         if (r.injection) console.log(`injection: ${r.injection}`);
@@ -534,7 +534,7 @@ async function main(): Promise<number> {
       if (has("json")) console.log(JSON.stringify({ ...r, replay }, null, 2));
       else {
         const m = r.metrics;
-        console.log(`n=${m.n} k=${m.k} agreement=${(m.agreement * 100).toFixed(1)}% brier=${m.brier.toFixed(4)} ece=${m.ece.toFixed(4)} variance=${m.variance.toFixed(5)}`);
+        console.log(`n=${m.n} k=${m.k} requests=${r.requests} agreement=${(m.agreement * 100).toFixed(1)}% brier=${m.brier.toFixed(4)} ece=${m.ece.toFixed(4)} variance=${m.variance.toFixed(5)}`);
         console.log(`latency=${m.latencyMsMean.toFixed(0)}ms $/call=${m.costPerCall.toFixed(8)} total=$${m.costUsdTotal.toFixed(6)}`);
         if (Array.isArray(replay)) { console.log(`replay diffs: ${(replay as unknown[]).length}`); for (const d of replay as { id: string; from: number; to: number; flipped: boolean }[]) console.log(`  ${d.id} ${d.from} -> ${d.to}${d.flipped ? " FLIPPED" : ""}`); }
       }
