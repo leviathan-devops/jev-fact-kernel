@@ -1207,3 +1207,25 @@ AUDIT GATE: BLOCKED
 "probably fine" is the contract: a flaky gate erodes the gate's value, and a flake explained away
 is a defect deferred.
 
+
+## AUDIT GATE — 2026-09-23 (the ship gate)
+```
+$ qwen-code-audit action=review from=d3bf4a2 to=HEAD
+GATE: BLOCKED (PROVIDER_QUOTA_EXHAUSTED)
+  attempt 3: rate_limited HTTP 429 (backoff 961ms)
+  attempt 4: rate_limited HTTP 429 (backoff 1960ms)
+  attempt 5: rate_limited HTTP 429 (backoff 3695ms)
+  attempt 6: rate_limited HTTP 429 (backoff 7883ms)
+The gate did NOT pass — it could not run.
+```
+**AUDIT GATE: BLOCKED** — the code audit could not run (every provider rung rate-limited). Per the
+law, **BLOCKED is never PASS**: no ship-ready claim rests on this run. The retry condition is the
+provider quota resetting; the command above is the exact re-fire.
+
+WHAT IS NOT BLOCKED (the proof that DID run, this session):
+- `bun test` -> 237 pass / 0 fail (43 files, 1209 expects, ~41s)
+- `bunx tsc --noEmit` -> exit 0
+- `scripts-host-suite.sh` -> 12/12 PASS (the DEPLOYED launcher, the registry's env)
+- `bun run scripts-recovery-proof.ts` -> exit 0 (SIGKILL, dup=0, 600/600 indexed)
+- the W2 gate on decider-2b -> all four judged verbs requests=1
+- THE OPERATOR GATE -> 3 agents, 2 fresh, each first-class
