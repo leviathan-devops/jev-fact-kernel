@@ -1,0 +1,16 @@
+# Test discovery is rooted at ./tests so snapshot copies under Checkpoints/ are never
+# double-counted (they are byte-identical by design).
+[test]
+root = "tests"
+# THE HERMETICITY PRELOAD: six judge-server test files need a key to be PRESENT (requireKey gates
+# the call before any network). It used to come from an ambient ~/.config/typesafe/key, so the
+# suite passed on the author's machine and failed in a fresh container with 9 JEV_NO_KEY errors.
+preload = ["./tests/preload.ts"]
+  # TEST FILES RUN ONE AT A TIME. FOUND BY MEASURING THE BASELINE'S FLAKE RATE: `test_cache_zero_calls`
+  # failed ~1 run in 10 in the FULL battery while passing 0/20 IN ISOLATION. `process.env` is
+  # per-PROCESS, bun's `--max-concurrency` defaults to 20, and TWENTY-TWO test files mutate
+  # `process.env.JM_*` (five of them `JM_MOCK_DIR`) — so one file's mock dir / home / judge URL raced
+  # into a sibling's judge call mid-flight and the cache test saw another file's fixtures. A
+  # deterministic suite beats a fast flaky one; the cost is wall clock, and the alternative is a
+  # green that means nothing.
+  concurrency = 1

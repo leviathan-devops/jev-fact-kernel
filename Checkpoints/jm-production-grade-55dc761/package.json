@@ -1,0 +1,20 @@
+{
+  "name": "jm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JM \u2014 the targetable decision engine (targets -> operations -> recipes -> results)",
+  "scripts": {
+    "jm": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/bun": "1.4.2",
+    "bun-types": "1.4.2"
+  },
+  "bin": {
+    "jm": "./bin/jm"
+  }
+}

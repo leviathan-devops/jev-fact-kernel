@@ -1,0 +1,9 @@
+node_modules/
+ledger/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+~/.jm/
+dist/
+vendor/kev/
+vendor/decider/
