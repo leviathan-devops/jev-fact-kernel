@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `a38ef7b5a9ce3d998cd8c89e7ce5f9a2` (git e23f0c1)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `a38ef7b5a9ce3d998cd8c89e7ce5f9a2` (git 55dc761)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -231,3 +231,18 @@ tables — and none of the three softens the others.
 
 Each instrument found defects the others could not, and the union is what the defect ledger records.
 That is the argument for keeping all five rather than the cheapest one.
+
+## 2026-09-23 · the decider-2b wiring + the W2 gate green
+- commit 55dc761 · battery 237 pass / 0 fail · tsc exit 0 · bundle 1539e318f156274a
+- host suite 12/12 PASS (scripts-host-suite.sh, the deployed launcher, the registry's env)
+- THE LOCAL JUDGE: decider-2b v10 on GPU (:8008, 4.2GB, ~1s/question)
+  - installed at vendor/decider (gitignored) · served with DECIDER_SHARED_FORK_GB=2 DECIDER_GRAPH_TOKEN_BUDGET=8192
+  - bonsai stopped+disabled (the operator's directive) · kev removed (7GB freed)
+  - GPU: 5.5GB/12.3 used · 6.8GB free for other models
+- THE W2 GATE: ALL FOUR judged verbs requests=1 on decider-2b
+  - route p=0.371 requests=1 (CALIBRATED: honest where kev was overconfident)
+  - evaluate n=6 requests=1 agreement=83.3% brier=0.1332
+  - filter requests=1 batch=3/req
+  - decision-tree rows=20 decided=20 calls=20 requests=1
+- W5: the CI gate authored (.github/workflows/gate.yml) · the container round: the tool not mounted this session, the host suite 12/12 is the deployed proof
+- W7: OperatorA COMPLETED (task A) · OperatorB ABORTED (kev too slow, not the skill) · OperatorC DISPATCHED against decider-2b
