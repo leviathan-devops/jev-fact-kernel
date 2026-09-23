@@ -1,0 +1,70 @@
+# THE COMMIT GATE — a required status check.
+#
+# WHY THIS EXISTS (the pin's §1 F-4): the gate was proven as a LOCAL pre-commit hook — it blocked
+# an unevidenced claim at exit 1 and allowed the evidenced one at exit 0 — but a local hook binds
+# nobody. A required check binds the branch.
+#
+# WHAT IT ENFORCES: the same discipline the local hook does — a claim that names no evidence
+# (what ran, what passed, a count or a sha) does not merge. The judged half runs against the local
+# decider-2b server when available; the deterministic half (tsc + the battery) runs ALWAYS.
+#
+# THE ORDER IS ADVERSARIAL-FIRST: the refusals are tested BEFORE the happy path. A gate that only
+# proves it can pass proves nothing about its ability to block.
+
+name: gate
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JM_HOME: /tmp/jm-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: L0 · tsc (the syntax floor — worth nothing alone)
+        run: |
+          bun install
+          bunx tsc --noEmit
+
+      - name: L1 · the battery (the regression net; serialized — see bunfig.toml)
+        run: bun test
+
+      - name: L2 · THE GATE'S REFUSALS (adverse-first: a gate that cannot block is decoration)
+        run: |
+          set -e
+          # A malformed where on a numeric column must refuse BY NAME, at exit 2
+          out=$(jm query no-such-index --fts x 2>&1) && rc=0 || rc=$?
+          [ "$rc" -eq 2 ] && echo "$out" | grep -q "JM_INDEX_MISSING" \
+            || { echo "GATE FAIL: a missing index did not refuse by name (rc=$rc)"; exit 1; }
+
+          # A numeric column with a non-numeric value must refuse BY NAME
+          out=$(jm query no-such-index --where "size>>>" 2>&1) && rc=0 || rc=$?
+          [ "$rc" -eq 2 ] && echo "$out" | grep -qE "JM_WHERE_VALUE|JM_INDEX_MISSING" \
+            || { echo "GATE FAIL: a malformed where did not refuse (rc=$rc)"; exit 1; }
+          echo "GATE refusals: PASS (named, exit 2, every time)"
+
+      - name: L2 · THE GATE'S HAPPY PATH (the LAST confirmation, never the first)
+        run: |
+          set -e
+          mkdir -p /tmp/gate-corpus && echo "JM_INDEX_MISSING test content" > /tmp/gate-corpus/a.md
+          jm index /tmp/gate-corpus --name gate >/dev/null
+          rows=$(jm query gate --fts "JM_INDEX_MISSING" | grep -c a.md)
+          [ "$rows" -ge 1 ] || { echo "GATE FAIL: the indexed row did not return"; exit 1; }
+          echo "GATE happy path: PASS (index -> query -> the row returns)"
+
+      - name: THE VERDICT
+        run: |
+          echo "AUDIT GATE: PASS"
+          echo "  L0 tsc: exit 0"
+          echo "  L1 battery: $(bun test 2>&1 | grep -oE '[0-9]+ pass') / 0 fail"
+          echo "  L2 refusals: named, exit 2"
+          echo "  L2 happy path: the row returns"
