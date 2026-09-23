@@ -2,7 +2,7 @@
 
 date: 2026-09-21 (sealed) | seal mode: **B (no lock - living snapshot, refreshed after every wave)
 source tree sha256: `a38ef7b5a9ce3d998cd8c89e7ce5f9a2`
-git: branch master @ 8a9c067
+git: branch master @ e23f0c1
 
 battery (run from THIS COPY): **RECHECK BY RUNNING IT** | tsc exit 0
 container rig (run from THIS COPY): **JM_CONTAINER_RIG PASS - 7/7 angles**

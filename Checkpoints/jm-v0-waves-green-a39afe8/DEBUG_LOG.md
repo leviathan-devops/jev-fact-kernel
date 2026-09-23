@@ -3211,3 +3211,39 @@ Wall clock 29s -> ~44s. The three flake classes and their discriminators, comple
 | an fd released on a later tick | intermittent IN ISOLATION | `jsonl.ts:41` awaits 'close' |
 | a fixed port in TIME_WAIT | the failing test CHANGED between windows | `port: 0` x3 |
 | `process.env` raced between files | passed 0/20 ALONE, failed in the SUITE | `bunfig.toml` concurrency = 1 |
+
+## EN-112 — THE LOCAL JUDGE: kev-0.6b replaces the TypeSafe API for testing
+**The operator's directive:** research `convaiinnovations/laya` and `onnx-community/kev-0.6b-ONNX`,
+pick one, install on the host, and have it "stream an API and plug in exactly the same way."
+
+**THE DECISION: Kev-0.6B, for ONE reason that dominates every other:** its model card states verbatim
+*"It serves TypeSafe's public `/v1/systemone` contract"* — and it registers BOTH `kev-latest` AND
+`jev-latest` as model names (`MODEL_NAMES = ("kev-latest", "jev-latest")` in `kev/serve.py`), so an
+unconfigured JM client works with ZERO code changes. Laya is a `pip install laya` Python SDK with its
+own request shape — it would need a custom adapter server written, debugged, and maintained forever.
+
+**THE INSTALL:**
+```
+git clone --depth 1 https://github.com/jaredpalmer/kev.git vendor/kev
+uv sync --extra serve     (torch 2.8.0+cu128 · fastapi · typesafe-sdk · ~7 GB venv)
+CUDA_VISIBLE_DEVICES="" uv run --extra serve python -m kev.serve --run jaredpalmer/kev-0.6b --port 8008
+```
+GPU first attempted but OOM (the 4080's 12 GB is held by three llama-servers: 838+332+10524 MiB).
+CPU is fine for 0.6B — 5.1s per single question, acceptable for testing.
+
+**THE WIRE PROOF (POST /v1/systemone, the EXACT shape JM sends):**
+```json
+{"model":"jev-latest","answers":{"is_failure":{"type":"noul","noul":0.7951}},
+ "usage":{"input_tokens":24,"output_tokens":23},"latency_ms":5118.2}
+```
+
+**THE THREE VERBS, BATCHED, ON THE LOCAL JUDGE (the conditions: JM_JUDGE_URL=http://127.0.0.1:8008/v1/systemone):**
+```
+jm route    -> route=act choice=skill:omp-missing-model-diagnosis p=0.979 requests=1
+               judged: 12 of a 558-entry catalogue
+jm evaluate -> n=6 requests=1 agreement=100.0% brier=0.0260 $/call=0.00000161
+jm filter   -> candidates=3 judged=3 kept=3 calls=3 requests=1 batch=3/req p=0.97-0.98
+```
+
+**THE ECONOMICS:** $0 per judgment (self-hosted, no API billing), no rate limit ceiling, no
+per-invocation budget reset between test runs. The limiter (W3) still bounds the pace.
