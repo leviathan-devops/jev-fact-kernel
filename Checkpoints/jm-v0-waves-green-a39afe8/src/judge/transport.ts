@@ -10,6 +10,7 @@ export interface JudgeResponse {
 }
 
 import { judgeLimiter } from "./limiter.ts";
+import { canonSystemOne } from "./canon-gguf.ts";
 
 export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 export const JM_JUDGE_RETRY_EXHAUSTED = "JM_JUDGE_RETRY_EXHAUSTED";
@@ -36,7 +37,66 @@ export function judgeBodyBytes(body: unknown): number {
   return Buffer.byteLength(JSON.stringify(body), "utf8");
 }
 
+/** THE CANON AUTO-DETECT. When JM_JUDGE_URL points at a llama.cpp/beellama server (the system
+ *  canon's decider-0.8b GGUF), the wire is `/completion` with the canon prompt, NOT
+ *  `/v1/systemone`. MEASURED: `POST /v1/systemone` against the GGUF server returns
+ *  `{"error":{"message":"File Not Found","type":"not_found_error","code":404}}`.
+ *
+ *  The detection is a ONE-TIME probe per process: a GET on `/props` (the llama.cpp signature)
+ *  succeeds on a llama-server and 404s on the TypeSafe-compatible server. Cached so the probe
+ *  costs one request per process, never one per call. */
+let canonMode: boolean | null = null;
+async function detectCanon(base: string): Promise<boolean> {
+  if (canonMode !== null) return canonMode;
+  try {
+    const res = await fetch(`${base.replace(/\/v1\/systemone$/, "").replace(/\/$/, "")}/props`, { method: "GET" });
+    if (!res.ok) { canonMode = false; return false; }
+    const d = (await res.json()) as { model_path?: string; chat_template?: unknown };
+    // a llama-server exposes `model_path`; a TypeSafe server does not
+    canonMode = typeof d.model_path === "string";
+  } catch { canonMode = false; }
+  return canonMode;
+}
+
 export async function callSystemOne(key: string, body: unknown, timeoutMs = 30_000): Promise<JudgeResponse> {
+  // ── THE CANON GGUF PATH ────────────────────────────────────────────────────────────────────
+  // When the endpoint is a llama.cpp/beellama server (the system canon's decider-0.8b), the wire
+  // is `/completion` with the canon prompt — NOT `/v1/systemone`. The translation:
+  //   · the systemone body's `state` + each question -> one canon prompt per question
+  //   · the readout is the softmax over the option letters at the `Answer: (` slot
+  //   · N questions = N local calls (llama.cpp cannot read N answer slots in one n_predict=1),
+  //     which is a LATENCY cost, not a money cost — the server is local and free.
+  // MEASURED: `/v1/systemone` against the GGUF server -> 404 not_found_error.
+  const base0 = judgeUrl().replace(/\/v1\/systemone$/, "").replace(/\/$/, "");
+  if (!process.env.JM_MOCK_DIR && (await detectCanon(base0))) {
+    const b = body as { state?: unknown; questions?: Record<string, { type: string; instructions: unknown; criteria?: unknown }> };
+    const answers: Record<string, unknown> = {};
+    let inTok = 0;
+    for (const [name, q] of Object.entries(b.questions ?? {})) {
+      const crit = q.criteria as Record<string, string> | string[] | undefined;
+      const a = await canonSystemOne({
+        state: b.state,
+        questions: { [name]: { type: (q.type === "noul" ? "noul" : q.type === "choice" ? "choice" : "score") as "noul" | "choice" | "score", instructions: String(q.instructions), criteria: crit } },
+        samples: Number(process.env.JM_CANON_SAMPLES ?? "1"),
+        base: base0,
+      });
+      const ans = a[name];
+      // reassemble in the systemone answer shape
+      answers[name] = ans.type === "noul"
+        ? { type: "noul", noul: ans.noul ?? 0 }
+        : ans.type === "choice"
+          ? { type: "choice", choice: ans.choice ?? "(none)", probabilities: ans.probabilities }
+          : { type: "score", score: ans.score ?? -1, probabilities: ans.probabilities };
+      inTok += 30;   // a local call; the token count is nominal (no billing)
+    }
+    // THE HONEST REQUEST COUNT: the canon path made ONE LOCAL CALL PER QUESTION (llama.cpp cannot
+    // read N answer slots in one n_predict=1). Reporting `1` here would be the same class of lie
+    // the `requests=` field exists to prevent. `canonCalls` rides the response so `askMany` can
+    // count the real round trips.
+    const resp = { model: "canon-gguf", answers, usage: { input_tokens: inTok, output_tokens: Object.keys(answers).length }, canonCalls: Object.keys(answers).length };
+    return resp as unknown as JudgeResponse;
+  }
+
   const mockDir = process.env.JM_MOCK_DIR;
   if (mockDir) {
     // deterministic test transport: the Nth call reads call-<n>.json (counter in a sidecar file)

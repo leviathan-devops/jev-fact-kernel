@@ -178,7 +178,11 @@ export async function askMany(
     }
     // the mock transport needs no real key (same contract as requireKey)
     const resp = await callSystemOne(key ?? "mock", { state: "batch", model, questions: qs });
-    requests++; lastModel = resp.model;
+    // THE REAL ROUND TRIPS: the canon GGUF path makes one local call per question (reported as
+    // `canonCalls`); the systemone path makes exactly one. Counting `1` for the canon path would
+    // understate the work the `requests=` field exists to expose.
+    requests += (resp as unknown as { canonCalls?: number }).canonCalls ?? 1;
+    lastModel = resp.model;
     const tok = resp.usage?.input_tokens;
     const chunkUsageMissing = typeof tok !== "number" || !Number.isFinite(tok);
     // THE USAGE CHECK COMES FIRST, AND IT IS FATAL HERE (D-046). "An unmeasured cost is fatal

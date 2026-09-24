@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `d53bbe2601fe1e03a2de606e6128e69e` (git d9ea1db)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `00932bf35519b0463e4f1990639031e6` (git c3e057d)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -15,7 +15,7 @@
 The chain exists so a future session can tell WHAT was proven WHEN. A row that cannot point at a
 sealed copy does not belong here.
 
-## THE MODULE INVENTORY (src/, 39 files)
+## THE MODULE INVENTORY (src/, 40 files)
 
 | file | lines |
 |------|-------|
@@ -28,11 +28,12 @@ sealed copy does not belong here.
 | `src/job/run.ts` | 82 |
 | `src/job/store.ts` | 56 |
 | `src/judge/cache.ts` | 74 |
-| `src/judge/client.ts` | 221 |
+| `src/judge/canon-gguf.ts` | 196 |
+| `src/judge/client.ts` | 225 |
 | `src/judge/key.ts` | 26 |
 | `src/judge/limiter.ts` | 127 |
 | `src/judge/policy.ts` | 130 |
-| `src/judge/transport.ts` | 147 |
+| `src/judge/transport.ts` | 207 |
 | `src/judge/types.ts` | 87 |
 | `src/ledger.ts` | 75 |
 | `src/mcp.ts` | 219 |
