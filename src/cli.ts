@@ -18,6 +18,8 @@ import { runIndexJob } from "./job/indexJob.ts";
 import { decisionTree, validateRecipe, type Recipe } from "./verbs/decision-tree.ts";
 import { filterIndex } from "./verbs/filter.ts";
 import { find } from "./verbs/find.ts";
+import { auditSpec } from "./verbs/spec-audit.ts";
+import { detectST } from "./verbs/st-detect.ts";
 import { startServer } from "./serve.ts";
 import { calibrate, recordTruth, recordCalibration } from "./calibrate.ts";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -540,6 +542,56 @@ async function main(): Promise<number> {
       }
       return 0;
     } catch (err) { db.close(); console.error(`JM_ERROR: ${String(err)}`); return exitCodeFor(err); }
+  }
+
+  // ══ THE WHITEBOARD WORKFLOW VERBS ══════════════════════════════════════════════════════════
+  if (verb === "spec-audit") {
+    // "Plan/Build package audit · Spec component built in Audit"
+    const specPath = positional[0] ?? flag("spec");
+    if (!specPath) { console.error("JM_ARGS: spec-audit <spec.json> — a JSON {components:[{id,description,files,symbols,tests}]}"); process.exit(2); }
+    const spec = JSON.parse(readFileSync(specPath, "utf8")) as { components: import("./verbs/spec-audit.ts").SpecComponent[] };
+    const sdb = openDb(indexPathFor("all"));
+    const res = auditSpec(sdb, spec, process.cwd());
+    sdb.close();
+    console.log(res.auditLine);
+    for (const r of res.rows) {
+      console.log(`  ${r.verdict.padEnd(8)} ${r.id.padEnd(12)} ${r.component.description.slice(0, 56)}`);
+      if (r.symbolsMissing.length > 0) console.log(`           missing symbols: ${r.symbolsMissing.join(", ")}`);
+      if (r.testsMissing.length > 0) console.log(`           missing tests:   ${r.testsMissing.join(", ")}`);
+    }
+    process.exit(res.failed > 0 ? 1 : 0);
+  }
+  if (verb === "st-detect") {
+    // "Testing - Jev ST detector · Ban ST, allow legit UT"
+    const sdb2 = openDb(indexPathFor("all"));
+    const res = detectST(sdb2, process.cwd());
+    sdb2.close();
+    console.log(res.verdictLine);
+    for (const r of res.rows) {
+      console.log(`  ${r.mechanicalVerdict.padEnd(9)} ${r.file.padEnd(38)} tests=${String(r.testCount).padStart(3)} imports=${String(r.importCount).padStart(2)} mocks=${String(r.mockCount).padStart(2)} failpaths=${String(r.failurePathCount).padStart(3)}`);
+      for (const reason of r.reasons) console.log(`             ${reason}`);
+    }
+    process.exit(res.shitty > 0 ? 1 : 0);
+  }
+  if (verb === "push-gate") {
+    // "commit Push - Jev decides" — the noul-gated checklist
+    const { pushGate } = await import("./verbs/push-gate.ts");
+    const { Judge } = await import("./judge/client.ts");
+    const pdb = openDb(indexPathFor("all"));
+    const judge = new Judge(pdb, {});
+    const specPath = flag("spec");
+    const specComponents = specPath
+      ? (JSON.parse(readFileSync(specPath, "utf8")) as { components: import("./verbs/spec-audit.ts").SpecComponent[] }).components
+      : undefined;
+    const res = await pushGate(pdb, { repoRoot: process.cwd(), specComponents, judge });
+    pdb.close();
+    console.log(`PUSH_GATE ${res.verdict} exit=${res.exitCode} requests=${res.requests}`);
+    for (const item of res.items) {
+      const n = item.noul !== undefined ? ` noul=${item.noul.toFixed(3)}` : "";
+      console.log(`  ${item.answer.padEnd(12)} ${item.question.padEnd(22)} ${item.evidence.slice(0, 64)}${n}`);
+    }
+    console.log(`  ${res.reason}`);
+    process.exit(res.exitCode);
   }
 
   if (verb === "report") {
