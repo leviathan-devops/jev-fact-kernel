@@ -552,3 +552,97 @@ can point `jm` at a corpus, narrow it keylessly, judge it in batches, gate a com
 result, and re-prove all of it with `scripts-legal-stop.sh` — and every number it reports
 is reproducible by a command in this report.
 <!-- DOC-COMPLETE -->
+
+---
+
+## CLARIFICATION — HOW TO USE IT, HOW IT WAS TESTED, THE LOCAL DECIDER MODEL
+
+### THE OPERATOR'S QUESTION
+*"This does not clearly explain how to use it, how you used it in testing, and whether its
+using the local decider model or not (plutus build installed 3 small models locally. use the
+decider model it installed. dont conflict with anything)"*
+
+### THE ANSWER
+
+**JM IS USING THE LOCAL DECIDER MODEL (decider-2b v10). It shares the SAME server with
+Plutus V6 at 127.0.0.1:8008. There is NO conflict.**
+
+The Plutus V6 build installed three small models on this host:
+
+| model | port | purpose | used by JM? |
+|---|---|---|---|
+| decider-2b v10 | **8008** | typed decisions (noul/choice/score) | **YES — the judge** |
+| limite-1b violetto | 8100 | math reasoning (vLLM, the Plutus build) | no — a math model |
+| nomic-embed-text | 8001/18082 | embeddings (768d) | no — an embedding model |
+
+**They share the same server** because the Plutus V6 build's `decider_client.py` also points
+at `DEFAULT_BASE = "http://127.0.0.1:8008"` (verified from the Plutus tree at
+`PLUTUS/V6_BUILD/Checkpoints/V6-round-0-6ceef10/decider/decider_client.py:20`).
+
+### HOW TO USE IT — the commands
+
+```bash
+# ── THE SETUP (one export, everything hits the local model) ──────────
+export JM_JUDGE_URL=http://127.0.0.1:8008/v1/systemone
+
+# ── INDEX a corpus (keyless, incremental, ~2s for 30k files) ────────
+jm index /path/to/corpus --name myindex
+
+# ── NARROW keylessly (no model, no cost) ────────────────────────────
+jm scan myindex --lex "the term"        # candidates + hit counts
+jm cluster myindex --lex "the term"     # signature groups
+jm extract myindex --re "regex"         # structured pulls
+jm query myindex --fts "the term"       # ranked FTS hits
+
+# ── JUDGE with the local decider-2b (batched, requests=1) ───────────
+jm evaluate --cases cases.json --questions questions.json --key is_failure
+jm filter myindex --question "does this describe a failure?" --fts "term" --limit 50
+jm find "the phrase" --in myindex --common 2
+jm decision-tree --rows rows.jsonl --recipe recipe.json
+jm route --task "what you want to do"
+
+# ── REPORT (the store's own counts) ─────────────────────────────────
+jm report myindex
+jm report --job <job-id>
+```
+
+### HOW IT WAS USED IN TESTING — every judged verb, verified against the local model
+
+The `JM_JUDGE_URL=http://127.0.0.1:8008/v1/systemone` export makes every judged verb hit
+decider-2b on the local GPU. The TypeSafe API is never called. The per-run cost is $0.
+
+| the test | the command | the local judge returned | requests |
+|---|---|---|---|
+| route | `jm route --task "find every missing credential"` | `route=noop p=0.371` (calibrated: no skill strongly matches) | **1** |
+| evaluate | `jm evaluate --cases w2-cases.json --questions w2-q.json --key is_failure` | `n=6 agreement=83.3% brier=0.1332` | **1** |
+| filter | `jm filter k --question "does this describe a failure?" --fts "index" --limit 3` | `candidates=3 judged=3 requests=1 batch=3/req` | **1** |
+| decision-tree | `jm decision-tree --rows gate-rows.jsonl --recipe gate-recipe2.json` | `rows=20 decided=20 calls=20 requests=1` | **1** |
+| the operator gate | OperatorC: a pre-commit evidence gate | BLOCKED exit 1 (noul 0.8777) / ALLOWED exit 0 (cb03dac) | auto |
+| the operator gate | OperatorA: corpus triage | paths kept with reasons | auto |
+
+The full 237-test battery runs against the MOCK transport (`JM_MOCK_DIR`) — no model needed.
+The LIVE gate above is tier L3/L4 (the real judge at the real endpoint). The operator gate is
+the terminal tier.
+
+### THE MODEL SHARING — no conflict
+
+```
+ decider-2b v10 on GPU at :8008
+   ├── JM uses it:     JM_JUDGE_URL=:8008/v1/systemone
+   └── Plutus V6 uses it: decider_client.py DEFAULT_BASE=:8008
+   → they SHARE the server. No conflict.
+
+ limite-1b violetto on vLLM at :8100
+   └── Plutus V6 math reasoning. NOT a decision model. Not used by JM.
+
+ nomic-embed on :8001/:18082
+   └── the embedding servers. NOT a decision model. Not used by JM.
+```
+
+### HOW TO RESTART THE DECIDER SERVER
+
+```bash
+cd /home/leviathan/JARVIS_WORKSPACE/Shared_Workspace/JevManager/vendor/decider
+DECIDER_MODEL=Mapika/decider-2b DECIDER_SHARED_FORK_GB=2 DECIDER_GRAPH_TOKEN_BUDGET=8192 \
+nohup uv run --extra serve uvicorn decider.serve:app --host 127.0.0.1 --port 8008 &
+```
