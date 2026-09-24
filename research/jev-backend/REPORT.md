@@ -1,152 +1,168 @@
-# Which model should be the PERMANENT Jev backend for this workspace?
+# Which model should be the PERMANENT Jev backend? (v2 — CORRECTED)
 
-> Generated 2026-09-24 · depth: deep · 7 primary sources (the model cards) · workspace:
-> research/jev-backend/
+> Generated 2026-09-24 · depth: deep · round 2: 6 parallel scouts + direct primary reads
+> **v1 OF THIS REPORT IS RETRACTED. Its recommendation (kev-4b) ranks #24 of 77.**
 
-## Executive summary
+## THE CORRECTION, UP FRONT
 
-- **RECOMMENDATION: `jaredpalmer/kev-4b`.** Apache-2.0, serves TypeSafe's `/v1/systemone`
-  natively, **0.904 on real documents (locked test, read once)** and **0.837 out-of-domain
-  (locked test)**, ECE 0.043, Brier 0.233. [1]
-- **Two candidates are ELIMINATED ON LICENSE, not on quality.** `openjev/openjev` is
-  **CC BY-NC 4.0** ("for commercial use, open a discussion") and `HopitAI/hopper` is
-  **"research and demo use only"** (its training data included RACE). A permanent
-  workspace-wide backend cannot carry a non-commercial core. [2][5]
-- **`openjev` has the best raw accuracy (84.0% on 10,000 questions, 1.4 points behind the
-  hosted Jev API) — and it is the one you cannot use.** Its smallest build (GGUF Q4_K_M) is
-  **16.5 GB**, which does not fit this host's 12 GB card. [2]
-- **`convaiinnovations/laya` is the wrong SHAPE** — a `pip install` SDK with its own request
-  format, not a `/v1/systemone` server, and near-chance on typed decisions. [3]
-- **`alibiserikbay/JevK5` is the strongest runner-up** (JevBench v1.4 **#2 of 76 systems, #1
-  open entrant**), Apache-2.0, ~9 GB — but its own card admits *"accuracy drops sharply on
-  JevBench's fresh sealed decisions"* (**33.1%** sealed vs 85.3% public). [4]
-- **`Mapika/decider-2b` is the best CALIBRATION-per-byte** (ECE 0.037, 3.5 GB, 4 ms with CUDA
-  graphs, schema cache up to 19x) and is already JM-integrated — but 0.755 held-out. [6]
-- **`jaredpalmer/kev-0.8b` is the fallback, not the backend** — same wire, ~2 GB, but its own
-  card says *"out of domain it is a sub-1B model"* (OOD 0.684). [7]
-- **The decisive factor is EVALUATION RIGOR, not a headline number.** kev-4b is the only
-  candidate whose numbers come from a **pre-registered protocol with locked tests read ONCE
-  per candidate**, paired bootstraps, and hashes in `result.json`. Every other candidate's
-  best number is a development-set number or a self-reported suite. [1]
-- **The migration cost is real but small**: JM already speaks `/v1/systemone`; kev ships
-  `kev.serve` on the same port. The adapter this session built for the GGUF stays for the
-  fallback path.
+**v1 recommended `jaredpalmer/kev-4b` as the permanent backend. The independent JevBench
+leaderboard ranks it #24 of 77 with a SEALED accuracy of 22.4% — the worst of the serious
+candidates.** v1 rested on the authors' own model cards, compared a *locked* number against
+*public-item* numbers, and never consulted the one independent head-to-head benchmark that
+exists for this model class. **That was the error.**
 
-## Background & scope
+## THE EVIDENCE — the live JevBench v1.4.1 board (scored 2026-09-23)
 
-The question: which of seven candidate models should be the permanent backend for ALL Jev
-architecture built in this workspace. Criteria: wire compatibility, calibration, accuracy
-(held-out above in-task), operational fit on a 12 GB RTX 4080, license, and provenance.
-Out of scope: general LLM serving, non-decision models.
+Source: https://benchmarkheaven.com/jev-models · protocol `jevbench::v1.4` · 534 public + 308
+sealed decisions · 77 ranked systems · "not affiliated with or endorsed by TypeSafe AI".
 
-## The comparison
+| # | system | score | Intel | Calib | Speed | Cost | public | **sealed** | gap |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | Jev 1.13.0 (TypeSafe API) | **63.3** | 53.1 | 76.3 | 83.3 | 52.0 | 86.6% | **36.7%** | +49.9 |
+| 2 | **JevK5 v0.2.0** (allebee) | **62.0** | 48.9 | 74.5 | 91.1 | 59.5 | 85.3% | **33.1%** | +52.2 |
+| 3 | Hopper (HopitAI) | 59.4 | 48.0 | 79.1 | 86.8 | 58.7 | 82.3% | **34.1%** | +48.2 |
+| 4 | Winnow-12B Q8 | 55.6 | 48.3 | 64.8 | 82.3 | 52.9 | 85.7% | 33.1% | +52.6 |
+| 9 | SemIf (formerly OpenJev) | 47.7 | 44.4 | 66.8 | 83.7 | 59.5 | 81.0% | 26.3% | +54.7 |
+| 16 | decider-35b-a3b | 41.2 | 47.2 | 65.3 | 80.8 | 45.3 | 83.1% | 31.5% | +51.6 |
+| **24** | **kev 4B** (research preview) | **36.1** | 42.1 | **39.6** | 75.7 | 61.8 | 66.2% | **22.4%** | +43.8 |
+| 34 | decider-2b (Mapika) | 30.7 | 38.5 | 43.5 | 83.2 | 61.0 | 71.0% | 24.7% | +46.3 |
+| 36 | Laya (Convai, ModernBERT 421M) | 30.3 | 36.1 | 63.7 | 71.1 | **86.2** | 58.4% | 30.8% | +27.6 |
+| 42 | kev 8B | 25.6 | 41.8 | 40.2 | 74.9 | 44.0 | 71.4% | 21.8% | +49.7 |
+| 45 | kev 0.6B | 24.8 | 34.2 | 50.0 | 75.6 | 76.1 | 66.7% | 24.0% | +42.6 |
 
-| # | model | license | size | `/v1/systemone` | accuracy | ECE | fits 12 GB? |
-|---|---|---|---|---|---|---|---|
-| 1 | openjev/openjev | **CC BY-NC 4.0** | 54 GB bf16 / 16.5 GB Q4 | YES (native + shim) | **84.0%** (10k) | calibrated | **NO** (16.5 GB min) |
-| 2 | alibiserikbay/JevK5 | **Apache-2.0** | ~9 GB bf16 / GGUF | YES (`jevk5-serve`) | JevBench #2/76 · hard 0.739 | hard 0.066 | tight |
-| 3 | convaiinnovations/laya | unstated | 808 MB | **NO** (own SDK) | near-chance, typed | — | yes |
-| 4 | Mapika/decider-2b | **Apache-2.0** | 3.5 GB bf16 | YES (native) | 0.805 / 0.755 | **0.037 / 0.084** | **yes** |
-| 5 | HopitAI/hopper | **research-and-demo** | ~9 GB (4B LoRA) | YES | hard 0.685 | 0.102 | tight |
-| 6 | **jaredpalmer/kev-4b** | **Apache-2.0** | ~9 GB bf16 | **YES** (`kev.serve`) | **0.904 / 0.837 locked** | **0.043 OOD** | tight |
-| 7 | jaredpalmer/kev-0.8b | **Apache-2.0** | ~2 GB | YES (`kev.serve`) | 0.825 / 0.684 | 0.054 served | **yes** |
+## THE SEALED COLUMN IS THE ONLY COMPARABLE NUMBER
 
-## Why kev-4b
+The public→sealed gap is **~50 points for nearly every system**, including TypeSafe's own Jev
+(+49.9). That means the 534 public items are **contaminated for everyone**. Ranking on public
+accuracy ranks contamination.
 
-**1 · THE LICENSE IS CLEAN.** Apache-2.0 for the adapter, the head, and the Qwen3.5-4B base. [1]
-Two of the seven are non-commercial: openjev (CC BY-NC 4.0, "for commercial use, open a
-discussion") [2] and hopper ("do not use this adapter commercially" — its training data
-included RACE, whose terms extend to derived data) [5]. A permanent backend on either is a
-licensing landmine buried under the whole workspace.
+**On the sealed set (the strictest class, items never published):**
 
-**2 · THE WIRE IS NATIVE.** `kev.serve` answers TypeSafe's `/v1/systemone`, and the card
-states: *"Any TypeSafe-compatible client works: `TypeSafeClient(api_key="local",
-base_url="http://127.0.0.1:8008", model="kev-latest")`"* [1]. No adapter needed. The same
-port (8008), the same contract JM already speaks.
+| rank by sealed | system | sealed |
+|---|---|---|
+| 1 | Jev 1.13.0 (the hosted API) | 36.7% |
+| 2 | **Hopper** | **34.1%** |
+| 3 | **JevK5 v0.2.0** | **33.1%** |
+| 4 | Winnow-12B | 33.1% |
+| 5 | decider-35b-a3b | 31.5% |
+| 6 | Laya | 30.8% |
+| 7 | decider-2b | 24.7% |
+| 8 | **kev 4B** | **22.4%** ← my v1 pick, LAST |
 
-**3 · THE ACCURACY IS ON A LOCKED TEST.** 0.904 on real documents (`documents-v1`, 936
-questions, **read once**), 0.891 on a private held-out set (`documents-v2`, 953), 0.837
-out-of-domain on the **locked test**. Compare the field's best available numbers:
-
-| the number | kev-4b | decider-2b | JevK5 | openjev |
-|---|---|---|---|---|
-| held-out / locked | **0.837 OOD locked** | 0.755 held-out | 0.331 sealed | 84.0% (dev-mixed) |
-| in-distribution | 0.872 | 0.805 | 0.804 teacher | — |
-| real long documents | **0.904 locked** | not reported | not reported | — |
-
-**4 · CALIBRATION IS BUILT IN, NOT A LAYER.** The temperature lives in `head.pt` and every
-loader gets calibrated probabilities by default — *"Every loader — `kev.serve`,
-`kev.benchmark`, the Space, anyone's harness — gets the calibrated probabilities by
-default. It never changes an answer."* [1] ECE 0.043 out of domain, Brier 0.233 on the locked
-test. decider-2b is marginally better in-task (0.037) but worse OOD (0.084).
-
-**5 · THE EVALUATION PROTOCOL IS THE DIFFERENTIATOR.** kev-4b's numbers come from a
-pre-registered release rule: *"The release was decided by a rule registered before any read
-(`PLAN.md` round 8)... then one read of the untouched documents test and one locked read."*
-Every number carries suite hash, code hashes and git commit in `result.json`. [1] This is the
-only candidate whose claims are produced by a protocol designed to prevent self-deception.
-hopper, by contrast, publishes its OWN numbers and says plainly *"These are local numbers,
-not official JevBench results"* — and discloses that on the reserved half it is *"level with
-the frozen model on accuracy there, not ahead."* [5]
-
-**6 · THE FAMILY IS A LADDER ON ONE WIRE.** kev-0.8b / kev-4b / kev-9b share the interface
-and the serving code. The workspace can scale down (0.8b, ~2 GB) or up (9b, 0.852 OOD) by
-changing ONE argument, never the client.
-
-**7 · THE LIMITS ARE NAMED, NOT HIDDEN.** Date arithmetic fails (`deadline` 0.60) — and the
-card ships the fix (`KEV_DATE_FACTS=1` → 0.85). Knowledge is base-limited (MMLU 0.70 vs Jev
-0.90). Mac/MPS is slow (no DeltaNet kernels). Each limit is measured and stated. [1]
-
-## The honest counter-arguments
-
-- **decider-2b is already integrated and smaller.** 3.5 GB vs 9 GB, ECE 0.037 in-task, and
-  the schema cache is up to 19x per batch. **The counter:** its held-out accuracy is 0.755
-  against kev-4b's 0.837 locked OOD, and JM's questions are arbitrary operator text — a
-  held-out distribution by definition. Accuracy on the distribution that matters favours
-  kev-4b.
-- **openjev is 1.4 points behind the HOSTED Jev API** — the best number in the field. **The
-  counter:** CC BY-NC 4.0 and a 16.5 GB minimum. It cannot be the permanent backend.
-- **JevK5 is ranked #2 of 76 by an INDEPENDENT benchmark.** **The counter:** the same
-  benchmark's sealed set drops it to 33.1% — its own card flags this first under "Known weak
-  spots."
-- **~9 GB is tight on a 12 GB card** that also hosts embeddings (~1.1 GB). **The
-  counter-measure:** the kev-0.8b fallback on the SAME wire for memory-constrained runs, and
-  the 4B can be quantized.
-
-## Recommendation
-
-**Adopt `jaredpalmer/kev-4b` as the permanent backend.**
+## THE TERMINOLOGY (what "locked" and "sealed" MEAN)
 
 ```
- serve:   uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b --port 8008
- client:  JM_JUDGE_URL=http://127.0.0.1:8008/v1/systemone   (already what JM speaks)
- fallback: jaredpalmer/kev-0.8b  — the same wire, ~2 GB, for memory-constrained runs
- scale-up: jaredpalmer/kev-9b    — 0.852 OOD, when accuracy outweighs memory
+┌────────────────────────────────────────────────────────────────────┐
+│  THE TRUST LADDER                                                  │
+├────────────────────────────────────────────────────────────────────┤
+│  DEVELOPMENT ("dev set") — you look at it REPEATEDLY, tune on it.  │
+│    Every model-selection decision lands here. INFLATED by selection│
+│    pressure: you kept the winner out of N candidates.              │
+│                                                                    │
+│  HELD-OUT — the WEIGHTS never trained on it. The minimum bar.      │
+│    Says nothing about how many times you LOOKED at it.             │
+│                                                                    │
+│  LOCKED ("locked read") — you may read it AT MOST ONCE per         │
+│    candidate. kev's own card: "the locked test partition is read   │
+│    at most once per candidate." You cannot iterate against it.     │
+│                                                                    │
+│  SEALED — STRONGEST. The items are NOT PUBLIC AT ALL. JevBench:    │
+│    "The sealed item text, answer keys and per-item predictions are │
+│    retained privately." You cannot train on what you cannot see.   │
+│    A sealed number is the least gameable measure that exists.      │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-**The migration is one line of configuration**, because JM already targets
-`/v1/systemone` — the adapter this session built for the GGUF server stays for the
-GGUF/canon path and is not needed for kev.
+**My v1 error, named precisely:** I put kev-4b's **locked** 0.837 next to JevK5's **public-item**
+0.958 and decider's **held-out** 0.755 in ONE table as if comparable, then ranked them. Those are
+three different quantities. **The terminology exists exactly to prevent that comparison.**
 
-## Open questions
+## THE SIZE CORRECTIONS (the operator was right)
 
-- **kev-4b's fit on THIS host is unmeasured.** The card's numbers are H100/B300; the 4080's
-  ~9 GB budget with embeddings resident is tight and must be measured before adoption.
-- **The 4B's OOD advantage over decider-2b on OUR questions is inferred, not measured.** Both
-  cards report on their own suites; a head-to-head on this workspace's real questions would
-  settle it.
-- **`KEV_DATE_FACTS=1` is preprocessing**, reported separately by the card and never folded
-  into the model's numbers — its effect on JM's date-bearing questions is unmeasured.
-- **No candidate was tested on this host this session** (except decider-0.8b, which is the
-  current canon). The recommendation rests on the published protocols, which are unusually
-  rigorous but are still the authors' own.
+| model | what I said | the MEASURED truth | the distinction |
+|---|---|---|---|
+| **JevK5** | ~9 GB | **4.17 GB on this host** (`jevk5-4b-Q8_0.gguf`) · Q8_0 4.48 GB published · Q4_K_M 2.71 GB | bf16 base is 8.4 GB; the GGUF is ~4.5 GB |
+| **kev-4b** | ~9 GB | **adapter only 0.16 GB** + base 9.32 GB | the adapter is tiny; the SERVING stack is 9 GB |
+| decider-2b | 3.5 GB | 3.5 GB ✓ | correct |
+| decider-0.8b | — | **0.76 GB measured** | the current canon |
+| Laya | 808 MB | 421M params, CPU, 512-token/question budget | tiny but context-limited |
 
-## Sources
+**`jevk5-4b-Q8_0.gguf` (4.17 GB) IS ALREADY ON THIS HOST.** The operator's "JevK5 is only 5gb" is
+TRUE for the Q8 GGUF. My "~9 GB" was the bf16 figure — the same model, a different format.
 
-[1] jaredpalmer/kev-4b — https://huggingface.co/jaredpalmer/kev-4b (accessed 2026-09-24, primary)
-[2] openjev/openjev — https://huggingface.co/openjev/openjev (accessed 2026-09-24, primary)
-[3] convaiinnovations/laya — https://huggingface.co/convaiinnovations/laya (accessed 2026-09-24, primary)
-[4] alibiserikbay/JevK5 — https://huggingface.co/alibiserikbay/JevK5 (accessed 2026-09-24, primary)
-[5] HopitAI/hopper — https://huggingface.co/HopitAI/hopper (accessed 2026-09-24, primary)
-[6] Mapika/decider-2b — https://huggingface.co/Mapika/decider-2b (accessed 2026-09-24, primary)
-[7] jaredpalmer/kev-0.8b — https://huggingface.co/jaredpalmer/kev-0.8b (accessed 2026-09-24, primary)
+## THE ANSWER: **`alibiserikbay/JevK5` v0.2.0**
+
+**It is #2 of 77 overall, #1 among OPEN entrants, Apache-2.0, ~4.2 GB as a Q8 GGUF that is
+already downloaded, and it serves TypeSafe's `/v1/systemone` via `jevk5-serve`.**
+
+The four reasons, each from the independent board:
+
+1. **#2 of 77, #1 open.** 62.0 vs Jev's 63.3 — **1.0 point behind the hosted API**, ahead of every
+   other open model including hopper (#3, and research-only licensed).
+2. **Apache-2.0.** Clean for a permanent workspace backend. Hopper (#3) is "research and demo use
+   only"; openjev (Convai's DiffusionGemma variant) is CC BY-NC.
+3. **Fits this host.** 4.17 GB measured, already present, vs kev-4b's 9 GB serving stack.
+4. **The wire is native.** `jevk5-serve --model alibiserikbay/JevK5 --port 8090` answers
+   `/v1/systemone`.
+
+**Its honest weakness, from the card itself:** *"Accuracy drops sharply on JevBench's fresh sealed
+decisions"* — 33.1% sealed. **But every candidate collapses there, including Jev (36.7%).** On the
+sealed set JevK5 is 3rd, 3.6 points behind the hosted API — the same 3.6-point band the whole open
+field occupies.
+
+## WHERE EACH CANDIDATE LANDS — the operator's five challenges
+
+| the operator said | the verdict |
+|---|---|
+| "JevK5 is #2 on JevBench, second only to the official Jev API" | **CONFIRMED** — #2 of 77 at 62.0 vs 63.3 |
+| "JevK5 is only 5gb right now as is Kev4b" | **HALF RIGHT** — JevK5 Q8_0 = **4.17 GB** (measured, on disk). kev-4b's ADAPTER is 0.16 GB but its 9 GB base must also be resident |
+| "other benchmarks rate laya" | **CONFIRMED, and it cuts both ways** — Laya is **#36 on JevBench (30.3)** but has the **best Cost axis in the field (86.2)** and a reported ~0.766 on narrow in-distribution suites vs Jev's 0.727. It is a specialist, not the backend |
+| "Decider was ranked down in the #20s" | **CONFIRMED and STALE** — decider-2b was **#20-23 under v1.2 几何-mean scoring**; the current v1.4.1 board puts it **#34** |
+| "how did you come to these conclusions" | **From the authors' own model cards — insufficient.** This round used the independent benchmark. My v1 pick moved from #1 (my ranking) to **#24 of 77** (theirs) |
+
+## THE RUNNER-UP AND THE SPECIALISTS
+
+- **Hopper** (#3, sealed 34.1% — the best open sealed number) — **BLOCKED by license**
+  ("research and demo use only"; its data included RACE).
+- **Laya** (#36) — the cost/speed extreme: 86.2 Cost axis, ~$0.0029/1k decisions, CPU-only, 421M
+  params. **Use it as a cheap pre-filter in front of JevK5, not as the backend** — its 512-token
+  budget cuts long states by design (the board says so).
+- **decider-0.8b** (the current canon, #60-adjacent at 0.776/0.707 by its own card) — 0.76 GB, the
+  GGUF adapter already built this session. **Keep it as the offline/fallback path.**
+
+## THE OPERATIONAL RECOMMENDATION
+
+```
+ PRIMARY:    alibiserikbay/JevK5 v0.2.0  (Apache-2.0)
+   serve:    jevk5-serve --model alibiserikbay/JevK5 --port 8090
+   OR:       the Q8 GGUF already on disk (jevk5-4b-Q8_0.gguf, 4.17 GB) via llama.cpp
+   wire:     JM_JUDGE_URL=http://127.0.0.1:8090/v1/systemone   (native, no adapter)
+   result:   231/231 valid on the public items; 228/231 same answer as bf16 on Q8_0
+
+ FALLBACK:   Mapika/decider-0.8b GGUF  (current canon, 0.76 GB, offline)
+ PRE-FILTER: Laya  (CPU, ~$0.003/1k, for cheap first-pass triage of huge candidate sets)
+ NOT USED:   kev-4b/kev-9b/kev-0.8b (Apache-2.0 but #24/#42/#45)
+             Hopper (research-only license)
+             openjev (CC BY-NC 4.0; 16.5 GB minimum — the best accuracy, unusable)
+```
+
+## OPEN QUESTIONS
+
+- **The board measures SERVED systems**, and JevK5 ran "unknown" endpoint status (no p50 latency
+  reported). Its Speed axis (91.1) is the 2nd best in the field, but the on-host latency is
+  unmeasured.
+- **The sealed set is 308 items.** Small differences (33.1 vs 34.1) are within noise; the board's
+  own README warns "small sealed differences do not prove pairwise superiority."
+- **No candidate was tested on THIS host this session** except decider-0.8b.
+- **The cost axis assumes a $ figure** for self-hosted systems (estimated, not metered). JevK5's
+  ~$0.022/1k is an ESTIMATE.
+
+## SOURCES
+
+[1] JevBench live board v1.4.1 — https://benchmarkheaven.com/jev-models (scored 2026-09-23, independent)
+[2] JevBench repo + method — https://github.com/fstandhartinger/jevbench (MIT; "not affiliated with TypeSafe")
+[3] JevK5 v0.2.0 — https://huggingface.co/alibiserikbay/JevK5 (Apache-2.0, #2 of 77)
+[4] kev-4b — https://huggingface.co/jaredpalmer/kev-4b (#24 of 77, sealed 22.4%)
+[5] Hopper — https://huggingface.co/HopitAI/hopper (#3, research-only license)
+[6] Laya — https://huggingface.co/convaiinnovations/laya (#36, best cost axis)
+[7] decider-2b — https://huggingface.co/Mapika/decider-2b (#34; #20-23 under the old v1.2 scoring)
