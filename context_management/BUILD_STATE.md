@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `a38ef7b5a9ce3d998cd8c89e7ce5f9a2` (git c4293c6)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `c630cd85b763238394c8d7e37f623004` (git 4e5f751)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -15,14 +15,14 @@
 The chain exists so a future session can tell WHAT was proven WHEN. A row that cannot point at a
 sealed copy does not belong here.
 
-## THE MODULE INVENTORY (src/, 36 files)
+## THE MODULE INVENTORY (src/, 39 files)
 
 | file | lines |
 |------|-------|
 | `src/adapters/jsonl.ts` | 69 |
 | `src/adapters/sqlite.ts` | 81 |
 | `src/calibrate.ts` | 66 |
-| `src/cli.ts` | 673 |
+| `src/cli.ts` | 725 |
 | `src/job/indexJob.ts` | 57 |
 | `src/job/queue.ts` | 118 |
 | `src/job/run.ts` | 82 |
@@ -50,13 +50,16 @@ sealed copy does not belong here.
 | `src/verbs/filter.ts` | 96 |
 | `src/verbs/find.ts` | 203 |
 | `src/verbs/index.ts` | 306 |
+| `src/verbs/push-gate.ts` | 200 |
 | `src/verbs/query.ts` | 126 |
 | `src/verbs/report.ts` | 231 |
 | `src/verbs/route.ts` | 182 |
 | `src/verbs/scan.ts` | 105 |
+| `src/verbs/spec-audit.ts` | 95 |
+| `src/verbs/st-detect.ts` | 113 |
 | `src/watch.ts` | 128 |
 
-## THE TEST INVENTORY (tests/, 46 files)
+## THE TEST INVENTORY (tests/, 47 files)
 
 | file | lines |
 |------|-------|
@@ -105,6 +108,7 @@ sealed copy does not belong here.
 | `tests/retrieve.test.ts` | 201 |
 | `tests/store.test.ts` | 37 |
 | `tests/watch.test.ts` | 133 |
+| `tests/wave-gates-named.test.ts` | 100 |
 | `tests/wave-gates.test.ts` | 197 |
 
 ## WHAT EACH MODULE OWNS (one line each, so a reader knows where to look)
