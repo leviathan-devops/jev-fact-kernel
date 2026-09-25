@@ -1018,3 +1018,34 @@ describe("watch — an error count with no message is not a signal", () => {
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
+
+describe("cache.ts — the fingerprint must preserve input-distinctness (the CRITICAL fix)", () => {
+  test("test_cache_fingerprint_preserves_distinctness", () => {
+    const { fingerprint, canonicalRaw } = require("../src/judge/cache.ts");
+    // THE DEFECT: redaction-before-hash collapsed distinct states into one fingerprint.
+    // {email:'a@x.com'} and {email:'b@y.com'} BOTH hashed to the same value because the
+    // redactor erased the body before the hash ran. MEASURED: same sha256 hex.
+    const s1 = { email: "a@example.com", name: "alice" };
+    const s2 = { email: "b@other.org", name: "bob" };
+    const f1 = fingerprint("jev-latest", "test@v1", s1);
+    const f2 = fingerprint("jev-latest", "test@v1", s2);
+    expect(f1).not.toBe(f2);   // THE COLLISION IS FIXED: distinct inputs -> distinct keys
+
+    // and the phone collision too (the D-037 fix already handled this, but verify it holds
+    // through the new path):
+    const p1 = fingerprint("jev-latest", "test@v1", { session_id: "123456789" });
+    const p2 = fingerprint("jev-latest", "test@v1", { session_id: "987654321" });
+    expect(p1).not.toBe(p2);   // distinct IDs -> distinct fingerprints
+
+    // and the canonicalRaw preserves the Map/Set distinction (the audit's Map/Set finding):
+    const m1 = canonicalRaw(new Map([["a", 1]]));
+    const m2 = canonicalRaw(new Map([["b", 1]]));
+    expect(m1).not.toBe(m2);   // different Maps -> different canonical forms
+
+    // and the redaction still works for what is STORED (the answer_json column):
+    const { redact } = require("../src/judge/cache.ts");
+    const redacted = redact({ email: "alice@example.com", token: "sk-abc123def456ghi789" });
+    expect(JSON.stringify(redacted)).not.toContain("alice@example.com");
+    expect(JSON.stringify(redacted)).not.toContain("sk-abc123");
+  });
+});

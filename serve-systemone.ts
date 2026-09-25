@@ -45,6 +45,16 @@ Bun.serve({
 		if (raw.length > 1_048_576) {
 			return Response.json({ error: "JM_SYS_BODY_TOO_LARGE: 1 MiB cap" }, { status: 413 });
 		}
+		// ★ BUG-1 FIX (found live, P4 OP-1): a real omp session projected 24,934 tokens —
+		// JevK5's context is 16,384. The doomed forward surfaced as a raw 500 overflow.
+		// Bound the STATE at the adapter: ~48K chars ≈ 12K tokens leaves prompt headroom on
+		// the 16,384-ctx server. Named refusal, fail-closed — never a truncated silent judge.
+		if (raw.length > 48_000) {
+			return Response.json(
+				{ error: `JM_SYS_STATE_TOO_LARGE: state ≈${Math.round(raw.length / 4)} tokens exceeds the ~12K-token judge budget — narrow the evidence (D004: the deterministic layer narrows before the judge; use the bridge's ≤2KB rows, not whole-trace projections)` },
+				{ status: 413 },
+			);
+		}
 		let res: Response;
 		try {
 			res = await fetch(JM_DECIDE, {

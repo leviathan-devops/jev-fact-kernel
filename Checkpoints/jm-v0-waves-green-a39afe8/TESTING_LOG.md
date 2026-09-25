@@ -1229,3 +1229,29 @@ WHAT IS NOT BLOCKED (the proof that DID run, this session):
 - `bun run scripts-recovery-proof.ts` -> exit 0 (SIGKILL, dup=0, 600/600 indexed)
 - the W2 gate on decider-2b -> all four judged verbs requests=1
 - THE OPERATOR GATE -> 3 agents, 2 fresh, each first-class
+
+## AUDIT GATE — 2026-09-24 (the FIRST audit that RAN — through muse-go on decider-2b)
+```
+$ ocr scan --path src/judge --concurrency 1
+GATE: FAIL
+
+provider: muse-go · model: muse-spark-1.3-contributor
+files_reviewed: 8 · comments: 48 · total_tokens: 522,993 · elapsed: 13m0s
+tool_calls: 17 · failures: 0
+
+SEVERITY: critical=1 · high=20 · medium=24 · low=3
+CATEGORY: bug=32 · maintainability=8 · security=4 · performance=4
+
+FILES: cache.ts · canon-gguf.ts · client.ts · key.ts · limiter.ts
+       policy.ts · transport.ts · types.ts
+
+THE CRITICAL FINDING:
+  cache.ts:29-31 — redaction-before-hash causes cache collisions.
+  {email:'a@x.com'} and {email:'b@y.com'} both canonicalize to [email],
+  so cacheGet serves one state's answer for another. Cache keys must
+  preserve input-distinctness.
+```
+**AUDIT GATE: FAIL** — 1 critical + 20 high findings block every ship-ready claim.
+This is the first audit that RAN (every prior attempt was BLOCKED by provider quota).
+The findings are specific, file:line-anchored, and category-tagged.
+The critical finding is a genuine data-integrity bug in the cache layer.

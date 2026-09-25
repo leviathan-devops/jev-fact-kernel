@@ -55,8 +55,45 @@ export function redact(value: unknown): unknown {
 
 export const canonical = (v: unknown): string => JSON.stringify(redact(v));
 
+/** THE CANONICAL FORM FOR THE CACHE KEY — the RAW state, NOT the redacted one.
+ *
+ *  THE CRITICAL DEFECT THIS FIXES (audit cache.ts:29-31, MEASURED):
+ *    fingerprint(model, schema, {email:'a@x.com'})  -> hash X
+ *    fingerprint(model, schema, {email:'b@y.com'})  -> hash X   <- COLLISION
+ *  Both states canonicalize to `[email]`, so cacheGet serves one state's answer for
+ *  another. The cache key MUST preserve input-distinctness. The redactor's job is to
+ *  strip secrets from what is STORED, not from what is KEYED.
+ *
+ *  THE FIX: the fingerprint hashes the canonical (sorted-key) JSON of the RAW state.
+ *  The redacted form is computed ONLY for the `answer_json` column, so secrets do not
+ *  leak into the stored payload. Two separate jobs, two separate paths. */
+export const canonicalRaw = (v: unknown): string => {
+  // Sort keys for a deterministic ordering (same as redact's object path), but do NOT redact.
+  if (value_is_object(v)) {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v as Record<string, unknown>).sort()) out[k] = canonicalRaw((v as Record<string, unknown>)[k]);
+    return JSON.stringify(out);
+  }
+  if (Array.isArray(v)) return JSON.stringify(v.map(canonicalRaw));
+  if (v instanceof Date) return JSON.stringify({ __date: v.toISOString() });
+  if (v instanceof Map) {
+    const entries = Array.from(v.entries()).map(([k, val]) => [canonicalRaw(k), canonicalRaw(val)]);
+    entries.sort((a, b) => a[0].localeCompare(b[0]));
+    return JSON.stringify({ __map: entries });
+  }
+  if (v instanceof Set) {
+    const items = Array.from(v).map(canonicalRaw).sort();
+    return JSON.stringify({ __set: items });
+  }
+  return JSON.stringify(v ?? null);
+};
+
+function value_is_object(v: unknown): boolean {
+  return v !== null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date) && !(v instanceof Map) && !(v instanceof Set);
+}
+
 export function fingerprint(model: string, schemaVersion: string, state: unknown): string {
-  return createHash("sha256").update(`${model}\u0000${schemaVersion}\u0000${canonical(state)}`).digest("hex");
+  return createHash("sha256").update(`${model}\u0000${schemaVersion}\u0000${canonicalRaw(state)}`).digest("hex");
 }
 
 export interface CachedAnswer { answers: unknown; model: string; }

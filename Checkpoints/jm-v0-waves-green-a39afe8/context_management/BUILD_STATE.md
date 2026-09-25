@@ -1,6 +1,6 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `00932bf35519b0463e4f1990639031e6` (git 7850b36)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `b182214203c1357969f1fda4d0a46b04` (git 8436574)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
@@ -27,7 +27,7 @@ sealed copy does not belong here.
 | `src/job/queue.ts` | 118 |
 | `src/job/run.ts` | 82 |
 | `src/job/store.ts` | 56 |
-| `src/judge/cache.ts` | 74 |
+| `src/judge/cache.ts` | 111 |
 | `src/judge/canon-gguf.ts` | 196 |
 | `src/judge/client.ts` | 225 |
 | `src/judge/key.ts` | 26 |
@@ -71,8 +71,8 @@ sealed copy does not belong here.
 | `tests/audit-findings.test.ts` | 157 |
 | `tests/audit-highs-2.test.ts` | 122 |
 | `tests/audit-highs-3.test.ts` | 90 |
-| `tests/audit-judge.test.ts` | 166 |
-| `tests/audit-pass3.test.ts` | 1020 |
+| `tests/audit-judge.test.ts` | 163 |
+| `tests/audit-pass3.test.ts` | 1051 |
 | `tests/audit-phantom-surfaces.test.ts` | 107 |
 | `tests/budget.test.ts` | 62 |
 | `tests/cache-endpoint-scope.test.ts` | 47 |
@@ -97,7 +97,7 @@ sealed copy does not belong here.
 | `tests/ladder-reason.test.ts` | 55 |
 | `tests/launcher.test.ts` | 94 |
 | `tests/ledger.test.ts` | 26 |
-| `tests/limiter.test.ts` | 53 |
+| `tests/limiter.test.ts` | 99 |
 | `tests/mcp-notification.test.ts` | 70 |
 | `tests/mcp.test.ts` | 89 |
 | `tests/phantom-artifacts.test.ts` | 175 |
@@ -238,7 +238,7 @@ Each instrument found defects the others could not, and the union is what the de
 That is the argument for keeping all five rather than the cheapest one.
 
 ## 2026-09-23 · the decider-2b wiring + the W2 gate green
-- commit 55dc761 · battery 237 pass / 0 fail · tsc exit 0 · bundle 1539e318f156274a
+- commit 55dc761 · battery 237 pass / 0 fail · tsc exit 0 · bundle bb9b6d2e5d6416f2
 - host suite 12/12 PASS (scripts-host-suite.sh, the deployed launcher, the registry's env)
 - THE LOCAL JUDGE: decider-2b v10 on GPU (:8008, 4.2GB, ~1s/question)
   - installed at vendor/decider (gitignored) · served with DECIDER_SHARED_FORK_GB=2 DECIDER_GRAPH_TOKEN_BUDGET=8192
