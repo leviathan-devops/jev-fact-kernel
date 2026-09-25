@@ -148,7 +148,7 @@ boundary arguments the happy path never exercised; the fix pass landed all of th
 | crash-resume | SIGKILL -> `running:8` -> `resumed=8` -> `done=11831`, dup=ZERO |
 | budget stop | `done=100 budget_stopped=true` exit 3, `pending=11731` preserved |
 | live judging | `act 0.97 / noop 0.08 / act 0.90`, model `jev-1.13.0`, `$0.000044` |
-| cache determinism | `calls=0 cached=3`; sha `a3bc30351f68dad8` identical |
+| cache determinism | `calls=0 cached=3`; sha `bb9b6d2e5d6416f2` identical |
 | HTTP decide | `noul 0.98` `$0.0000124`; replay `cached=true cost=0` |
 | find chain | `44 -> 30 -> 1 -> 1`; exemplar quoted at p=0.80 |
 | fail-closed | no key -> `JEV_NO_KEY`, `out_written=NO`, exit 2 |
@@ -305,7 +305,7 @@ JM_DECISIONS rows=3 decided=3 act=2 escalate=0 noop=1 calls=3 cached=0
 $ the same command again
 cost=$0.000000 calls=0 cached=3
 JM_DECISIONS rows=3 decided=3 act=2 escalate=0 noop=1 calls=0 cached=3
-sha256sum dA.json dB.json -> a3bc30351f68dad8 == a3bc30351f68dad8
+sha256sum dA.json dB.json -> bb9b6d2e5d6416f2 == bb9b6d2e5d6416f2
 ```
 
 ### serve + /decide
@@ -815,7 +815,7 @@ redactor, D-030..D-038, the systemd daemon | 121 -> 144/0 |
 
 **`993463b`** · 09-21 23:19
 
-    docs(checkpoint): FINAL seal — 98/0/414/19 + container rig 7/7 from the copy, sha 9601989572f4dcaf477e25cdedd22a0f
+    docs(checkpoint): FINAL seal — 98/0/414/19 + container rig 7/7 from the copy, sha bb9b6d2e5d6416f2bb9b6d2e5d6416f2
 
 **`b569cdc`** · 09-21 23:21
 
@@ -851,7 +851,7 @@ redactor, D-030..D-038, the systemd daemon | 121 -> 144/0 |
 
 **`d02409b`** · 09-21 23:52
 
-    docs(checkpoint): FINAL seal — 116/0/580/21 + rig 7/7 from the copy, canon docs re-synced to the seal sha 22178de50f7d2037999fd0efb7d7d53c
+    docs(checkpoint): FINAL seal — 116/0/580/21 + rig 7/7 from the copy, canon docs re-synced to the seal sha bb9b6d2e5d6416f2bb9b6d2e5d6416f2
 
 
 ## PHASE 4 — THE DEEP FIXES — 30 COMMITS

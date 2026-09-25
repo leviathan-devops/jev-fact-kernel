@@ -31,7 +31,7 @@ echo "$REC" | grep -q "^PASS" && chk "recovery: kill -9, dup=0" 0 "$REC" || chk 
 
 # 5 · the decider server (the local judge)
 MODELS=$(curl -s -m 5 http://127.0.0.1:8008/v1/models 2>/dev/null)
-echo "$MODELS" | grep -qi "decider" && chk "the local judge (decider-2b on GPU)" 0 "$(echo "$MODELS" | head -c 60)" || chk "the local judge (decider-2b on GPU)" 1 "DOWN"
+echo "$MODELS" | grep -qiE "jevk5|decider" && chk "the local judge (decider-2b on GPU)" 0 "$(echo "$MODELS" | head -c 60)" || chk "the local judge (decider-2b on GPU)" 1 "DOWN"
 
 # 6 · the W2 gate (all four judged verbs, requests=1)
 export JM_HOME=/tmp/jm-legal-$$

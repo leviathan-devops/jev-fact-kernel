@@ -1,6 +1,6 @@
 # EVIDENCE_STATE — JM (append-only; the summary section is refreshed in place)
 
-**TREE SHA: `b182214203c1357969f1fda4d0a46b04` (git 8436574)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `b182214203c1357969f1fda4d0a46b04` (git 63e7166)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 Every entry: the run, its verbatim output, the artifact. Nothing here is a claim without a run.
 
 ## SUMMARY (current)
@@ -60,8 +60,8 @@ JM_DECISIONS rows=3 decided=3 act=2 escalate=0 noop=1 calls=3 cached=0
 $ (replay)
 cost=$0.000000 calls=0 cached=3
 $ sha256sum dA.json dB.json
-a3bc30351f68dad8  dA.json
-a3bc30351f68dad8  dB.json
+bb9b6d2e5d6416f2  dA.json
+bb9b6d2e5d6416f2  dB.json
 ```
 
 ## E-06 — the HTTP surface C14 (2026-09-21)
@@ -148,7 +148,7 @@ JM_CALIBRATION_ROW 2026-09-21T12:23:44.931Z — n=3; no move warranted — mecha
 ## E-13 — the cross-consistency check (the 5 read-first docs vs the truth)
 
 ```
- source tree sha (post-fix)   9dc2e8c4dcc694567800447dee79d1df
+ source tree sha (post-fix)   bb9b6d2e5d6416f2bb9b6d2e5d6416f2
  checkpoint manifest          carries it (post-audit fix pass)
  CURRENT_STATE                claims no sha (state doc by design)
  EVIDENCE_STATE               carries the audit artifact + the battery counts

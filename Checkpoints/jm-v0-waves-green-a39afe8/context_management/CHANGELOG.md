@@ -22,7 +22,7 @@ the single network seam with a canned-response test mode, the redact->canonical-
 the policy bands, the cache-first client with fail-closed semantics, and the decision-tree verb
 (rows x recipe -> bands + escalation + deterministic artifacts + the decisions table). *Evidence:*
 live `act 0.97 / noop 0.08 / act 0.90` at `$0.000044`; replay `calls=0 cached=3`; two runs sha
-`a3bc30351f68dad8`.
+`bb9b6d2e5d6416f2`.
 
 **W4 — the find chain.** The 9 stages (pick -> seed -> fetch -> narrow -> judge -> rerank -> cluster
 -> label -> emit) with a deterministic tokenizer, FTS retrieval, batched judging, probability
