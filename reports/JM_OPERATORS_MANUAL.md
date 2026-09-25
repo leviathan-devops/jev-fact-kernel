@@ -2,7 +2,6 @@
 
 **The practical guide to every use case.**
 
-<!-- OM-CHUNK-1 -->
 
 ## THE QUICK-START
 

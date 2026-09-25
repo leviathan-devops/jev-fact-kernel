@@ -2,7 +2,6 @@
 
 **The intelligence architecture: how the tool thinks.**
 
-<!-- MB-CHUNK-1 -->
 
 ## THE INTELLIGENCE ARCHITECTURE
 

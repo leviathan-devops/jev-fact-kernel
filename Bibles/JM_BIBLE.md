@@ -34,7 +34,6 @@
 10. [Iron Laws](#10-iron-laws)
 11. [Conclusion and Compaction Recovery](#11-conclusion)
 
-<!-- BB-CHUNK-1 -->
 
 # 1 · THE RED PILL
 
@@ -139,7 +138,6 @@
 | MCP (src/mcp.ts) | The MCP server | JSON-RPC | tool results | stdio |
 | Watch (src/watch.ts) | Daemon tick | targets | journal rows | Bun daemon |
 | Serve (src/serve.ts) | HTTP surface | HTTP | JSON | Bun HTTP |
-<!-- BB-CHUNK-2 -->
 
 # 3 · DESIGN PRINCIPLES AND KEY DECISIONS
 
@@ -246,7 +244,6 @@ actionable output: "Zero drift? bundle=X stated=Y DRIFT" tells you exactly what 
 `process.env.JM_*`, and concurrent files raced each other's judge calls mid-flight. The cache test
 passed 0/20 isolated and failed ~1/10 in the suite.
 **Cost of reversal:** Low — but it would reintroduce the race.
-<!-- BB-CHUNK-3 -->
 
 # 4 · TECHNICAL DEEP-DIVES PART 1 — THE STORE AND INGESTION
 
@@ -328,7 +325,7 @@ columns and operators are accepted. A non-numeric value on a numeric column is R
 (`JM_WHERE_VALUE`) because SQLite orders TEXT above INTEGER — `size > '>>'` is always FALSE,
 which would silently return nothing.
 
-## 5 · TECHNICAL DEEP-DIVES PART 2 — THE JUDGE
+# 5 · TECHNICAL DEEP-DIVES PART 2 — THE JUDGE
 
 ## 5.1 The Judge Client (src/judge/client.ts)
 
@@ -398,7 +395,6 @@ The `canonicalRaw()` function sorts keys deterministically, handles Map/Set/Date
 redact. Redaction (`redact()`) is for the STORED payload only.
 
 **WHERE:** src/judge/cache.ts:1-40 (canonicalRaw), :40-80 (fingerprint), :80-120 (cacheGet/Put).
-<!-- BB-CHUNK-4 -->
 
 # 6 · TECHNICAL DEEP-DIVES PART 3 — THE WORKFLOW VERBS
 
@@ -551,7 +547,6 @@ ingestAll, and prints the result. The journal is an append-only TSV at
 | src/watch.ts | 60 | The daemon |
 | src/serve.ts | 100 | The HTTP surface |
 | src/job/run.ts | 150 | The queued job runner |
-<!-- BB-CHUNK-5 -->
 
 # 8 · FAILURE MODES
 
