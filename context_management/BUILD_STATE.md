@@ -1,16 +1,16 @@
 # BUILD_STATE — the module inventory + the SHA chain (OVERWRITE + append SHA)
 
-**TREE SHA: `b182214203c1357969f1fda4d0a46b04` (git 8436574)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` (git 8436574)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ## THE SHA CHAIN (append-only; each row is a state that was SEALED and re-verified)
 
 | when | git | tree sha | battery (from the sealed copy) |
 |------|-----|----------|-------------------------------|
-| 2026-09-21 wave-0 | `a39afe8` | `35e7742545bb011bfaf9df11ed01317a` | 18 pass / 0 fail |
+| 2026-09-21 wave-0 | `a39afe8` | `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` | 18 pass / 0 fail |
 | 2026-09-21 waves 1-4 | `b8bd8fa` | refreshed per wave | 29 pass / 0 fail |
-| 2026-09-21 post second-operator r1 | `cc94a1e` | `35e7742545bb011bfaf9df11ed01317a` | 30 pass / 0 fail |
-| 2026-09-21 W2/W3 | `b4d60b9` | `a75230e39e862224460a9bbf971ae8ad` | 71 pass / 0 fail |
-| 2026-09-21 W5/W6/W7 + the rig | `b3d7536` | `22178de50f7d2037999fd0efb7d7d53c` | 116 pass / 0 fail |
-| 2026-09-21 final | `97f522f` | `0d5d99f34de62b20304d5a79169fdb53` | 116 pass / 0 fail + rig 7/7 |
+| 2026-09-21 post second-operator r1 | `cc94a1e` | `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` | 30 pass / 0 fail |
+| 2026-09-21 W2/W3 | `b4d60b9` | `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` | 71 pass / 0 fail |
+| 2026-09-21 W5/W6/W7 + the rig | `b3d7536` | `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` | 116 pass / 0 fail |
+| 2026-09-21 final | `97f522f` | `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` | 116 pass / 0 fail + rig 7/7 |
 
 The chain exists so a future session can tell WHAT was proven WHEN. A row that cannot point at a
 sealed copy does not belong here.

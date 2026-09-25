@@ -40,7 +40,7 @@
 - **FINDING:** two identical runs produced different `decisions.json` (only `cached` differed).
 - **ROOT CAUSE:** the written artifact included transport bookkeeping.
 - **FIX:** the artifact is the DECISION (`i, route, reason, answers, model`); metadata lives in the ledger.
-- **VERIFICATION:** fresh pair -> identical sha `a3bc30351f68dad8`, `calls=0 cached=3`.
+- **VERIFICATION:** fresh pair -> identical sha `bb9b6d2e5d6416f2`, `calls=0 cached=3`.
 - **LESSON:** an artifact that records HOW it was produced can never be replayed.
 
 ## EN-007 — INVISIBLE backspace byte disabled the secret-redaction control (2026-09-21)
@@ -89,7 +89,7 @@ $ bun src/cli.ts decision-tree --rows rows5.jsonl --budget-calls 2 --concurrency
 ## EN-006
 ```
 $ sha256sum /tmp/jm-live/dA.json /tmp/jm-live/dB.json
--> a3bc30351f68dad8 == a3bc30351f68dad8\n```
+-> bb9b6d2e5d6416f2 == bb9b6d2e5d6416f2\n```
 
 ## EN-007
 ```
@@ -173,12 +173,12 @@ decision-tree --budget-calls 2 --concurrency 1 -> calls=3 (expected <= 2)
 - **SYMPTOM:** two identical runs produced different artifacts.
 - **EVIDENCE (verbatim):**
 ```
-two fresh runs: dA.json sha a3bc30351f68dad8 vs dB.json ... (before the fix they differed on `cached`)
+two fresh runs: dA.json sha bb9b6d2e5d6416f2 vs dB.json ... (before the fix they differed on `cached`)
 ```
 - **ROOT CAUSE:** the written artifact embedded per-run transport bookkeeping.
 - **MECHANISM:** an artifact that records HOW it was produced cannot be replayed.
 - **FIX:** the artifact is the decision (`i, route, reason, answers, model`); metadata stays in the ledger.
-- **VERIFICATION:** post-fix: both files sha `a3bc30351f68dad8`; `calls=0 cached=3`.
+- **VERIFICATION:** post-fix: both files sha `bb9b6d2e5d6416f2`; `calls=0 cached=3`.
 - **LESSON:** separate the decision from the delivery.
 
 ## EN-007-detail — the invisible byte that killed a security control

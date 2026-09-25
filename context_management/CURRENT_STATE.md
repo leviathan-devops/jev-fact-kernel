@@ -1,6 +1,6 @@
 # CURRENT_STATE — JM (2026-09-21, waves W0–W7 + the audit fix pass)
 
-**TREE SHA: `b182214203c1357969f1fda4d0a46b04` (git 8436574)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `bb9b6d2e5d6416f2bb9b6d2e5d6416f2` (git 8436574)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 The current truth of the system: what exists, what works, what does not. Overwrite doc — it
 describes NOW. (Anchors are `file:line`; every claim has a run behind it in EVIDENCE_STATE.)
 
@@ -53,7 +53,7 @@ describes NOW. (Anchors are `file:line`; every claim has a run behind it in EVID
 1. **Index 11,831 files in 4.0s, re-run in 60ms** — the incremental fast-path works at scale.
 2. **Survive a SIGKILL with zero duplicates** — crash-first rows + the sweep + the fingerprint UNIQUE.
 3. **Judge live with correct routing** — `act 0.97` on a downed database, `noop 0.08` on a typo.
-4. **Replay byte-identically from cache** — sha `a3bc30351f68dad8` on both runs; 0 calls.
+4. **Replay byte-identically from cache** — sha `bb9b6d2e5d6416f2` on both runs; 0 calls.
 5. **Stop exactly at a budget** — `done=100` with the cap named; the remainder stays resumable.
 6. **Fail closed** — no key -> `JEV_NO_KEY`, exit 2, nothing written.
 7. **Serve decisions over HTTP** — `/decide` live; replay cached; loopback-bound.
