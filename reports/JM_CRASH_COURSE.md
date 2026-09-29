@@ -122,7 +122,7 @@
 | 100 candidates (the find chain) | `:8090` | **21.9 s** | **1** |
 | 20 candidates (filter) | `:8008` | 19.4 s | 20 |
 
-**The batching is real and it is the whole design.** 100 candidates = ONE HTTP request. Cost: **$0.0023**.
+**The batching is real and it is the whole design.** 100 candidates = ONE HTTP request. Free.
 
 ### The control test (does it actually discriminate?)
 
@@ -193,6 +193,10 @@ failurelogs/Graph_Intelligence__THEATRICALITY_LOG.md              rank -1.529
 ```json
 {"answers": {"is_this_theatrical": {"type":"noul","noul":0.4712}},
  "cached": false, "model": "canon-gguf", "cost_usd": 0.00000252}
+
+  NOTE: the vendor prints a `cost_usd` field computed as `input_tokens x USD_PER_INPUT_TOKEN`
+  (client.ts:13 — the HOSTED api's published rate). Running locally NOTHING IS BILLED.
+  Read it as a SAVINGS figure: that call would have cost that much on the hosted API.
 ```
 
 **THE CRITERIA LAW:** the `criteria` field sets the POLARITY. If you write the question
@@ -209,7 +213,7 @@ HIGH noul means NOT theatrical. **Write the criteria so high = the thing you ask
 ```
 JM_FIND trend: 192 → 100 → 34 → 3
    (seeds → candidates → KEPT → patterns; 100 judged, 34 kept; 1 request)
-cost=$0.002345   wall=21.9s
+cost=$0.002345 (a savings figure — nothing is billed)   wall=21.9s
 ```
 
 **READ THE TREND — it is the health check:**
@@ -233,7 +237,7 @@ unreachable and the chain degraded. Check `requests=`: `100 requests` = the cano
 │  KEYLESS — free, instant, deterministic, no model                        │
 │    index · query · scan · cluster · extract · report · target · watch    │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  JUDGED — the model, ~$0.00002/call, batched                             │
+│  JUDGED — the local model, free, batched                                 │
 │    filter · find · decision-tree · route · evaluate                      │
 ├──────────────────────────────────────────────────────────────────────────┤
 │  GATES — mechanical verdicts, exit codes                                 │
@@ -310,10 +314,11 @@ that returns a CALIBRATED PROBABILITY instead of making it guess.
 │                                                                           │
 │  AFTER:  jm filter mydata --question "..." --fts "..." --min-p 0.5        │
 │          the agent receives the ~12 rows that passed, WITH probabilities. │
-│          cost: 1 HTTP request, $0.0023.                                   │
+│          cost: 1 local HTTP request. Free.                               │
 │                                                                           │
 │  THE MECHANISM: the judge reads the candidates; the agent reads the       │
-│  verdicts. The expensive context goes to the model that costs $0.        │
+│  verdicts. The bulk reading happens on YOUR GPU, not in the paid          │
+│  context window.                                                          │
 └───────────────────────────────────────────────────────────────────────────┘
 
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -418,14 +423,14 @@ curl -s -o /dev/null http://127.0.0.1:8090/health
 
 ### RULE 5 · Index once, judge many
 
-Indexing is keyless and incremental (by content sha). Re-running it is cheap. The judge is the
-only thing that costs — and it costs **$0.0000023 per call**.
+Indexing is keyless and incremental (by content sha). Re-running it is cheap — and so is the
+judge: it runs on local hardware, indefinitely free. The only "cost" you spend is GPU time.
 
 ### RULE 6 · Use the keyless verbs FIRST
 
 ```
-query / scan / extract / cluster  → $0, instant, deterministic
-filter / find / decision-tree     → the judge, batched
+query / scan / extract / cluster  → keyless: instant, deterministic
+filter / find / decision-tree     → the local judge, batched
 ```
 
 A regex can often answer the question. Reach for the judge when the question is
@@ -502,8 +507,8 @@ The Jev Manager is a **decision engine with two halves**: a *keyless* half that 
 corpus into SQLite+FTS5 and narrows it with deterministic code (free, instant), and a *judged*
 half that asks a **local 4B model on your GPU** (`jevk5-4b-Q8_0` at `:8090`) typed questions
 about the survivors, returning **calibrated probabilities**. A policy ladder — not the model —
-turns `p=0.87` into act/escalate/noop. It costs **$0.0000023 per call**, batches **100
-candidates into ONE HTTP request**, and answers in ~22 seconds. An agent gains: the ability to
+turns `p=0.87` into act/escalate/noop. It runs **locally and free** (no API, no key, no
+billing), batches **100 candidates into ONE HTTP request**, and answers in ~22 seconds. An agent gains: the ability to
 narrow a search space before spending context, to gate its own commits mechanically, to ask a
 calibrated question instead of guessing, and to measure its own judgment quality. This session
 found and fixed two config defects that were silently forcing every call down the slow fallback

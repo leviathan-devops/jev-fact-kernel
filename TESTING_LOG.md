@@ -1255,3 +1255,80 @@ THE CRITICAL FINDING:
 This is the first audit that RAN (every prior attempt was BLOCKED by provider quota).
 The findings are specific, file:line-anchored, and category-tagged.
 The critical finding is a genuine data-integrity bug in the cache layer.
+
+---
+
+## [2026-09-29] EN-112 · THE BOTH-DIRECTIONS PROOF FOR THE DEAD-GATE FIX
+
+### THE RULE THIS ENTRY SATISFIES
+
+A mechanical check is not believed until it has been driven through BOTH outcomes. A gate that
+only ever fails, or only ever passes, has not been tested — it has been observed. This is the
+instrument-validity law applied to the push gate's sixth item.
+
+### THE THREE RUNS
+
+| # | Input | Expected | Observed |
+|---|---|---|---|
+| 1 | correct tree sha stamped in the canon docs | `PASS Zero drift?` | **`PASS`** |
+| 2 | one digit of that sha flipped | `FAIL Zero drift?` | **`FAIL`** |
+| 3 | the SAME clean tree, BEFORE the fix | `PASS` | **`FAIL`** (the defect) |
+
+### RUN 1 — THE PASS DIRECTION
+
+```
+  current tree sha: 4e129159c2c2a0d181c0140bb1baa0c9  (git 8f87ed3)
+  canon docs re-stamped: 7
+
+  PASS   Zero drift?   bundle=4e129159c2c2a0d181c0140bb1baa0c9
+                       stated=4e129159c2c2a0d181c0140bb1baa0c9
+```
+
+Proves the check CAN pass, which is the property it never had.
+
+### RUN 2 — THE FAIL DIRECTION
+
+```
+  flipped the last digit of the stamped sha in EVIDENCE_STATE.md
+
+  FAIL   Zero drift?   bundle=4e129159c2c2a0d181c0140bb1baa0c9
+                       stated=4e129159c2c2a0d181c0140bb1baa0c9 (differing at the last char)
+
+  restored.
+```
+
+Proves the check is SENSITIVE: a single mutated character is caught. Without this run, run 1's
+`PASS` could have been a constant-`PASS` regression instead of a working comparison.
+
+### RUN 3 — THE DEFECT, ON AN UNMODIFIED TREE
+
+```
+  seal writes : b182214203c1357969f1fda4d0a46b04   (src+tests, 32 chars)
+  gate computed: bb9b6d2e5d6416f2                  (src only, 16 chars)  <- BEFORE the fix
+  doc stated  : b182214203c1357969f1fda4d0a46b04
+```
+
+The document was RIGHT and the gate was WRONG. The two expressions hash different sets and
+truncate to different widths, so the comparison could never hold. Every `FAIL` this item ever
+printed — including ones read as real drift — carried no information.
+
+### THE ADVERSARIAL INTENT
+
+The battery was designed to try to make the item pass dishonestly:
+
+| Attack | Result |
+|---|---|
+| stamp the correct sha | PASS (it is correct — this must pass) |
+| flip one digit | FAIL (caught) |
+| point the reader at a doc that lacks the line | falls through to the next doc in the list |
+| make the sha line a different width | the `{32}` capture refuses it, returns null, item SKIPs |
+
+The item now discriminates between a matching tree and a drifted one, which is the minimum a
+gate owes its caller.
+
+### REGRESSION NOTE
+
+`scripts-seal.sh:50` and `push-gate.ts:185` are ONE CONTRACT. If either expression changes, the
+other must change in the same commit. The code carries a comment saying so. A test that pins the
+two expressions to each other is the correct next hardening step and is NOT yet written —
+recorded here as an honest gap rather than claimed as covered.

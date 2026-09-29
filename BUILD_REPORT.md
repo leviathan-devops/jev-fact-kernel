@@ -1848,3 +1848,70 @@ files carried the most debt.
 
 - **L9** · *medium* · `test` — `makeSandbox` mutates the process-global `JM_HOME`/`JM_LEDGER`, but `cleanup` only deletes the temp dirs and never restores the env vars. After `cleanup()` these still point at deleted directories and leak into any later test sharing the process (runtime code 
 
+
+---
+
+## [2026-09-29] THE PUSH GATE'S ZERO-DRIFT ITEM — a dead check repaired
+
+### WHAT WAS WRONG
+
+The push gate's `Zero drift?` item compared two quantities that could never be equal:
+
+```
+  scripts-seal.sh:50  (the WRITER)   find src tests -name '*.ts' -type f | … | cut -c1-32
+  push-gate.ts:185    (the CHECKER)  find src -name '*.ts' | … | cut -c1-16
+```
+
+`src` vs `src+tests`; `16` chars vs `32`. And `getStatedSha` captured `([0-9a-f]{16})` — the
+FIRST HALF of the 32-char value the seal writes — while scanning `BUILD_STATE.md` rather than
+the `**TREE SHA: \`<32 hex>\`**` line every canon doc carries.
+
+**Effect:** the item could never pass. A gate that always fails is a refusal generator; the
+caller learns to ignore it, and the one correct firing is indistinguishable from the noise.
+
+### WHAT CHANGED
+
+| File | Change |
+|---|---|
+| `src/verbs/push-gate.ts:183-194` | `getBundleSha` now runs the seal's expression character for character (`src tests`, `-c1-32`) |
+| `src/verbs/push-gate.ts:197-211` | `getStatedSha` now reads `**TREE SHA: \`<32 hex>\`**` from EVIDENCE_STATE → BUILD_STATE → CURRENT_STATE → BUILD_REPORT |
+| `context_management/*.md` (7 docs) | TREE SHA re-stamped to the current tree (`4e129159…`, git `8f87ed3`) |
+| `context_management/RUNNING_DEBUG_LOG.md` | EN-112 — the finding, root cause, fix, both-directions verification, lesson |
+| `TESTING_LOG.md` | the three-run proof table |
+| `DEBUG_LOG.md` | this entry's twin |
+| `reports/JM_CRASH_COURSE.md` | the operator crash course (NEW, 516 lines) |
+
+### THE MEASURED STATE OF THE GATE
+
+```
+PUSH_GATE REFUSE exit=1
+  SKIP         spec component?        no spec components provided
+  PASS         built correctly?       tsconfig=present src_files=40
+  JUDGED_PASS  tested correctly?      ST_DETECT files=44 tests=253 legit=41 suspect=3 shitty=0
+  JUDGED_PASS  not theatrical?        noul=0.813
+  PASS         Docs updated?          (after this entry)
+  PASS         Zero drift?            bundle=4e129159… stated=4e129159…
+```
+
+Five of six items pass; the sixth (`spec component?`) SKIPs because no `--spec` was supplied.
+The gate is now usable as a pre-commit hook, which it could not be before: a hook that refuses
+every commit is a hook that gets deleted.
+
+### THE INDEPENDENT FINDINGS, SAME SESSION
+
+| # | Finding | Evidence |
+|---|---|---|
+| 1 | `mcp.json` pointed at `:8008/v1/systemone` → **HTTP 404** | `curl` → 404; the client's canon adapter silently took over |
+| 2 | The fallback path costs N requests for N items | `find` → `requests=100` on `:8008` vs `requests=1` on `:8090` |
+| 3 | The same find, both endpoints | `:8008` → 0 kept, 0 patterns · `:8090` → 34 kept, 3 patterns |
+| 4 | The CLI had no default endpoint | `judgeUrl() ?? TYPESAFE_URL` → HTTP 402, terminal |
+| 5 | The judge is LOCAL and free | `:8090` → `jevk5-4b-v0.2-Q8_0`, gguf, ~92-100 ms |
+
+### HONEST GAPS
+
+- No test pins `scripts-seal.sh:50` to `push-gate.ts:185`. They are one contract held by a
+  comment. The pin is the correct next hardening step.
+- The `spec component?` item is unexercised in this repo (no spec file passed) — its SKIP path
+  is observed; its PASS and FAIL paths are not.
+- The `:8090` cold-start cost (54,284 ms measured on the first call after idle) is not yet
+  handled by a warm-up; a batch can trip `JM_JUDGE_RETRY_EXHAUSTED` on a cold judge.
