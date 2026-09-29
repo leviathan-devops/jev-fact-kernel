@@ -65,18 +65,20 @@ describe("ADV-3 recipe validation", () => {
       null, [], "string", 42,
       { recipe: "x", version: 1, questions: { __proto__: { type: "noul" } } },   // a polluted single key
       { recipe: "x", version: 1, questions: { constructor: { type: "weird" } } },
-      { recipe: "x", version: 1, questions: { q: { type: "noul" } }, policy: { act: -1 } },
-      { recipe: "x", version: 1, questions: { q: { type: "noul" } }, policy: { act: 2 } },
-      { recipe: "x", version: 1, questions: { q: { type: "noul" } }, policy: { act: NaN } },
-      { recipe: "", version: 1, questions: { q: { type: "noul" } } },
-      { recipe: "x", version: Number.NaN, questions: { q: { type: "noul" } } },
+      { recipe: "x", version: 1, questions: { q: { type: "noul", instructions: "x?" } }, policy: { act: -1 } },
+      { recipe: "x", version: 1, questions: { q: { type: "noul", instructions: "x?" } }, policy: { act: 2 } },
+      { recipe: "x", version: 1, questions: { q: { type: "noul", instructions: "x?" } }, policy: { act: NaN } },
+      { recipe: "x", version: 1, questions: { q: { type: "noul" } } },   // ★ the missing-instructions refusal (its OWN case)
+      { recipe: "", version: 1, questions: { q: { type: "noul", instructions: "x?" } } },
+      { recipe: "x", version: Number.NaN, questions: { q: { type: "noul", instructions: "x?" } } },
     ];
     for (const r of bad) {
       // every one of these must REFUSE rather than run a chain that judges nothing
       expect(() => validateRecipe(r)).toThrow(/JM_RECIPE_INVALID/);
     }
-    // the positive half: a minimal valid recipe is accepted
-    const ok = validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "noul" } } });
+    // the positive half: a minimal valid recipe is accepted (★ N2a: `instructions` is REQUIRED —
+    // the adapter refuses a question without it; the old fixture predated that fix).
+    const ok = validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "noul", instructions: "Is it X?" } } });
     expect(ok.recipe).toBe("r");
   });
 });

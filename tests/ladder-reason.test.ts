@@ -41,15 +41,22 @@ describe("the ladder's reason", () => {
     }
   });
 
-  test("test_D034_only_noul_is_accepted_because_only_noul_WORKS", () => {
-    // The live Typesafe API accepts `noul` ONLY — measured: `choice` and `mcq` both return
-    // HTTP 400 "Invalid request." A recipe using either would fail on EVERY call, so the validator
-    // refuses them at load with the reason. This pin holds the contract; the measurement is in
-    // DEBUG_LOG EN-049.
-    expect(validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "noul" } } }).recipe).toBe("r");
-    for (const bad of ["choice", "mcq"]) {
-      expect(() => validateRecipe({ recipe: "r", version: 1, questions: { q: { type: bad } } }))
-        .toThrow(/accepts "noul" ONLY/);
-    }
+  test("test_D034_noul_choice_and_score_are_all_accepted (the noul-only guard was FALSE — deleted)", () => {
+    // ★ R-02 (the handover, verbatim): "JevK5 has ALL normal Jev functions — the noul-only
+    // guard was FALSE and is DELETED; `choice` and `score` work." The old pin here asserted
+    // the DELETED guard and failed on the current tree (found by the 2026-09-29 ingest).
+    // This pin asserts the ACTUAL contract — validateQuestions mirrors the adapter's normalized().
+    const noul = validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "noul", instructions: "Is it X?" } } });
+    expect(noul.recipe).toBe("r");
+    const choice = validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "choice", instructions: "Which?", criteria: { A: "a", B: "b" } } } });
+    expect(choice.recipe).toBe("r");
+    const score = validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "score", instructions: "How bad?", criteria: [1, 2, 3] } } });
+    expect(score.recipe).toBe("r");
+    // THE REFUSALS THAT DO HOLD — an unknown type is named, and a missing `instructions`
+    // is named (the adapter's own refusal: "question is missing instructions").
+    expect(() => validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "weird", instructions: "x" } } }))
+      .toThrow(/noul.*choice.*score/);
+    expect(() => validateRecipe({ recipe: "r", version: 1, questions: { q: { type: "noul" } } }))
+      .toThrow(/missing .instructions/);
   });
 });

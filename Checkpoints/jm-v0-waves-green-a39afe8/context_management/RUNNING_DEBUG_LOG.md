@@ -1,6 +1,6 @@
 # RUNNING_DEBUG_LOG — JM build
 
-**TREE SHA: `b6a16d9c6742cba8f46feea59dbd7315` (git 959b6e1)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+**TREE SHA: `b6a16d9c6742cba8f46feea59dbd7315` (git d573fa8)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 Append-only. Every bug: symptom → root cause → fix → verification → lesson.
 Updated at the MOMENT of the work (fresh-capture rule).
 

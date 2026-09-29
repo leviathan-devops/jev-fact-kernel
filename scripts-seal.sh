@@ -36,18 +36,27 @@ for d in src tests context_management artifacts recipes packages; do
   rm -rf "$CP/$d"
   cp -r "$d" "$CP/$d"
 done
+# ★ the copy completeness fix (found by the copy's OWN battery — 3 fail): the W7 named gate
+# asserts .trident/operator-gate (≥2 transcripts); a checkpoint that cannot re-verify itself
+# from its own contents is NOT a checkpoint (the operator's standard).
+if [ -d ".trident/operator-gate" ]; then
+  mkdir -p "$CP/.trident"
+  rm -rf "$CP/.trident/operator-gate"
+  cp -r ".trident/operator-gate" "$CP/.trident/operator-gate"
+fi
 
 # 2. the ship docs + the runner, flat
 for f in TESTING_LOG.md FAILURE_LOG.md DEBUG_LOG.md BUILD_REPORT.md AUDIT_SUMMARY.md \
          README.md THEATRICALITY_LOG.md VIOLATION_LOG.md \
          scripts-container-rig.sh scripts-gates.sh scripts-jm-mcp.sh scripts-real-corpus.sh \
          scripts-jm-watch.sh scripts-seal.sh \
+         scripts-recovery-proof.ts scripts-host-suite.sh \
          package.json tsconfig.json bunfig.toml; do
   [ -e "$f" ] && cp "$f" "$CP/$f"
 done
 
 # 3. the tree sha of exactly what is sealed
-find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum | cut -c1-32 > "$CP/SOURCE_TREE.sha256"
+LC_ALL=C find src tests -name '*.ts' -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32 > "$CP/SOURCE_TREE.sha256"
 SHA=$(cat "$CP/SOURCE_TREE.sha256")
 GIT=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
 
