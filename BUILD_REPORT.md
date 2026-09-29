@@ -1915,3 +1915,34 @@ every commit is a hook that gets deleted.
   is observed; its PASS and FAIL paths are not.
 - The `:8090` cold-start cost (54,284 ms measured on the first call after idle) is not yet
   handled by a warm-up; a batch can trip `JM_JUDGE_RETRY_EXHAUSTED` on a cold judge.
+
+---
+
+## [2026-09-29] THE RUNTIME TEST — 666 ship docs → 658 classified failure records
+
+THE CORPUS: 666 ship docs (BUILD_REPORT/DEBUG_LOG/FAILURE_LOG/TESTING_LOG/THEATRICALITY_LOG/
+VIOLATION_LOG/AUDIT_SUMMARY) modified in the last 5 days, across every project tree.
+349,396 lines · 31 MB · indexed in 609 ms.
+
+THE RUN: 5 chunks x 150 rows x one 10-class `choice` recipe, one HTTP request per chunk.
+658 records classified in 118.9 s, local, no API.
+
+THE DISTRIBUTION (argmax over the judge's per-class probabilities):
+
+  PROCESS              321   48.8%    state/ordering/lost-work defects
+  OTHER                111   16.9%    did not fit the taxonomy
+  FALSE_GREEN           69   10.5%    a pass hiding a failure
+  ARTIFACT_MISMATCH     67   10.2%    source and artifact disagree
+  THEATRICAL_CLAIM      38    5.8%    claims without evidence
+  TEST_THEATRE          21    3.2%    tests proving nothing
+  STUB_MOCK_PROOF       14    2.1%    a fake standing in for machinery
+  UNWIRED               13    2.0%    built but unreachable
+  SCOPE_SHRINK           4    0.6%    less delivered than asked
+
+HONEST QUALITY NOTE: mean top-class probability is 0.29-0.46 — WEAK. Ten classes over a 600-byte
+excerpt is too many labels for a 4B model to separate confidently. The RANK ORDERING is usable;
+the individual labels are not evidence. A sharper second pass (3-4 classes, or a cascade) is the
+recorded next step, not a re-run at the same granularity.
+
+BY PROJECT: PLUTUS 258 · .omp-waves 128 · Graph_Intelligence 95 · JWAM 38 · JARVIS-FACTORY 35 ·
+Jev_Gates 30 · Thanatos-wt 30 · ROBIN-TRADE 17 · JevManager 14 · gi-checkpoint-archive 13.

@@ -3415,3 +3415,24 @@ reason this entry exists.
    comparison is the authority before touching either.
 
 <!-- DOC-COMPLETE -->
+
+---
+
+## [2026-09-29] EN-113/114 · THE CLASSIFICATION BLOCKER — `criteria` dropped + the chunk's wrong unit
+
+Two defects on the same surface, found by running the tool on a real 383k-line corpus instead of
+by reading it. Full detail in context_management/RUNNING_DEBUG_LOG.md (EN-113, EN-114).
+
+THE BLOCKER: `decision-tree` copied only `{type, instructions}` into the batch question, so
+`criteria` never reached the judge. A `choice` recipe validated, then died with HTTP 400 —
+classification, the verb's most valuable shape, was impossible. A second guard refused every
+non-`noul` type outright on the strength of a measurement taken against the HOSTED api, not the
+local adapter the tool actually calls.
+
+FIXED + VERIFIED: 150 rows classified in ONE request. 658 failure records from 666 ship docs
+across a 5-day window, in 5 requests, 118.9 s. Malformed recipes still refuse by name.
+
+THE UNIT DEFECT: the claim loop's chunk is 200 ROWS, not 200 KB. The payload is
+`rows x (row + criteria)` and criteria repeats per question, so the packet overflowed the 256 KB
+cap on the very payload the verb exists for. Worked around by chunking the invocation; the real
+fix (a byte-budgeted accumulator) is recorded as an open item.

@@ -1332,3 +1332,75 @@ gate owes its caller.
 other must change in the same commit. The code carries a comment saying so. A test that pins the
 two expressions to each other is the correct next hardening step and is NOT yet written —
 recorded here as an honest gap rather than claimed as covered.
+
+---
+
+## [2026-09-29] THE RUNTIME TEST — the tool run on a real corpus, and the two defects it found
+
+### THE TEST THAT WAS RUN
+
+Use `jm` end-to-end on a real 383k-line corpus to produce a classification. Not a unit test —
+the operator's own question, answered by the tool, on data nobody had prepared for it.
+
+| phase | command | result |
+|---|---|---|
+| discover | `find` over 2 roots, 7 doc classes, `-mtime -5` | 666 ship docs, 349,396 lines, 31 MB |
+| index | `jm index /tmp/jm-failures --name failures` | `files=666 changed=666 ms=609` |
+| census | `jm query --fts` x 21 terms | 1.1 s for the whole vocabulary |
+| extract | `jm extract --re` x 8 patterns | F-NNN 389 · D-NNN 108 · R-NN 253 · C-NN 283 |
+| classify | `jm decision-tree` x 5 chunks x 150 rows | 658 records, `requests=1` per chunk, 118.9 s |
+
+### DEFECT 1 — FOUND BY THE TEST, FIXED (EN-113)
+
+`decision-tree` could not run a classification recipe at all.
+
+```
+  BEFORE:  JM_ERROR: JM_JUDGE_RETRY_EXHAUSTED: JM_JUDGE_HTTP_400:
+           {"error": "choice criteria must name at least two options"} (not retryable)
+
+  AFTER:   JM_DECISIONS rows=150 decided=150 act=24 escalate=68 noop=58 requests=1
+```
+
+Two causes, both client-side: `criteria` was dropped when building the batch question, and a
+validator refused every non-`noul` type on the strength of a measurement taken against the HOSTED
+api rather than the local adapter the tool calls.
+
+### DEFECT 2 — FOUND BY THE TEST, WORKED AROUND (EN-114)
+
+```
+  JM_ERROR: JM_JUDGE_PAYLOAD_TOO_LARGE: 302567 bytes exceeds the 262144-byte cap
+```
+
+The claim loop's chunk is 200 ROWS, not 200 KB. The payload is `rows x (row + criteria)` and
+criteria repeats on every question, so the packet overflowed on exactly the payload the verb
+exists for. Chunking the invocation to 150 rows made all 5 chunks succeed. The real fix — a
+byte-budgeted accumulator — is recorded as open.
+
+### THE CONTROL EXPERIMENTS THIS TEST CARRIED
+
+An instrument is not trusted until it discriminates. Three controls were run:
+
+| control | input | expected | observed |
+|---|---|---|---|
+| question SHAPE | compound "X or Y" | weak | max 0.485 — cannot cross 0.5 |
+| question SHAPE | sharp single claim | strong | max 0.949, spread 0.902 |
+| boundary | `--limit 5` vs `--limit 10000` | same | same — MY probe was broken, not the tool |
+
+### MY OWN INSTRUMENT FAILURES (recorded, not deleted)
+
+1. I published "`jm query --fts` returns 0 for everything — a defect". **FALSE.** My probe used
+   `2>&1`, merging the cost line (stderr) into the JSON (stdout). The streams are correct.
+2. I published "the local judge is noul-only". **FALSE.** That was `jm`'s client-side guard; the
+   adapter accepts noul, choice and score, and both `choice` forms return full distributions.
+   **The operator corrected me on both.**
+3. I ran `--limit 10000` and read the empty result as a tool defect. It was a parse failure of my
+   own making.
+
+### THE CLASSIFICATION QUALITY — STATED HONESTLY
+
+658 records across 10 classes: PROCESS 321 · OTHER 111 · FALSE_GREEN 69 · ARTIFACT_MISMATCH 67 ·
+THEATRICAL_CLAIM 38 · TEST_THEATRE 21 · STUB_MOCK_PROOF 14 · UNWIRED 13 · SCOPE_SHRINK 4.
+
+**Mean top-class probability is 0.29-0.46 — WEAK.** Ten labels over a 600-byte excerpt is too many
+for a 4B model. The RANK ORDER is usable; the individual labels are not evidence. A sharper second
+pass (3-4 classes, or a cascade) is the next step — not a re-run at the same granularity.

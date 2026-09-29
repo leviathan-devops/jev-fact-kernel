@@ -381,7 +381,7 @@ for (const f of ["context_management/BUILD_STATE.md", "BUILD_REPORT.md"]) {
 The seal stamps **every** canon doc with a line of exactly this shape (`scripts-seal.sh:60`):
 
 ```
-**TREE SHA: `b182214203c1357969f1fda4d0a46b04` (git 3d11f63)** - every canon doc that carries
+**TREE SHA: `07c96789730595377891934f34152610` (git bf99c64)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 ```
 
@@ -475,3 +475,50 @@ reason this entry exists.
    comparison is the authority before touching either.
 
 <!-- DOC-COMPLETE -->
+
+## [2026-09-29] EN-113 · THE CORE BLOCKER — `criteria` dropped, classification impossible
+
+- **FINDING:** `jm decision-tree` with a `choice` recipe could not run. The verb validated the
+  recipe, then the judge returned HTTP 400. Classification — the verb's most valuable shape —
+  was impossible, and the error blamed the judge.
+- **ROOT CAUSE 1 — A SILENTLY NARROWED SHAPE.** `decision-tree.ts` built the batch question from
+  two fields:
+  `qForRow[qname] = { type: q.type, instructions: q.instructions };`
+  `criteria` was DROPPED. The adapter requires it for `choice`/`score`
+  (`normalized()`: "choice criteria must name at least two options" -> HTTP 400). `noul` never
+  noticed because it needs no criteria — which is why every noul test passed.
+- **ROOT CAUSE 2 — A GUARD MEASURED AGAINST A DEAD ENDPOINT.** `validateQuestions` refused every
+  non-`noul` type with "the live judge accepts noul ONLY (measured: choice/mcq -> HTTP 400)".
+  Its own comment says `api.typesafe.ai` — the HOSTED endpoint. The tool now runs against the
+  LOCAL adapter, whose `normalized()` (line 44) accepts `("noul", "choice", "score")`.
+  The guard never re-measured when the deployment changed.
+- **AND THE 400 THAT CAUSED THE BELIEF:** a `choice` sent with `options` instead of `criteria`
+  is refused BY THE ADAPTER. A malformed field name was recorded as a missing capability.
+- **MEASURED, both forms of `choice` against the live local judge:**
+  `criteria` as a LIST -> `{"choice":"FALSE_GREEN","probabilities":{5 labels}}` 139 ms
+  `criteria` as a MAP  -> `{"choice":"STUB_OR_MOCK_AS_PROOF","probabilities":{5}}` 111 ms
+- **FIX:** forward `criteria`; make the validator encode the ADAPTER's own per-type rules
+  (instructions required; choice >= 2 options as list or map; score a list of >= 2 levels).
+- **VERIFICATION, both directions:** 150 rows classified in ONE request
+  (`rows=150 decided=150 act=24 escalate=68 noop=58 requests=1`); and a one-option choice, a type
+  `mcq`, and a question with no `instructions` each still refuse by name with zero calls.
+- **LESSON:** a field the recipe declares is either FORWARDED or REFUSED AT LOAD. A transformer
+  that silently narrows a validated shape turns a client defect into a remote error with a
+  misleading cause. And a validator must encode the rules of the endpoint it is POINTED AT,
+  taken from that endpoint's own validation — never from a remembered contract of another.
+
+## [2026-09-29] EN-114 · THE CHUNK IS COUNTED IN ROWS, NOT BYTES
+
+- **FINDING:** the first full classification run refused with
+  `JM_JUDGE_PAYLOAD_TOO_LARGE: 302567 bytes exceeds the 262144-byte cap`.
+- **ROOT CAUSE:** `decision-tree`'s claim loop uses `CHUNK = 200` — 200 ROWS, whatever their
+  bytes. The payload is `rows x (row + criteria)`, and `criteria` is repeated on EVERY question
+  in the chunk. With 10 class rubrics the packet reached 278 KB over a 256 KB cap even after the
+  excerpts were trimmed to 437 bytes.
+- **WORKAROUND (used):** chunk the invocation externally — 150 rows per run, 5 runs. Measured:
+  all 5 succeeded, `requests=1` each, 658 rows in 118.9 s.
+- **THE REAL FIX (not yet made):** the claim loop must budget BYTES, not rows — accumulate until
+  the serialized estimate approaches the cap, then send. A row-count constant is a payload
+  assumption with no relationship to the payload.
+- **LESSON:** a batch boundary expressed in the wrong unit fails on exactly the payloads the verb
+  exists for (many rows, a real question). The cap was correct; the unit was wrong.
