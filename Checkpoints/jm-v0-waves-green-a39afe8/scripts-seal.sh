@@ -47,7 +47,7 @@ for f in TESTING_LOG.md FAILURE_LOG.md DEBUG_LOG.md BUILD_REPORT.md AUDIT_SUMMAR
 done
 
 # 3. the tree sha of exactly what is sealed
-find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum | cut -c1-32 > "$CP/SOURCE_TREE.sha256"
+LC_ALL=C find src tests -name '*.ts' -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32 > "$CP/SOURCE_TREE.sha256"
 SHA=$(cat "$CP/SOURCE_TREE.sha256")
 GIT=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
 

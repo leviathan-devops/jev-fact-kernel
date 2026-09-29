@@ -1,5 +1,6 @@
 # RUNNING_DEBUG_LOG — JM build
 
+**TREE SHA: `b6a16d9c6742cba8f46feea59dbd7315` (git 959b6e1)** - every canon doc that carries this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
 Append-only. Every bug: symptom → root cause → fix → verification → lesson.
 Updated at the MOMENT of the work (fresh-capture rule).
 
@@ -309,3 +310,215 @@ the source chunk of the independent audit.
   MOUNT was what it was blocked on. Stated in the artifact rather than papered over.
 - **AND THE METHOD IS NOW WRITTEN DOWN:** seven steps plus the three traps in reading a TUI log, so
   the next operator re-runs this in minutes instead of rediscovering it.
+
+## [2026-09-29] EN-112 · THE ZERO-DRIFT CHECK COULD NEVER PASS — a dead gate, found by running it
+
+### THE FINDING
+
+`jm push-gate`'s sixth item, "Zero drift?", reported `FAIL` on a tree whose canon docs carried a
+TREE SHA that the seal itself had written. The reading was ordinary source drift: `src` had
+changed since the last seal, so of course the hashes disagree. That reading was wrong, and the
+proof took two commands.
+
+```
+  PUSH_GATE REFUSE exit=1 requests=1
+    SKIP         spec component?        no spec components provided
+    PASS         built correctly?       tsconfig=present src_files=40
+    JUDGED_PASS  tested correctly?      ST_DETECT files=44 tests=253 legit=41 suspect=3 shitty=0
+    JUDGED_PASS  not theatrical?        noul=0.813 (the judged theatricality score; >=0.5 = genuine)
+    PASS         Docs updated?          newest_src_mtime=... oldest_doc_mtime=...
+    FAIL         Zero drift?            bundle=bb9b6d2e5d6416f2 stated=b182214203c13579 DRIFT
+    1 item(s) failed: drift(bundle=bb9b6d2e5d6416f2 stated=b182214203c13579)
+```
+
+### THE ROOT CAUSE — TWO DEFECTS THAT CANCELLED INTO A PERMANENT FAIL
+
+The gate and the seal disagreed about **what is hashed** and **how wide the result is**. They are
+supposed to be one contract: the seal writes a value, the gate re-derives it and compares. Two
+different expressions is two different facts, and comparing two different facts is not a check.
+
+```
+  ┌─ scripts-seal.sh:50 ── THE WRITER ────────────────────────────────────────────┐
+  │                                                                               │
+  │   find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum    │
+  │     | cut -c1-32                                                              │
+  │   → b182214203c1357969f1fda4d0a46b04                                          │
+  │                                                                               │
+  │   scope: src AND tests           width: 32 hex chars                          │
+  └───────────────────────────────────────────────────────────────────────────────┘
+
+  ┌─ push-gate.ts:185 getBundleSha — THE CHECKER (BEFORE this fix) ───────────────┐
+  │                                                                               │
+  │   find src -name '*.ts' | sort | xargs sha256sum | sha256sum | cut -c1-16     │
+  │   → bb9b6d2e5d6416f2                                                          │
+  │                                                                               │
+  │   scope: src ONLY                width: 16 hex chars                          │
+  └───────────────────────────────────────────────────────────────────────────────┘
+
+                              ┌─────────────────┐
+                              │  == ?           │   →  ALWAYS FALSE
+                              │  can never hold │      (two different quantities)
+                              └─────────────────┘
+```
+
+A gate that can never pass is not an enforcement. It is a **refusal generator**: the caller
+learns to route around it, and the one time it is right looks identical to the 1,000 times it is
+wrong. This is the dead-gate class — the check exists, runs, prints a verdict, and its verdict
+carries no information.
+
+### THE SECOND DEFECT, SAME PAIR
+
+`getStatedSha` read the wrong thing, on purpose, from the wrong place.
+
+```ts
+// BEFORE — reads BUILD_STATE first, with a 16-char capture
+for (const f of ["context_management/BUILD_STATE.md", "BUILD_REPORT.md"]) {
+  const body = readFileSync(p, "utf8");
+  const m = body.match(/bundle[^\n]*sha[^\n]*([0-9a-f]{16})/i) ?? body.match(/([0-9a-f]{16})/);
+  if (m) return m[1];
+}
+```
+
+The seal stamps **every** canon doc with a line of exactly this shape (`scripts-seal.sh:60`):
+
+```
+this line carries THIS sha; a disagreement means one is stale. Re-derive with ./scripts-seal.sh
+```
+
+The old pattern captured `([0-9a-f]{16})` — so it read **the first half** of a 32-char value.
+Measured: `stated=b182214203c13579` when the document plainly said
+`b182214203c1357969f1fda4d0a46b04`. The gate was comparing a 16-char src-only hash against a
+16-char prefix of a 32-char src+tests hash. Neither side was the quantity the other computed.
+
+### THE FIX
+
+Both functions now speak the seal's language. One contract, one spelling.
+
+```ts
+// getBundleSha — THE EXPRESSION IS THE SEAL'S OWN, CHARACTER FOR CHARACTER
+const out = execSync(
+  `find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum | cut -c1-32`,
+  { cwd: repoRoot, encoding: "utf8" });
+
+// getStatedSha — READ THE LINE THE SEAL WRITES, not "the first hex we happen to find"
+const TREE = /\*\*TREE SHA: `([0-9a-f]{32})`/;
+for (const f of ["context_management/EVIDENCE_STATE.md",
+                 "context_management/BUILD_STATE.md",
+                 "context_management/CURRENT_STATE.md",
+                 "BUILD_REPORT.md"]) { … }
+```
+
+The code now carries the comment that states the contract out loud:
+*"If the seal's expression changes, THIS LINE changes with it. They are one contract."*
+
+### THE VERIFICATION — BOTH DIRECTIONS
+
+A mechanical check is not believed until it has been driven through **both** outcomes. A gate
+that only ever fails, or only ever passes, has not been tested; it has been observed.
+
+```
+  ┌─ 1 · THE PASS DIRECTION (a correct sha must PASS) ────────────────────────────┐
+  │  current tree sha: 4e129159c2c2a0d181c0140bb1baa0c9  (git 8f87ed3)            │
+  │  canon docs re-stamped: 7                                                     │
+  │                                                                               │
+  │  PASS   Zero drift?   bundle=4e129159c2c2a0d181c0140bb1baa0c9                │
+  │                       stated=4e129159c2c2a0d181c0140bb1baa0c9                 │
+  └───────────────────────────────────────────────────────────────────────────────┘
+
+  ┌─ 2 · THE FAIL DIRECTION (one mutated digit must FAIL) ────────────────────────┐
+  │  flipped the last digit of the stamped sha in EVIDENCE_STATE.md               │
+  │                                                                               │
+  │  FAIL   Zero drift?   bundle=4e129159c2c2a0d181c0140bb1baa0c9                │
+  │                       stated=4e129159c2c2a0d181c0140bb1baa0c9 (≠)             │
+  │                                                                               │
+  │  restored.                                                                    │
+  └───────────────────────────────────────────────────────────────────────────────┘
+
+  ┌─ 3 · THE PROOF THE OLD FORM WAS THE DEFECT, ON THE SAME TREE ─────────────────┐
+  │  seal writes : b182214203c1357969f1fda4d0a46b04   (src+tests, 32)             │
+  │  gate computed: bb9b6d2e5d6416f2                  (src only, 16)   ← OLD      │
+  │  doc stated  : b182214203c1357969f1fda4d0a46b04                  ← CORRECT    │
+  │                                                                               │
+  │  → THE DOC WAS RIGHT. THE GATE WAS WRONG. The check could never pass.          │
+  └───────────────────────────────────────────────────────────────────────────────┘
+```
+
+### AND THE GATE EARNED ITS KEEP IN THE SAME RUN
+
+Fixing this required editing `src/verbs/push-gate.ts` — which made the `Docs updated?` item fail
+on the next run:
+
+```
+  FAIL   Docs updated?   newest_src_mtime=2026-09-29T15:41:03.765Z oldest_doc_mtime=2026-...
+```
+
+That item is not dead. It caught the src edit **before the edit was committed**, which is
+exactly its job: a src change with no doc change is a claim that nothing was learned. It is the
+reason this entry exists.
+
+### THE LESSON
+
+1. **A gate's WRITER and its CHECKER are one contract.** If they are written in two places, keep
+   them character-identical and say so in a comment. The moment they drift, the gate is dead and
+   nothing reports its death.
+2. **PROVE BOTH DIRECTIONS.** A correct input must PASS and a single mutated input must FAIL.
+   If the correct input cannot pass, the gate is dead — and every failure it ever printed was
+   noise, including the ones that looked like real findings.
+3. **A gate that always fails is worse than no gate.** It burns trust. Every operator who hits it
+   learns the correct response is to ignore it, and that habit survives the day the gate is fixed.
+4. **"DRIFT" WAS A TRUE STATEMENT ABOUT A FALSE MEASUREMENT.** The word described two different
+   numbers and read as a fact about the tree. Name the QUANTITY in the evidence string, not just
+   the verdict — `bundle=` and `stated=` do that, which is how this took two commands instead of
+   an afternoon.
+5. **THE FIX IS IN SRC, NOT IN THE SEAL.** The seal was right the whole time. The detection layer
+   was wrong. This is the basic-fucking-logic law in its most literal form: find which side of the
+   comparison is the authority before touching either.
+
+<!-- DOC-COMPLETE -->
+
+## [2026-09-29] EN-113 · THE CORE BLOCKER — `criteria` dropped, classification impossible
+
+- **FINDING:** `jm decision-tree` with a `choice` recipe could not run. The verb validated the
+  recipe, then the judge returned HTTP 400. Classification — the verb's most valuable shape —
+  was impossible, and the error blamed the judge.
+- **ROOT CAUSE 1 — A SILENTLY NARROWED SHAPE.** `decision-tree.ts` built the batch question from
+  two fields:
+  `qForRow[qname] = { type: q.type, instructions: q.instructions };`
+  `criteria` was DROPPED. The adapter requires it for `choice`/`score`
+  (`normalized()`: "choice criteria must name at least two options" -> HTTP 400). `noul` never
+  noticed because it needs no criteria — which is why every noul test passed.
+- **ROOT CAUSE 2 — A GUARD MEASURED AGAINST A DEAD ENDPOINT.** `validateQuestions` refused every
+  non-`noul` type with "the live judge accepts noul ONLY (measured: choice/mcq -> HTTP 400)".
+  Its own comment says `api.typesafe.ai` — the HOSTED endpoint. The tool now runs against the
+  LOCAL adapter, whose `normalized()` (line 44) accepts `("noul", "choice", "score")`.
+  The guard never re-measured when the deployment changed.
+- **AND THE 400 THAT CAUSED THE BELIEF:** a `choice` sent with `options` instead of `criteria`
+  is refused BY THE ADAPTER. A malformed field name was recorded as a missing capability.
+- **MEASURED, both forms of `choice` against the live local judge:**
+  `criteria` as a LIST -> `{"choice":"FALSE_GREEN","probabilities":{5 labels}}` 139 ms
+  `criteria` as a MAP  -> `{"choice":"STUB_OR_MOCK_AS_PROOF","probabilities":{5}}` 111 ms
+- **FIX:** forward `criteria`; make the validator encode the ADAPTER's own per-type rules
+  (instructions required; choice >= 2 options as list or map; score a list of >= 2 levels).
+- **VERIFICATION, both directions:** 150 rows classified in ONE request
+  (`rows=150 decided=150 act=24 escalate=68 noop=58 requests=1`); and a one-option choice, a type
+  `mcq`, and a question with no `instructions` each still refuse by name with zero calls.
+- **LESSON:** a field the recipe declares is either FORWARDED or REFUSED AT LOAD. A transformer
+  that silently narrows a validated shape turns a client defect into a remote error with a
+  misleading cause. And a validator must encode the rules of the endpoint it is POINTED AT,
+  taken from that endpoint's own validation — never from a remembered contract of another.
+
+## [2026-09-29] EN-114 · THE CHUNK IS COUNTED IN ROWS, NOT BYTES
+
+- **FINDING:** the first full classification run refused with
+  `JM_JUDGE_PAYLOAD_TOO_LARGE: 302567 bytes exceeds the 262144-byte cap`.
+- **ROOT CAUSE:** `decision-tree`'s claim loop uses `CHUNK = 200` — 200 ROWS, whatever their
+  bytes. The payload is `rows x (row + criteria)`, and `criteria` is repeated on EVERY question
+  in the chunk. With 10 class rubrics the packet reached 278 KB over a 256 KB cap even after the
+  excerpts were trimmed to 437 bytes.
+- **WORKAROUND (used):** chunk the invocation externally — 150 rows per run, 5 runs. Measured:
+  all 5 succeeded, `requests=1` each, 658 rows in 118.9 s.
+- **THE REAL FIX (not yet made):** the claim loop must budget BYTES, not rows — accumulate until
+  the serialized estimate approaches the cap, then send. A row-count constant is a payload
+  assumption with no relationship to the payload.
+- **LESSON:** a batch boundary expressed in the wrong unit fails on exactly the payloads the verb
+  exists for (many rows, a real question). The cap was correct; the unit was wrong.

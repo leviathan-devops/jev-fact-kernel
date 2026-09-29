@@ -182,17 +182,28 @@ function getNewestMtime(dir: string): number {
 function getBundleSha(repoRoot: string): string | null {
   try {
     const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    const out = execSync(`find src -name '*.ts' | sort | xargs sha256sum | sha256sum | cut -c1-16`, { cwd: repoRoot, encoding: "utf8" });
+    // THE EXPRESSION MUST BE THE SEAL'S OWN, CHARACTER FOR CHARACTER (scripts-seal.sh:50):
+    //   LC_ALL=C find src tests -name '*.ts' -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32
+    // MEASURED: this function used `find src` (src ONLY) and `cut -c1-16` (half the width) while
+    // the seal hashes src+tests and writes 32 — so the two values could NEVER match and the
+    // "Zero drift?" item was a gate that ALWAYS failed. A gate that cannot pass is not an
+    // enforcement, it is a refusal generator: every caller learns to ignore it.
+    // If the seal's expression changes, THIS LINE changes with it. They are one contract.
+    const out = execSync(`LC_ALL=C find src tests -name '*.ts' -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32`, { cwd: repoRoot, encoding: "utf8" });
     return out.trim();
   } catch { return null; }
 }
 
 function getStatedSha(docsDir: string): string | null {
-  for (const f of ["context_management/BUILD_STATE.md", "BUILD_REPORT.md"]) {
+  // READ THE LINE THE SEAL WRITES, not "the first hex we happen to find". The seal stamps every
+  // canon doc with `**TREE SHA: `<32 hex>` (git <short>)**` (scripts-seal.sh:60), and the old
+  // pattern here captured only 16 hex — so it read the FIRST HALF of a 32-char value and compared
+  // it against a differently-scoped hash. Two defects that cancelled into a permanent FAIL.
+  const TREE = /\*\*TREE SHA: `([0-9a-f]{32})`/;
+  for (const f of ["context_management/EVIDENCE_STATE.md", "context_management/BUILD_STATE.md", "context_management/CURRENT_STATE.md", "BUILD_REPORT.md"]) {
     const p = join(docsDir, f);
     if (existsSync(p)) {
-      const body = readFileSync(p, "utf8");
-      const m = body.match(/bundle[^\n]*sha[^\n]*([0-9a-f]{16})/i) ?? body.match(/([0-9a-f]{16})/);
+      const m = readFileSync(p, "utf8").match(TREE);
       if (m) return m[1];
     }
   }

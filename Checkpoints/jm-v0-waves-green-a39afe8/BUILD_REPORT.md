@@ -1848,3 +1848,125 @@ files carried the most debt.
 
 - **L9** · *medium* · `test` — `makeSandbox` mutates the process-global `JM_HOME`/`JM_LEDGER`, but `cleanup` only deletes the temp dirs and never restores the env vars. After `cleanup()` these still point at deleted directories and leak into any later test sharing the process (runtime code 
 
+
+---
+
+## [2026-09-29] THE PUSH GATE'S ZERO-DRIFT ITEM — a dead check repaired
+
+### WHAT WAS WRONG
+
+The push gate's `Zero drift?` item compared two quantities that could never be equal:
+
+```
+  scripts-seal.sh:50  (the WRITER)   find src tests -name '*.ts' -type f | … | cut -c1-32
+  push-gate.ts:185    (the CHECKER)  find src -name '*.ts' | … | cut -c1-16
+```
+
+`src` vs `src+tests`; `16` chars vs `32`. And `getStatedSha` captured `([0-9a-f]{16})` — the
+FIRST HALF of the 32-char value the seal writes — while scanning `BUILD_STATE.md` rather than
+the `**TREE SHA: \`<32 hex>\`**` line every canon doc carries.
+
+**Effect:** the item could never pass. A gate that always fails is a refusal generator; the
+caller learns to ignore it, and the one correct firing is indistinguishable from the noise.
+
+### WHAT CHANGED
+
+| File | Change |
+|---|---|
+| `src/verbs/push-gate.ts:183-194` | `getBundleSha` now runs the seal's expression character for character (`src tests`, `-c1-32`) |
+| `src/verbs/push-gate.ts:197-211` | `getStatedSha` now reads `**TREE SHA: \`<32 hex>\`**` from EVIDENCE_STATE → BUILD_STATE → CURRENT_STATE → BUILD_REPORT |
+| `context_management/*.md` (7 docs) | TREE SHA re-stamped to the current tree (`4e129159…`, git `8f87ed3`) |
+| `context_management/RUNNING_DEBUG_LOG.md` | EN-112 — the finding, root cause, fix, both-directions verification, lesson |
+| `TESTING_LOG.md` | the three-run proof table |
+| `DEBUG_LOG.md` | this entry's twin |
+| `reports/JM_CRASH_COURSE.md` | the operator crash course (NEW, 516 lines) |
+
+### THE MEASURED STATE OF THE GATE
+
+```
+PUSH_GATE REFUSE exit=1
+  SKIP         spec component?        no spec components provided
+  PASS         built correctly?       tsconfig=present src_files=40
+  JUDGED_PASS  tested correctly?      ST_DETECT files=44 tests=253 legit=41 suspect=3 shitty=0
+  JUDGED_PASS  not theatrical?        noul=0.813
+  PASS         Docs updated?          (after this entry)
+  PASS         Zero drift?            bundle=4e129159… stated=4e129159…
+```
+
+Five of six items pass; the sixth (`spec component?`) SKIPs because no `--spec` was supplied.
+The gate is now usable as a pre-commit hook, which it could not be before: a hook that refuses
+every commit is a hook that gets deleted.
+
+### THE INDEPENDENT FINDINGS, SAME SESSION
+
+| # | Finding | Evidence |
+|---|---|---|
+| 1 | `mcp.json` pointed at `:8008/v1/systemone` → **HTTP 404** | `curl` → 404; the client's canon adapter silently took over |
+| 2 | The fallback path costs N requests for N items | `find` → `requests=100` on `:8008` vs `requests=1` on `:8090` |
+| 3 | The same find, both endpoints | `:8008` → 0 kept, 0 patterns · `:8090` → 34 kept, 3 patterns |
+| 4 | The CLI had no default endpoint | `judgeUrl() ?? TYPESAFE_URL` → HTTP 402, terminal |
+| 5 | The judge is LOCAL and free | `:8090` → `jevk5-4b-v0.2-Q8_0`, gguf, ~92-100 ms |
+
+### HONEST GAPS
+
+- No test pins `scripts-seal.sh:50` to `push-gate.ts:185`. They are one contract held by a
+  comment. The pin is the correct next hardening step.
+- The `spec component?` item is unexercised in this repo (no spec file passed) — its SKIP path
+  is observed; its PASS and FAIL paths are not.
+- The `:8090` cold-start cost (54,284 ms measured on the first call after idle) is not yet
+  handled by a warm-up; a batch can trip `JM_JUDGE_RETRY_EXHAUSTED` on a cold judge.
+
+---
+
+## [2026-09-29] THE RUNTIME TEST — 666 ship docs → 658 classified failure records
+
+THE CORPUS: 666 ship docs (BUILD_REPORT/DEBUG_LOG/FAILURE_LOG/TESTING_LOG/THEATRICALITY_LOG/
+VIOLATION_LOG/AUDIT_SUMMARY) modified in the last 5 days, across every project tree.
+349,396 lines · 31 MB · indexed in 609 ms.
+
+THE RUN: 5 chunks x 150 rows x one 10-class `choice` recipe, one HTTP request per chunk.
+658 records classified in 118.9 s, local, no API.
+
+THE DISTRIBUTION (argmax over the judge's per-class probabilities):
+
+  PROCESS              321   48.8%    state/ordering/lost-work defects
+  OTHER                111   16.9%    did not fit the taxonomy
+  FALSE_GREEN           69   10.5%    a pass hiding a failure
+  ARTIFACT_MISMATCH     67   10.2%    source and artifact disagree
+  THEATRICAL_CLAIM      38    5.8%    claims without evidence
+  TEST_THEATRE          21    3.2%    tests proving nothing
+  STUB_MOCK_PROOF       14    2.1%    a fake standing in for machinery
+  UNWIRED               13    2.0%    built but unreachable
+  SCOPE_SHRINK           4    0.6%    less delivered than asked
+
+HONEST QUALITY NOTE: mean top-class probability is 0.29-0.46 — WEAK. Ten classes over a 600-byte
+excerpt is too many labels for a 4B model to separate confidently. The RANK ORDERING is usable;
+the individual labels are not evidence. A sharper second pass (3-4 classes, or a cascade) is the
+recorded next step, not a re-run at the same granularity.
+
+BY PROJECT: PLUTUS 258 · .omp-waves 128 · Graph_Intelligence 95 · JWAM 38 · JARVIS-FACTORY 35 ·
+Jev_Gates 30 · Thanatos-wt 30 · ROBIN-TRADE 17 · JevManager 14 · gi-checkpoint-archive 13.
+
+---
+
+## DEPLOYMENT FINGERPRINT
+
+**TREE SHA (src+tests, sha256):** `07c96789730595377891934f34152610`
+
+This is the deployed fingerprint. It is the same expression `scripts-seal.sh` writes into every
+canon doc and `src/verbs/push-gate.ts` re-derives for the `Zero drift?` item — one contract,
+character for character.
+
+**WHY THERE IS NO dist/ ARTIFACT:** JevManager is a CLI + MCP server + library, not a bundled
+application. Nothing is compiled into a single dist file; the deployed unit is the source tree
+plus the two entry points (`src/cli.ts` via the `jm` launcher, `src/cli.ts mcp` via the MCP
+registry). The artifact table therefore carries the SOURCE TREES with their measured SHA rather
+than a fabricated bundle — per the ship-package law: never fabricate a dist.
+
+**WHAT DEPLOYS:**
+| artifact | path | how |
+|---|---|---|
+| the CLI | `src/cli.ts` + `~/.local/bin/jm` | the launcher on PATH |
+| the MCP server | `scripts-jm-mcp.sh` → `bun run src/cli.ts mcp` | registered in `~/.omp/agent/mcp.json` |
+| the native OMP tool | `~/.omp/agent/extensions/jev-manager/index.js` | auto-discovered at session start |
+| the judge adapter | `~/jevk5-runtime/systemone-server.py` | :8090, wrapping the llama.cpp backend |

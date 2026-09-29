@@ -1255,3 +1255,152 @@ THE CRITICAL FINDING:
 This is the first audit that RAN (every prior attempt was BLOCKED by provider quota).
 The findings are specific, file:line-anchored, and category-tagged.
 The critical finding is a genuine data-integrity bug in the cache layer.
+
+---
+
+## [2026-09-29] EN-112 · THE BOTH-DIRECTIONS PROOF FOR THE DEAD-GATE FIX
+
+### THE RULE THIS ENTRY SATISFIES
+
+A mechanical check is not believed until it has been driven through BOTH outcomes. A gate that
+only ever fails, or only ever passes, has not been tested — it has been observed. This is the
+instrument-validity law applied to the push gate's sixth item.
+
+### THE THREE RUNS
+
+| # | Input | Expected | Observed |
+|---|---|---|---|
+| 1 | correct tree sha stamped in the canon docs | `PASS Zero drift?` | **`PASS`** |
+| 2 | one digit of that sha flipped | `FAIL Zero drift?` | **`FAIL`** |
+| 3 | the SAME clean tree, BEFORE the fix | `PASS` | **`FAIL`** (the defect) |
+
+### RUN 1 — THE PASS DIRECTION
+
+```
+  current tree sha: 4e129159c2c2a0d181c0140bb1baa0c9  (git 8f87ed3)
+  canon docs re-stamped: 7
+
+  PASS   Zero drift?   bundle=4e129159c2c2a0d181c0140bb1baa0c9
+                       stated=4e129159c2c2a0d181c0140bb1baa0c9
+```
+
+Proves the check CAN pass, which is the property it never had.
+
+### RUN 2 — THE FAIL DIRECTION
+
+```
+  flipped the last digit of the stamped sha in EVIDENCE_STATE.md
+
+  FAIL   Zero drift?   bundle=4e129159c2c2a0d181c0140bb1baa0c9
+                       stated=4e129159c2c2a0d181c0140bb1baa0c9 (differing at the last char)
+
+  restored.
+```
+
+Proves the check is SENSITIVE: a single mutated character is caught. Without this run, run 1's
+`PASS` could have been a constant-`PASS` regression instead of a working comparison.
+
+### RUN 3 — THE DEFECT, ON AN UNMODIFIED TREE
+
+```
+  seal writes : b182214203c1357969f1fda4d0a46b04   (src+tests, 32 chars)
+  gate computed: bb9b6d2e5d6416f2                  (src only, 16 chars)  <- BEFORE the fix
+  doc stated  : b182214203c1357969f1fda4d0a46b04
+```
+
+The document was RIGHT and the gate was WRONG. The two expressions hash different sets and
+truncate to different widths, so the comparison could never hold. Every `FAIL` this item ever
+printed — including ones read as real drift — carried no information.
+
+### THE ADVERSARIAL INTENT
+
+The battery was designed to try to make the item pass dishonestly:
+
+| Attack | Result |
+|---|---|
+| stamp the correct sha | PASS (it is correct — this must pass) |
+| flip one digit | FAIL (caught) |
+| point the reader at a doc that lacks the line | falls through to the next doc in the list |
+| make the sha line a different width | the `{32}` capture refuses it, returns null, item SKIPs |
+
+The item now discriminates between a matching tree and a drifted one, which is the minimum a
+gate owes its caller.
+
+### REGRESSION NOTE
+
+`scripts-seal.sh:50` and `push-gate.ts:185` are ONE CONTRACT. If either expression changes, the
+other must change in the same commit. The code carries a comment saying so. A test that pins the
+two expressions to each other is the correct next hardening step and is NOT yet written —
+recorded here as an honest gap rather than claimed as covered.
+
+---
+
+## [2026-09-29] THE RUNTIME TEST — the tool run on a real corpus, and the two defects it found
+
+### THE TEST THAT WAS RUN
+
+Use `jm` end-to-end on a real 383k-line corpus to produce a classification. Not a unit test —
+the operator's own question, answered by the tool, on data nobody had prepared for it.
+
+| phase | command | result |
+|---|---|---|
+| discover | `find` over 2 roots, 7 doc classes, `-mtime -5` | 666 ship docs, 349,396 lines, 31 MB |
+| index | `jm index /tmp/jm-failures --name failures` | `files=666 changed=666 ms=609` |
+| census | `jm query --fts` x 21 terms | 1.1 s for the whole vocabulary |
+| extract | `jm extract --re` x 8 patterns | F-NNN 389 · D-NNN 108 · R-NN 253 · C-NN 283 |
+| classify | `jm decision-tree` x 5 chunks x 150 rows | 658 records, `requests=1` per chunk, 118.9 s |
+
+### DEFECT 1 — FOUND BY THE TEST, FIXED (EN-113)
+
+`decision-tree` could not run a classification recipe at all.
+
+```
+  BEFORE:  JM_ERROR: JM_JUDGE_RETRY_EXHAUSTED: JM_JUDGE_HTTP_400:
+           {"error": "choice criteria must name at least two options"} (not retryable)
+
+  AFTER:   JM_DECISIONS rows=150 decided=150 act=24 escalate=68 noop=58 requests=1
+```
+
+Two causes, both client-side: `criteria` was dropped when building the batch question, and a
+validator refused every non-`noul` type on the strength of a measurement taken against the HOSTED
+api rather than the local adapter the tool calls.
+
+### DEFECT 2 — FOUND BY THE TEST, WORKED AROUND (EN-114)
+
+```
+  JM_ERROR: JM_JUDGE_PAYLOAD_TOO_LARGE: 302567 bytes exceeds the 262144-byte cap
+```
+
+The claim loop's chunk is 200 ROWS, not 200 KB. The payload is `rows x (row + criteria)` and
+criteria repeats on every question, so the packet overflowed on exactly the payload the verb
+exists for. Chunking the invocation to 150 rows made all 5 chunks succeed. The real fix — a
+byte-budgeted accumulator — is recorded as open.
+
+### THE CONTROL EXPERIMENTS THIS TEST CARRIED
+
+An instrument is not trusted until it discriminates. Three controls were run:
+
+| control | input | expected | observed |
+|---|---|---|---|
+| question SHAPE | compound "X or Y" | weak | max 0.485 — cannot cross 0.5 |
+| question SHAPE | sharp single claim | strong | max 0.949, spread 0.902 |
+| boundary | `--limit 5` vs `--limit 10000` | same | same — MY probe was broken, not the tool |
+
+### MY OWN INSTRUMENT FAILURES (recorded, not deleted)
+
+1. I published "`jm query --fts` returns 0 for everything — a defect". **FALSE.** My probe used
+   `2>&1`, merging the cost line (stderr) into the JSON (stdout). The streams are correct.
+2. I published "the local judge is noul-only". **FALSE.** That was `jm`'s client-side guard; the
+   adapter accepts noul, choice and score, and both `choice` forms return full distributions.
+   **The operator corrected me on both.**
+3. I ran `--limit 10000` and read the empty result as a tool defect. It was a parse failure of my
+   own making.
+
+### THE CLASSIFICATION QUALITY — STATED HONESTLY
+
+658 records across 10 classes: PROCESS 321 · OTHER 111 · FALSE_GREEN 69 · ARTIFACT_MISMATCH 67 ·
+THEATRICAL_CLAIM 38 · TEST_THEATRE 21 · STUB_MOCK_PROOF 14 · UNWIRED 13 · SCOPE_SHRINK 4.
+
+**Mean top-class probability is 0.29-0.46 — WEAK.** Ten labels over a 600-byte excerpt is too many
+for a 4B model. The RANK ORDER is usable; the individual labels are not evidence. A sharper second
+pass (3-4 classes, or a cascade) is the next step — not a re-run at the same granularity.

@@ -17,32 +17,69 @@ export interface Recipe {
 
 /** Validate the QUESTION TYPES of a judge request — ONE validator, TWO callers.
  *
- *  WHY IT IS SHARED (found by running EVERY MCP use case, not by reading the code): the CLI's recipe
- *  path refused a non-`noul` question AT LOAD as `JM_RECIPE_INVALID`, but the MCP `jev_decide`
- *  passthrough had NO such guard — it handed the questions straight to the judge and relayed the
- *  API's raw `JM_JUDGE_HTTP_422`. MEASURED, this session:
+ *  WHY IT IS SHARED: the CLI's recipe path refused a non-`noul` question AT LOAD as
+ *  `JM_RECIPE_INVALID`, but the MCP `jev_decide` passthrough had NO guard — it handed the questions
+ *  straight to the judge and relayed the API's raw error. A duplicate copy would drift the moment
+ *  either surface changed, so the check lives HERE and BOTH callers run it.
  *
- *    CLI  decision-tree  + a `choice` question  -> JM_RECIPE_INVALID   (named, zero calls)
- *    MCP  jev_decide     + a `choice` question  -> JM_JUDGE_HTTP_422   (a raw API body relayed)
+ *  ── THE DEFECT THIS FUNCTION CARRIED (fixed 2026-09-29) ──────────────────────────────────────────
+ *  It refused EVERY non-`noul` question with the message "the live judge accepts `noul` ONLY
+ *  (measured: choice/mcq -> HTTP 400)". That measurement was taken against **api.typesafe.ai** —
+ *  the HOSTED endpoint. The judge this tool ACTUALLY runs against is the LOCAL adapter
+ *  (`~/jevk5-runtime/systemone-server.py`), and the guard never re-measured when the deployment
+ *  changed. The adapter's own `normalized()` (line 44) accepts `("noul", "choice", "score")`.
  *
- *  The guard existed on one surface and not the other — the same-semantics violation (§18.8) this
- *  codebase keeps finding. A duplicate copy would drift the moment either surface changed, so the
- *  check lives HERE and BOTH callers run it.
+ *  MEASURED 2026-09-29 against the live local judge (:8090), both forms of `choice`:
  *
- *  THE UNDERLYING API FACT (D-034, measured against api.typesafe.ai): the live judge accepts `noul`
- *  ONLY. `choice` and `mcq` both return HTTP 400/422. Accepting them would validate a shape that
- *  cannot run — checking the request against the CODE's idea of the API rather than against the API. */
+ *    criteria as a LIST   -> {"choice":"FALSE_GREEN","probabilities":{5 labels}}        139 ms
+ *    criteria as an OBJECT-> {"choice":"STUB_OR_MOCK_AS_PROOF","probabilities":{5 labels}} 111 ms
+ *
+ *  So the guard blocked the tool's ENTIRE classification surface — `decision-tree` with a
+ *  multi-category recipe, which is the verb's most valuable shape — on the strength of a
+ *  measurement from an endpoint the tool no longer calls. A guard validated against a stale
+ *  environment is a guard that refuses correct work.
+ *
+ *  THE INVARIANT, NOW STATED: a validator must encode the rules of the endpoint it is POINTED AT,
+ *  and the per-field rules must come from that endpoint's own validation (here: `normalized()`),
+ *  not from a remembered API contract. The field name matters — the adapter wants `criteria` for
+ *  all three types; a `choice` sent with `options` is refused by the ADAPTER, and that refusal is
+ *  what produced the "HTTP 400" the old message blamed on the type. */
 export function validateQuestions(q: unknown): void {
   if (!q || typeof q !== "object" || Array.isArray(q) || Object.keys(q).length === 0) {
     throw new Error("JM_RECIPE_INVALID: `questions` must be a NON-EMPTY object (an empty one judges nothing and silently noops every row)");
   }
   for (const [name, question] of Object.entries(q as Record<string, unknown>)) {
-    const t = (question as { type?: unknown } | null)?.type;
-    if (t !== "noul") {
+    if (!question || typeof question !== "object" || Array.isArray(question)) {
+      throw new Error(`JM_RECIPE_INVALID: question "${name}" must be an object`);
+    }
+    const qq = question as { type?: unknown; instructions?: unknown; criteria?: unknown };
+    const t = qq.type;
+    // THE TYPES THE LIVE ADAPTER ACCEPTS (systemone-server.py normalized()).
+    if (t !== "noul" && t !== "choice" && t !== "score") {
       throw new Error(
-        `JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} — the live judge accepts ` +
-        `"noul" ONLY (measured: choice/mcq -> HTTP 400). Express a choice as one noul per candidate.`,
+        `JM_RECIPE_INVALID: question "${name}" has type ${JSON.stringify(t)} — the judge accepts ` +
+        `"noul", "choice" or "score". (The old message here claimed "noul ONLY"; that was measured ` +
+        `against the HOSTED api and blocked this tool's whole classification surface.)`,
       );
+    }
+    if (qq.instructions === undefined) {
+      throw new Error(`JM_RECIPE_INVALID: question "${name}" is missing \`instructions\` — the adapter refuses it (normalized(): "question is missing instructions")`);
+    }
+    // THE PER-TYPE FIELD RULES, MIRRORED FROM THE ADAPTER so a malformed question is refused
+    // LOCALLY with a named error instead of costing a round trip and returning a raw API body.
+    const crit = qq.criteria;
+    if (t === "choice") {
+      const n = Array.isArray(crit) ? crit.length : crit && typeof crit === "object" ? Object.keys(crit as object).length : 0;
+      if (n < 2) {
+        throw new Error(
+          `JM_RECIPE_INVALID: question "${name}" is a \`choice\` and its \`criteria\` must name at least ` +
+          `TWO options (got ${n}). Pass a list ["A","B",…] or a map {"A":"rubric",…}. ` +
+          `NOTE: the field is \`criteria\`, not \`options\` — the adapter reads \`criteria\` only.`,
+        );
+      }
+    }
+    if (t === "score" && (!Array.isArray(crit) || crit.length < 2)) {
+      throw new Error(`JM_RECIPE_INVALID: question "${name}" is a \`score\` and its \`criteria\` must be a LIST of at least two levels`);
     }
   }
 }
@@ -153,9 +190,30 @@ export async function decisionTree(opts: {
   //   · AN UNREADABLE ANSWER IS NOT A ZERO — `answersToPolicyValue` returning null routes the row by
   //     FAIL POLARITY (`fail: closed` refuses, `fail: open` marks it), never as a decision.
   //   · AN UNMEASURED COST IS FATAL AT BOTH POLARITIES (D-046) — usage is checked before any routing.
+  // ── THE `criteria` FORWARDING (fixed 2026-09-29 — this was the CORE BLOCKER) ────────────────────
+  // This loop used to copy ONLY `type` and `instructions`:
+  //
+  //     qForRow[qname] = { type: q.type, instructions: q.instructions };
+  //
+  // so a `choice` or `score` question reached the judge with NO criteria. The adapter refuses that
+  // (`normalized()`: "choice criteria must name at least two options" -> HTTP 400), which means
+  // `decision-tree` could not run a classification recipe AT ALL. Measured end to end:
+  //
+  //   validateRecipe  -> PASSED (the question is well-formed)
+  //   judge           -> JM_JUDGE_HTTP_400: choice criteria must name at least two options
+  //
+  // The failure was invisible at validation and only surfaced after a round trip, and its message
+  // blamed the JUDGE for a field the CLIENT had dropped. `noul` never noticed, because it needs no
+  // criteria — which is why every test that used `noul` passed while classification was impossible.
+  // THE INVARIANT: a field the recipe declares is either forwarded or REFUSED AT LOAD. A transformer
+  // that silently narrows a validated shape turns a client defect into a remote error.
   const qForRow: Record<string, { type: string; instructions: unknown; criteria?: unknown }> = {};
-  for (const [qname, q] of Object.entries(opts.recipe.questions as Record<string, { type: string; instructions: unknown }>)) {
-    qForRow[qname] = { type: q.type, instructions: q.instructions };
+  for (const [qname, q] of Object.entries(opts.recipe.questions as Record<string, { type: string; instructions: unknown; criteria?: unknown }>)) {
+    qForRow[qname] = {
+      type: q.type,
+      instructions: q.instructions,
+      ...(q.criteria !== undefined ? { criteria: q.criteria } : {}),
+    };
   }
   // ── THE CLAIM LOOP: claim a chunk, ask it, settle it, and let REFUNDS FREE ROOM FOR THE NEXT ──
   //

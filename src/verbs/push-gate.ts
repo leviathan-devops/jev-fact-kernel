@@ -183,13 +183,13 @@ function getBundleSha(repoRoot: string): string | null {
   try {
     const { execSync } = require("node:child_process") as typeof import("node:child_process");
     // THE EXPRESSION MUST BE THE SEAL'S OWN, CHARACTER FOR CHARACTER (scripts-seal.sh:50):
-    //   find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum | cut -c1-32
+    //   LC_ALL=C find src tests -name '*.ts' -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32
     // MEASURED: this function used `find src` (src ONLY) and `cut -c1-16` (half the width) while
     // the seal hashes src+tests and writes 32 — so the two values could NEVER match and the
     // "Zero drift?" item was a gate that ALWAYS failed. A gate that cannot pass is not an
     // enforcement, it is a refusal generator: every caller learns to ignore it.
     // If the seal's expression changes, THIS LINE changes with it. They are one contract.
-    const out = execSync(`find src tests -name '*.ts' -type f | sort | xargs sha256sum | sha256sum | cut -c1-32`, { cwd: repoRoot, encoding: "utf8" });
+    const out = execSync(`LC_ALL=C find src tests -name '*.ts' -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-32`, { cwd: repoRoot, encoding: "utf8" });
     return out.trim();
   } catch { return null; }
 }

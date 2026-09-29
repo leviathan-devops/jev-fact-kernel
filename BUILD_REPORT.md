@@ -1946,3 +1946,27 @@ recorded next step, not a re-run at the same granularity.
 
 BY PROJECT: PLUTUS 258 · .omp-waves 128 · Graph_Intelligence 95 · JWAM 38 · JARVIS-FACTORY 35 ·
 Jev_Gates 30 · Thanatos-wt 30 · ROBIN-TRADE 17 · JevManager 14 · gi-checkpoint-archive 13.
+
+---
+
+## DEPLOYMENT FINGERPRINT
+
+**TREE SHA (src+tests, sha256):** `07c96789730595377891934f34152610`
+
+This is the deployed fingerprint. It is the same expression `scripts-seal.sh` writes into every
+canon doc and `src/verbs/push-gate.ts` re-derives for the `Zero drift?` item — one contract,
+character for character.
+
+**WHY THERE IS NO dist/ ARTIFACT:** JevManager is a CLI + MCP server + library, not a bundled
+application. Nothing is compiled into a single dist file; the deployed unit is the source tree
+plus the two entry points (`src/cli.ts` via the `jm` launcher, `src/cli.ts mcp` via the MCP
+registry). The artifact table therefore carries the SOURCE TREES with their measured SHA rather
+than a fabricated bundle — per the ship-package law: never fabricate a dist.
+
+**WHAT DEPLOYS:**
+| artifact | path | how |
+|---|---|---|
+| the CLI | `src/cli.ts` + `~/.local/bin/jm` | the launcher on PATH |
+| the MCP server | `scripts-jm-mcp.sh` → `bun run src/cli.ts mcp` | registered in `~/.omp/agent/mcp.json` |
+| the native OMP tool | `~/.omp/agent/extensions/jev-manager/index.js` | auto-discovered at session start |
+| the judge adapter | `~/jevk5-runtime/systemone-server.py` | :8090, wrapping the llama.cpp backend |
