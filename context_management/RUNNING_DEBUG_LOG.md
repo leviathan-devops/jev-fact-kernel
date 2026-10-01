@@ -1021,3 +1021,40 @@ ways on a real staged change.
 blocked the test, plus the proxy evidence it COULD gather. That is what let a second party close it
 in four commands. An auditor that guessed CONFIRMED would have made the claim weaker, not stronger:
 the value of the audit is the honesty of its verdicts, not their count.
+
+## EN-126 · THE HOOK-CHAIN CONFLICT — two gates, one hooksPath, and my chain behind an exit
+
+**THE CONFLICT.** The enrollment ships its own `.githooks/` and the APPEND's step 5 runs
+`git config core.hooksPath .githooks`. But the kernel's spec gate lives at `.git-hooks/` — and
+`core.hooksPath` permits EXACTLY ONE directory. Step 5 as written would have DISPLACED the spec
+gate: a silent loss of the FR-citation check, discovered only by an unstamped commit landing.
+
+**THE FIX — CHAIN, NEVER DISPLACE.** The enrollment's own comment named the target:
+*"prepare-commit-msg is the absolute anchor"* — it fires where `commit-msg` cannot (a `--no-verify`
+bypasses commit-msg, never prepare-commit-msg). The spec gate chains THERE, so both systems run:
+
+```
+  prepare-commit-msg:
+    1 · the enrollment's semantic-prefix check
+    2 · the enrollment's W-8 claim-evidence check
+    3 · THE KERNEL'S SPEC GATE  <- chained, before the exit
+    exit 0
+```
+
+**DEFECT IN MY OWN FIX, CAUGHT BY DRIVING IT.** The first attempt APPENDED the block — and the
+enrollment's script **ends with `exit 0`**. My block was after it, therefore UNREACHABLE. Driven
+both ways: NEG returned 0 and POS returned 0 — **the chain did not bite.** The class is the same
+one this build keeps finding: *a gate behind an exit is not a gate.*
+
+**THE RE-FIX:** insert BEFORE the final `exit 0`, and leave the reason in the code.
+
+**DRIVEN BOTH WAYS:**
+```
+  NEG  a staged kernel change, no FR id  ->  SPEC-GATE REFUSE  [EXIT=1]
+  POS  the same change, "— FR-10"        ->  SPEC-GATE PASS    [EXIT=0]
+```
+
+**LESSON.** `core.hooksPath` is a SINGLE-VALUE contract, so any second gate must CHAIN onto the
+first's carrier or it is lost. And the chain's INSERTION POINT is load-bearing: appending to a
+script whose last statement is `exit 0` writes dead code. **Drive the chain both ways or you will
+not know which one you wrote.**
