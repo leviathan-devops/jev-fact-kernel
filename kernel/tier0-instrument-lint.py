@@ -2,38 +2,45 @@
 """TIER 0 — THE INSTRUMENT LINT.
 
 Fires on MEASUREMENT CODE whose cost scales with its OUTPUT rather than with the measured thing.
-It never reads prose. It greps generated measurement code, so its false-positive class is empty:
-none of these forms appears in production code by accident.
+It never reads prose.
 
-Exit 0 = clean.  Exit 1 = a hit, with the reason named.
+Exit 0 = clean.  Exit 1 = a hit, with the reason named.  Exit 2 = UNMEASURED (an unread path).
+
+THE COVERED CLASS: a byte-at-a-time read inside a measured region — ONE SYSCALL PER BYTE, whose
+count IS the elapsed time the caller is about to report. Its subject is unambiguous.
+
+THE UNCOVERED CLASSES (recorded, not policed by a guess — each was measured and DROPPED for a
+non-zero false-positive rate): a growing buffer concatenated inside a timed region (fires on
+legitimate code), a line-wise read (readline() is legitimate), a `| head` in a timed pipeline
+(never bit the positive; matched its own documentation text), and a sleep inside a measured span
+(never bit the positive). A pattern that cannot PROVE its context does not ship.
 """
 import re, sys, pathlib
 
 # Each pattern: (id, the regex, why it is a defect, the remedy)
+# ── THE PATTERN SET, DERIVED BY PRECISION — NOT BY IMAGINATION ──────────────────────────────────
+# Each pattern was run against three corpora: the POSITIVE fixture (must bite), the NEGATIVE
+# fixture (must stay silent), and the kernel's OWN source (must stay silent). Measured:
+#
+#   T0_BYTE_READ_IN_TIMED_LOOP          POS=1 NEG=0 SELF=0   KEEP
+#   T0_GROWING_BUFFER_IN_TIMED_REGION   POS=1 NEG=1 SELF=1   DROP  (fires on legitimate code)
+#   T0_BYTE_READ_ANY                    POS=1 NEG=0 SELF=1   DROP  (readline() is legitimate)
+#   T0_PIPE_HEAD_IN_TIMED_PIPELINE      POS=0 NEG=0 SELF=1   DROP  (never bites; matches its own text)
+#   T0_SLEEP_IN_MEASUREMENT             POS=0 NEG=0 SELF=0   DROP  (never bites)
+#
+# THE LAW THIS ENCODES: a pattern that cannot PROVE its context does not ship. Four of the five
+# were guesses wearing a gate — they fired on the FORM without the timed REGION, so their
+# false-positive rate was non-zero and their verdicts carried no information. Only the pattern
+# whose subject is unambiguous — ONE SYSCALL PER BYTE — survives its own controls.
+#
+# The honest consequence: tier 0 covers the byte-read class and NOTHING ELSE. The other four
+# classes are recorded as UNCOVERED (see the module docstring) rather than policed by a guess.
 PATTERNS = [
  ("T0_BYTE_READ_IN_TIMED_LOOP",
   re.compile(r'\.read\(\s*1\s*\)'),
   "a byte-at-a-time read: ONE SYSCALL PER BYTE. Against a 187,757-byte reply this IS the elapsed "
   "time you are about to report. You are timing the instrument, not the subject.",
   "use a buffered read: os.read(fd, 65536) or a reader thread"),
- ("T0_GROWING_BUFFER_IN_TIMED_REGION",
-  re.compile(r'buf\s*\+=\s*\w+\s*\n(?!.*\bbreak\b)', re.M),
-  "a buffer concatenated inside the timed region: string-grow is O(n) per append in some "
-  "runtimes, so the elapsed time carries the buffer, not the subject.",
-  "collect into a list and join once, outside the measured span"),
- ("T0_BYTE_READ_ANY",
-  re.compile(r'read\(\s*1\s*\)|readline\(\s*\)\s*$', re.M),
-  "a byte/line-wise read in a measured path — the reply's SIZE leaks into the number.",
-  "read in blocks and measure only the blocking round trip"),
- ("T0_PIPE_HEAD_IN_TIMED_PIPELINE",
-  re.compile(r'\|\s*head\b[^\n]*\btime\b|\btime\b[^\n]*\|\s*head\b'),
-  "`| head` closes the pipe early (SIGPIPE): the producer dies and the elapsed time measures "
-  "the KILL, not the work.",
-  "read to completion, or bound the producer explicitly"),
- ("T0_SLEEP_IN_MEASUREMENT",
-  re.compile(r'\b(sleep|time\.sleep)\([^)]*\)[^\n]*\b(elapsed|dt|time\(\))'),
-  "a sleep inside the measured span — the number is the sleep, not the subject.",
-  "move the sleep outside the timed region"),
 ]
 
 def scan(text: str, name: str) -> list[tuple[str, str, str, int, str]]:
@@ -47,13 +54,36 @@ def scan(text: str, name: str) -> list[tuple[str, str, str, int, str]]:
 def main(argv):
     targets = argv[1:] or ["."]
     hits = 0
+    scanned = 0
+    unmeasured = []          # every target/file the lint could NOT read
+
+    # ── THE FAIL-CLOSED LAW (FR-10) ─────────────────────────────────────────────────────────────
+    # An absent path, an unreadable file, or an unlistable directory is UNMEASURED — exit 2 with
+    # the subject NAMED. It is NEVER 'clean'. A gate that cannot tell 'inspected and clean' from
+    # 'nothing to inspect' is the dead-gate class: its silence and its pass are the same bytes.
+    # T4 (tier4-lsp-capability-probe.py) is the reference implementation of this behaviour.
     for t in targets:
         p = pathlib.Path(t)
-        files = [p] if p.is_file() else [f for f in p.rglob("*.py")] + [f for f in p.rglob("*.sh")] + [f for f in p.rglob("*.ts")]
+        if not p.exists():
+            unmeasured.append((str(t), "does not exist"))
+            continue
+        try:
+            if p.is_file():
+                files = [p]
+            else:
+                files = [f for f in p.rglob("*.py")] + [f for f in p.rglob("*.sh")] + [f for f in p.rglob("*.ts")]
+        except Exception as e:
+            unmeasured.append((str(t), f"unlistable: {e}"))
+            continue
         for f in files:
-            if any(s in str(f) for s in ("node_modules", "/.git/", "__pycache__")): continue
-            try: text = f.read_text(errors="ignore")
-            except Exception: continue
+            if any(x in str(f) for x in ("node_modules", "/.git/", "__pycache__", ".venv", "site-packages")):
+                continue
+            try:
+                text = f.read_text(errors="ignore")
+            except Exception as e:
+                unmeasured.append((str(f), f"unreadable: {e}"))
+                continue
+            scanned += 1
             for pid, why, fix, line, snippet in scan(text, str(f)):
                 hits += 1
                 print(f"FACT-FIREWALL T0 BLOCK  {pid}")
@@ -66,7 +96,14 @@ def main(argv):
         print(f"FACT-FIREWALL T0: {hits} instrument defect(s). A number produced by any of these "
               f"measures the INSTRUMENT. Fix the instrument, or state its validation in the claim.")
         return 1
-    print("FACT-FIREWALL T0: clean.")
+    if unmeasured:
+        print(f"FACT-FIREWALL T0 UNMEASURED: {len(unmeasured)} target(s) could not be read — "
+              f"this is NOT a pass. {scanned} file(s) were inspected.")
+        for t, why in unmeasured:
+            print(f"  UNMEASURED  {t}  ({why})")
+        print("  remedy: point the lint at a path that exists, or record the absence as a block.")
+        return 2
+    print(f"FACT-FIREWALL T0: clean. ({scanned} file(s) inspected)")
     return 0
 
 if __name__ == "__main__":

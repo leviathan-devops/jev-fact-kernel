@@ -522,3 +522,63 @@ reason this entry exists.
   assumption with no relationship to the payload.
 - **LESSON:** a batch boundary expressed in the wrong unit fails on exactly the payloads the verb
   exists for (many rows, a real question). The cap was correct; the unit was wrong.
+
+## EN-115 · THE PATTERN SET WAS IMAGINED, NOT MEASURED — four of five patterns dropped
+
+**SYMPTOM.** T0's own controls went RED on the first full drive: the NEGATIVE fixture
+(`fixtures/clean-probe.py`) returned exit 1, and the kernel's OWN source returned 7 hits. A lint
+that fires on legitimate code and on its own text is not a gate.
+
+**ROOT CAUSE — THE PATTERNS WERE WRITTEN, NOT DERIVED.** Five patterns were authored from
+imagination. Each was then run against three corpora: the POSITIVE fixture (must bite), the
+NEGATIVE fixture (must stay silent), and the kernel's own source (must stay silent).
+
+```
+  T0_BYTE_READ_IN_TIMED_LOOP          POS=1 NEG=0 SELF=0   KEEP
+  T0_GROWING_BUFFER_IN_TIMED_REGION   POS=1 NEG=1 SELF=1   DROP
+  T0_BYTE_READ_ANY                    POS=1 NEG=0 SELF=1   DROP
+  T0_PIPE_HEAD_IN_TIMED_PIPELINE      POS=0 NEG=0 SELF=1   DROP
+  T0_SLEEP_IN_MEASUREMENT             POS=0 NEG=0 SELF=0   DROP
+```
+
+- `T0_GROWING_BUFFER_IN_TIMED_REGION` fired on `buf += chunk` in the CLEAN fixture — the negative
+  lookahead `(?!.*\bbreak\b)` only inspects the IMMEDIATE next line, and a buffered read's `break`
+  sits two lines down. It also fired on `tier4-lsp-capability-probe.py:56` (`buf += line`), which is
+  legitimate buffered reading.
+- `T0_BYTE_READ_ANY` fired on `readline()` at `tier4-lsp-capability-probe.py:54` — a line read is
+  legitimate.
+- `T0_PIPE_HEAD_IN_TIMED_PIPELINE` NEVER bit the positive, and it fired on
+  `tier0-instrument-lint.py:30` — **its own comment text** (`| head` closes the pipe early…). The
+  instrument matched its own documentation.
+- `T0_SLEEP_IN_MEASUREMENT` never bit the positive at all.
+
+**THE MECHANISM.** A pattern that cannot PROVE its context fires on the FORM without the timed
+REGION. `buf += x` is a defect only INSIDE a measured span; the regex cannot see the span, so it
+guessed — and a guess wearing a gate produces verdicts that carry no information while costing the
+caller's trust.
+
+**THE FIX.** The pattern set is reduced to the ONE pattern whose subject is unambiguous — `.read(1)`
+is ONE SYSCALL PER BYTE, and its count IS the elapsed time — measured POS=1 NEG=0 SELF=0. The four
+dropped classes are recorded in the module docstring as the UNCOVERED set, named rather than
+policed by a guess.
+
+**A SECOND DEFECT, IN THE FIX ITSELF.** The scripted reduction sliced the list at the wrong `]`,
+leaving three orphaned lines of the old `T0_SLEEP` pattern. The lint stopped compiling
+(`SyntaxError: unexpected character after line continuation character`), and ALL FIVE controls
+returned exit 1 — a uniform failure that reads exactly like a working gate firing on everything.
+Found by compiling the file before believing any control result.
+
+**VERIFICATION (after both fixes).**
+
+```
+  fixtures/broken-probe.py   exit=1  PASS  (the POS bites; 1 block, token present)
+  fixtures/clean-probe.py    exit=0  PASS  (the NEG is clean; "1 file(s) inspected")
+  /tmp/NOPE.py               exit=2  PASS  (UNMEASURED, named, NOT 'clean')
+  kernel/                    exit=0  PASS  (the instrument is clean against itself)
+  fixtures/                  exit=1  CORRECT-BY-DEFINITION (the dir contains the POS fixture)
+```
+
+**LESSON.** A detector's pattern set is a HYPOTHESIS until it is driven against its own controls.
+The precision measurement (POS/NEG/SELF per pattern) is the derivation; without it, every pattern
+is a guess, and four of five were. And: a broken script fails UNIFORMLY — a gate that fires on
+everything looks like a gate until the file is compiled.
