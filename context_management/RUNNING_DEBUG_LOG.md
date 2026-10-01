@@ -582,3 +582,57 @@ Found by compiling the file before believing any control result.
 The precision measurement (POS/NEG/SELF per pattern) is the derivation; without it, every pattern
 is a guess, and four of five were. And: a broken script fails UNIFORMLY — a gate that fires on
 everything looks like a gate until the file is compiled.
+
+## EN-116 · THE CASCADE FAILED ITS FIRST CONTROL (5/8) — fixed by rewriting the QUESTION, three times
+
+**SYMPTOM.** The two-pass router was designed because the single-pass 8-label router's weakest
+cell sat at p=0.49. The cascade was expected to be STRONGER. Measured on the same 8-span set:
+
+```
+  attempt 1  cascade 5/8     (single-pass baseline: 7/8 — THE CASCADE WAS WORSE)
+  attempt 2  cascade 6/8
+  attempt 3  cascade 8/8
+```
+
+**ATTEMPT 1 — PASS-1 WAS THE BOTTLENECK (5/8).** The pass-1 question enumerated four kinds of
+checkable subject: *"a claim that a machine could check against a file, a test result, a deployed
+artifact, or a running process"*. The judge read the ENUMERATION as the whole definition, so a
+declaration on a WIRE (`plutus-lsp declares diagnosticProvider`) matched none of the four and
+fell to NONE at p=0.51 — barely over the line. Three spans misrouted: LSP_LIE, REAL_EDIT, PHANTOM.
+
+**ATTEMPT 2 — CHANGED THE QUESTION TO THE CLASS (6/8).** The enumeration was replaced with the
+class + an explicit parenthetical: *"something that could be confirmed or refuted by inspecting
+anything at all (a file, a test, a wire protocol, a running process, a declaration, a count)"*,
+and NONE was redefined by GRAMMAR. LSP_LIE was recovered (0.58). The two remaining misses were
+both `Created <artifact>` spans, routed to NONE at 0.67/0.60 — **and the judge was CORRECT per my
+criterion, because `Created X` IS grammatically an action.**
+
+**THE REALISATION (attempt 2's lesson).** The span is BOTH an action AND an existence assertion.
+The router must route it to FILE, because that is the probe that can settle it. A criterion that
+lets an artifact-naming action escape to NONE is a criterion that creates an escape hatch for
+exactly the class the kernel exists to catch — *"I created X"* is the phantom-artifact claim.
+
+**ATTEMPT 3 — NONE EXCLUDES NAMED ARTIFACTS (8/8).** NONE became: *"an action that NAMED NO
+ARTIFACT and asserts nothing checkable, or a PLAN, a QUESTION, or QUOTED text. An action that
+NAMES an artifact ('created X', 'wired Y') DOES assert that X exists — route it, do not dismiss
+it"*.
+
+**THE FINAL MEASUREMENT (all 8 spans, tool output):**
+
+```
+  LSP_LIE       CHECKABLE  CAPABILITY    0.74  0.42  OK
+  REAL_EDIT     CHECKABLE  FILE          0.59  0.95  OK
+  REAL_TEST     CHECKABLE  TEST          0.89  0.50  OK
+  PHANTOM       CHECKABLE  FILE          0.55  0.75  OK
+  TIMING_LIE    CHECKABLE  MEASUREMENT   0.89  0.93  OK
+  REAL_TIMING   CHECKABLE  MEASUREMENT   0.77  0.94  OK
+  SPEC_CLAIM    CHECKABLE  SPEC          0.82  0.78  OK
+  PLAN          NONE       NONE          0.81  0.00  OK
+
+  CASCADE ACCURACY: 8/8      PASS-1: 8/8      spans reaching the fine pass: 7/8
+```
+
+**LESSON.** A question's WORDING is the mechanism; a threshold is not. Every gain across the three
+attempts came from rewriting the question — the derived cut never moved. And a "NONE" label is a
+LOAD-BEARING decision: an over-broad NONE is an escape hatch for the exact claims the kernel
+exists to catch, and it looks like a correct abstention while it does it.
