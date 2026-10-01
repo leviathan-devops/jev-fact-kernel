@@ -45,7 +45,16 @@ def probe_hash(path: str, claimed: str) -> dict:
     c = re.sub(r"[^0-9a-f]", "", claimed.lower())
     if not c:
         return _v(VERDICT_UNMEASURED, "T4_HASH_UNMEASURED", detail="the claimed value carries no hex")
-    if h.startswith(c) or h[:16] == c[:16]:
+    # THE HASH FLOOR. The defect this replaces was `h.startswith(c) or h[:16] == c[:16]`:
+    #   · `h[:16] == c[:16]` TRUNCATES a longer claim to 16 chars and compares 64 bits;
+    #   · and `startswith` alone accepts a ONE-CHAR claim — 4 bits — as a verification.
+    # PROVEN ADVERSARIALLY: a claim of `d` against a sha beginning `d` returned PASS.
+    # A claim below 16 hex chars (64 bits) is a coincidence wearing a hash's name, not a
+    # verification. Above the floor, `startswith` is the CORRECT predicate for a prefix claim.
+    if len(c) < 16:
+        return _v(VERDICT_UNMEASURED, "T4_HASH_UNMEASURED", path=str(p),
+                  detail=f"the claimed value is {len(c)} hex chars — below the 16-char floor; a match would be a coincidence, not a verification")
+    if h.startswith(c):
         return _v(VERDICT_PASS, "T4_ARTIFACT_HASH_MATCH", path=str(p), sha16=h[:16], claimed=c[:16])
     return _v(VERDICT_BLOCK, "T4_ARTIFACT_HASH_MISMATCH", path=str(p), actual=h[:16], claimed=c[:16])
 

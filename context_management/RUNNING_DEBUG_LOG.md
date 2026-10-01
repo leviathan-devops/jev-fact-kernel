@@ -1157,3 +1157,54 @@ python3 probe.py … > out 2>&1; RC=$?; tail -1 out; echo "[exit=$RC]"
 ```
 The kernel's own T0 lint exists to catch this class in Python. It has no equivalent for shell
 harnesses — **a shell probe's exit-code discipline is manual, and this entry is the receipt.**
+
+## EN-129 · THE SHIP GATE FOUND TWO CRITICALS IN THE KERNEL'S OWN INSTRUMENTS
+
+**THE GATE.** `qwen-code-audit` scan over `kernel/,bin,extensions/`:
+`GATE: FAIL (2 critical, 27 high)` · 59 findings · 12 files reviewed · session 04e6c1ee.
+
+**THE TWO CRITICALS — both proven adversarially BEFORE the fix, both fixed, both re-proven.**
+
+### CRIT-1 · `kernel/tier4-probes.py:48` — the hash comparison truncated the claim
+
+```python
+if h.startswith(c) or h[:16] == c[:16]:        # THE DEFECT
+```
+`h[:16] == c[:16]` TRUNCATES a longer claim to 16 chars (64 bits), and `startswith` alone accepts a
+**one-character** claim. **PROVEN:** a claim of `d` against an artifact whose sha begins `d` returned
+`PASS` — **4 bits of evidence wearing a hash's name.** Three guesses of a 16-char alphabet pass ~19%.
+
+**FIX:** a 16-hex-char floor. Below it the verdict is UNMEASURED, not PASS; above it `startswith` is
+the CORRECT predicate for a prefix claim (the `h[:16] == c[:16]` arm was the bug, not `startswith`).
+**RE-PROVEN:** `d`→UNMEASURED · `d9b3`→UNMEASURED · 16 chars→PASS · the full 64→PASS · a wrong 16→BLOCK.
+The existing control at `fixtures/probe-controls.py:43` passes a 16-char claim, so it still passes.
+
+### CRIT-2 · `kernel/battery.sh:83` — the verdict ignored UNMEASURED
+
+```bash
+[ "$FAIL" = "0" ] && { echo "  ★ BATTERY GREEN"; exit 0; }     # THE DEFECT
+```
+**UNM was never consulted.** `PASS=0 FAIL=0 UNM=16` exited **0** — the battery measured NOTHING and
+reported GREEN, against the file's own header *"UNMEASURED never a pass — fail-closed."*
+**PROVEN:** four combinations driven through the old predicate; two were false greens.
+
+**FIX:** RED(1) on FAIL, then UNMEASURED(2) on UNM, then NOTHING(2) on PASS=0, then GREEN(0).
+**RE-PROVEN:** 16/0/0→GREEN · 0/0/16→UNMEASURED-2 · 8/0/8→UNMEASURED-2 · 0/3/0→RED-1.
+
+### THE THIRD, SAME CLASS · `battery.sh:74` — the spec gate was never RUN
+
+It checked `-x` PRESENCE and counted it as PASS. **A gate never executed cannot fail; a check that
+cannot fail is documentation.**
+
+**FIX, AND A DEFECT IN THE FIX.** The first attempt compared exit 0 to exit 0 with NOTHING staged —
+the gate's predicate needs a STAGED KERNEL PATH, so both arms passed for want of a subject. **A
+theatrical check of the very class it was fixing, caught before it landed.** The landed version
+stages a throwaway kernel file, drives both ways, and unstages. **OBSERVED:**
+`PASS scripts-spec-gate.sh driven both ways (no-id exit 1, FR-12 exit 0)`.
+
+### THE LESSON
+
+**The kernel's own thesis, found in the kernel's own instruments.** A hash check that accepts 4 bits,
+a verdict that greens on zero measurements, a gate counted instead of run — each is *shape without
+reachability* in a different costume: the FORM of verification without the substance. **The ship gate
+earned its place by finding them, and the fixes were proven both ways before the re-run.**

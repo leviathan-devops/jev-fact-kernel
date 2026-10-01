@@ -71,7 +71,24 @@ if [ "$N" -gt 0 ]; then printf "  PASS  %-46s rows=%s lies=%s\n" "the ledger car
 else printf "  UNM   %-46s the ledger is empty\n" "the ledger"; UNM=$((UNM+1)); fi
 echo ""
 echo "── THE SPEC GATE ──"
-if [ -x scripts-spec-gate.sh ]; then printf "  PASS  %-46s present + executable\n" "scripts-spec-gate.sh"; PASS=$((PASS+1))
+# RAN, NOT COUNTED (the gate-audit finding). This checked `-x` PRESENCE and called it PASS — a
+# gate that is never executed cannot fail, and a check that cannot fail is documentation.
+# The gate's predicate needs a STAGED KERNEL PATH, so the drive stages a throwaway and unstages it.
+# (My first attempt at this fix compared exit 0 to exit 0 with NOTHING staged — a theatrical check
+# of the same class it was fixing. Caught before it landed.)
+if [ -x scripts-spec-gate.sh ]; then
+  PROBE="kernel/.batt-spec-probe"
+  : > "$PROBE" && git add "$PROBE" 2>/dev/null
+  printf 'chore(kernel): the battery probe — no id\n' > /tmp/batt-neg.txt
+  bash scripts-spec-gate.sh --staged /tmp/batt-neg.txt >/dev/null 2>&1; NG=$?
+  printf 'chore(kernel): the battery probe — FR-12\n' > /tmp/batt-pos.txt
+  bash scripts-spec-gate.sh --staged /tmp/batt-pos.txt >/dev/null 2>&1; PS=$?
+  git reset -q -- "$PROBE" 2>/dev/null; rm -f "$PROBE" /tmp/batt-neg.txt /tmp/batt-pos.txt
+  if [ "$NG" -eq 1 ] && [ "$PS" -eq 0 ]; then
+    printf "  PASS  %-46s driven both ways (no-id exit 1, FR-12 exit 0)\n" "scripts-spec-gate.sh"; PASS=$((PASS+1))
+  else
+    printf "  FAIL  %-46s did not bite both ways (no-id=%s want 1, FR-12=%s want 0)\n" "scripts-spec-gate.sh" "$NG" "$PS"; FAIL=$((FAIL+1))
+  fi
 else printf "  FAIL  %-46s missing\n" "scripts-spec-gate.sh"; FAIL=$((FAIL+1)); fi
 echo ""
 echo "── Q3 (FR-6a) — known BELOW the bar, WARN-only ──"
@@ -80,5 +97,15 @@ printf "  INFO  %s\n" "$(echo "$Q3" | cut -c1-90)"
 echo ""
 echo "═══════════════════════════════════════════════"
 printf "  PASS=%s  FAIL=%s  UNMEASURED=%s\n" "$PASS" "$FAIL" "$UNM"
-[ "$FAIL" = "0" ] && { echo "  ★ BATTERY GREEN"; exit 0; }
-echo "  ✗ BATTERY RED"; exit 1
+# THE VERDICT — fail-closed (the gate-audit CRITICAL). The defect this replaces was
+# `[ "$FAIL" = "0" ] && GREEN`: UNM was NEVER consulted, so PASS=0 FAIL=0 UNM=16 exited 0 — the
+# battery measured NOTHING and reported GREEN, against this file's own header "UNMEASURED never a
+# pass — fail-closed". PROVEN ADVERSARIALLY before the fix: a 16-row all-UNMEASURED battery was GREEN.
+if [ "$FAIL" -gt 0 ]; then echo "  ✗ BATTERY RED"; exit 1; fi
+if [ "$UNM" -gt 0 ]; then
+  echo "  ✗ BATTERY UNMEASURED — $UNM tier(s) could not be measured."
+  echo "    fail-closed: an unmeasured tier is not a pass. exit 2 distinguishes this from RED."
+  exit 2
+fi
+if [ "$PASS" -eq 0 ]; then echo "  ✗ BATTERY MEASURED NOTHING (fail-closed)"; exit 2; fi
+echo "  ★ BATTERY GREEN"; exit 0
