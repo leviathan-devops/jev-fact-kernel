@@ -52,7 +52,20 @@ def scan(text: str, name: str) -> list[tuple[str, str, str, int, str]]:
     return out
 
 def main(argv):
-    targets = argv[1:] or ["."]
+    # ── THE EMPTY-PATH LAW (the independent audit's A1 finding) ─────────────────────────────────
+    # `targets = argv[1:] or ["."]` treats an EXPLICIT empty string as falsy-adjacent and let it
+    # fall through to `Path("")` == ".", so `lint ''` silently scanned the CWD — and hit a
+    # Checkpoints/ copy of the same fixture, DOUBLE-COUNTING it. The scope was wrong, not the
+    # verdict (it BLOCKed rather than passed, so the direction was fail-safe) — but a gate whose
+    # scope depends on an empty string is a gate whose scope is undetermined.
+    # THE LAW: no args -> the cwd, by DESIGN. An EXPLICIT empty arg -> UNMEASURED, by REFUSAL.
+    args = argv[1:]
+    if any(not a.strip() for a in args):
+        print("FACT-FIREWALL T0 UNMEASURED: an empty path argument was given — this is NOT a pass.")
+        print("  UNMEASURED  ''  (empty path — refusing to infer a scope)")
+        print("  remedy: pass a real path, or no argument at all to scan the cwd by design.")
+        return 2
+    targets = args or ["."]
     hits = 0
     scanned = 0
     unmeasured = []          # every target/file the lint could NOT read

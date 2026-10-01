@@ -919,3 +919,70 @@ output; the OUTPUT was wrong, not absent. T0 catches that one, before the number
 This is the DPL1's §10 residual made executable: a tier that claimed to catch the class it cannot
 catch would be the exact failure the kernel exists to kill. **The boundary is a test, not a
 footnote.**
+
+## EN-124 · T5 — THE INDEPENDENT AUDIT, AND THE DEFECT THE AUTHOR MISSED
+
+**THE AUDITOR.** A `scout` subagent, READ-ONLY, dispatched with the instruction to RE-RUN every
+claim itself and to trust no number the author wrote. The author is never the auditor.
+
+**THE CLAIMS TABLE — 7 CONFIRMED · 0 REFUTED · 1 UNVERIFIABLE.** Every confirmed claim carries the
+auditor's OWN raw output, not the author's:
+
+```
+  C1  T0 on /tmp/NOPE.py            -> "T0 UNMEASURED ... is NOT a pass"   [EXIT=2]  CONFIRMED
+  C2  T4 on fixtures/lying-server   -> "23 advertised capabilities ... -32601" [EXIT=1] CONFIRMED
+  C3  T4 on fixtures/honest-server  -> "every advertised capability answered" [EXIT=0] CONFIRMED
+  C4  fixtures/probe-controls.py    -> "PROBE CONTROLS: 16/16"             [EXIT=0]  CONFIRMED
+  C5  kernel/router.py              -> "CASCADE ACCURACY: 8/8"             [EXIT=0]  CONFIRMED
+  C6  the ledger                    -> 193 rows, a row carrying Pattern/State/Evidence  CONFIRMED
+  C8  kernel/q3-control.py          -> "rewritten gap +0.047 ... below the bar" [EXIT=1] CONFIRMED
+  C7  the spec gate, staged mode    -> UNVERIFIABLE (see the gap below)
+```
+
+**THE ADVERSARIAL SWEEP — 5/6 HELD, 1 BROKE:**
+
+```
+  A1  an EMPTY path   ''            -> BROKE  <-- THE FINDING
+  A2  a missing dir                 -> HELD (UNMEASURED, exit 2)
+  A3  an unreadable file (chmod 000)-> HELD (UNMEASURED, exit 2)
+  A4  a server that answers then EXITS -> HELD (0.146s, no hang)
+  A5  a directory with no server.ts -> HELD (UNMEASURED, never PASS)
+  A6  the kernel's probes AGAINST THE KERNEL -> HELD (the only fire is the deliberate POS fixture)
+```
+
+**A1 — THE DEFECT THE AUTHOR NEVER DROVE.** `python3 kernel/tier0-instrument-lint.py ''` — an
+explicit EMPTY path — fell through `argv[1:] or ["."]` to `Path("")` == `.`, so the lint silently
+scanned the CWD and hit a **Checkpoints/ copy of the same fixture, DOUBLE-COUNTING it.**
+
+- The DIRECTION was fail-safe (it BLOCKed rather than passing) — but the SCOPE was undetermined,
+  and a gate whose scope depends on an empty string is a gate whose scope is an inference.
+- **THE AUTHOR DID NOT FIND THIS. The independent auditor did.** That is T5 working exactly as the
+  pin designed it: the author's blind spots are the auditor's first sweep.
+- **THE FIX:** no args -> the cwd, BY DESIGN. An EXPLICIT empty arg -> UNMEASURED, BY REFUSAL.
+
+**THE FIX, DRIVEN 3/3:**
+```
+  A1a  an explicit empty path  -> UNMEASURED, exit 2   ("refusing to infer a scope")
+  A1c  a real path             -> still BLOCKs, exit 1 (no regression)
+  A1d  kernel/                 -> still clean, exit 0
+```
+
+**THE AUDITOR'S SECOND FIND — a stale label.** The battery's T5 header read "the 13 controls" while
+its body counted 16/16. Cosmetic, but it is the SAME class the kernel exists to catch: a label that
+drifted from its subject. The fix states no count it can drift from.
+
+**THE AUDITOR'S HONEST GAPS (recorded, not deleted):**
+1. **C7 UNVERIFIABLE under READ-ONLY.** The gate's carrier is `git diff --cached`; with nothing
+   staged the script exits 0 before reading the message, and staging would have violated the
+   READ-ONLY constraint. The auditor VERIFIED instead: the refuse branch exists in source; the
+   message regex discriminates; the range mode PASSes (`HEAD~1..HEAD` -> "names FR-8"); all 13
+   commits carry FR ids. **A verifier permitted to stage may close it.**
+2. **C6 attribution.** The ledger count (193) included rows written by the audit's OWN probes — it
+   proves the writer path, not a pre-audit count. No negative was hunted.
+3. **C8's backend dependence** — the judge must be up; it answered during the audit.
+4. **A1's follow-up:** whether `Checkpoints/` copies should be excluded from the default scope.
+
+**LESSON.** A READ-ONLY auditor can still find what the author cannot see — and the only defence
+against the author's blind spots is an agent with no stake in the claims. Every adversarial probe
+the auditor ran was one the author COULD have run and did not. The author drove the paths they
+believed mattered; the auditor drove the ones that did not look like paths at all.

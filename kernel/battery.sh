@@ -31,9 +31,9 @@ t "T4 ADV  lying (declares 23)"        1 python3 kernel/tier4-lsp-capability-pro
 printf "        token: FACT-FIREWALL T4 BLOCK x%s  LIES x%s\n" "$(grep -c 'FACT-FIREWALL T4 BLOCK' /tmp/batt-out)" "$(grep -c '^    LIE' /tmp/batt-out)"
 t "T4 ADV  honest (declares 0)"        0 python3 kernel/tier4-lsp-capability-probe.py fixtures/honest-server bun server.ts
 echo ""
-echo "── T5 THE PROBES · the 13 controls (ST-201..205) ──"
+echo "── T5 THE PROBES · the control set (ST-201..205) ──"
 OUT=$(python3 fixtures/probe-controls.py 2>&1); E=$?
-printf "  %s  %-46s exit=%s\n" "$([ "$E" = 0 ] && echo PASS || echo 'FAIL*')" "the five probes, 13 controls" "$E"
+printf "  %s  %-46s exit=%s\n" "$([ "$E" = 0 ] && echo PASS || echo 'FAIL*')" "the five probes, the control set" "$E"
 printf "        %s\n" "$(echo "$OUT" | tail -1)"
 [ "$E" = 0 ] && PASS=$((PASS+1)) || { [ "$E" = 2 ] && UNM=$((UNM+1)) || FAIL=$((FAIL+1)); }
 echo ""
