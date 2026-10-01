@@ -1,9 +1,4 @@
-node_modules/
-ledger/
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
-~/.jm/
-dist/
-vendor/kev/
-vendor/decider/
+__pycache__/
+*.pyc
+sample.ts
+/tmp/

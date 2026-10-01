@@ -160,7 +160,10 @@ def probe(cmd, root, label):
 if __name__ == "__main__":
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     cmd  = sys.argv[2:] or ["bun", "scripts/plutus-lsp.ts", "--stdio"]
-    label, declared, lies, oks = probe(cmd, root, "plutus-lsp")
+    # THE LABEL IS DERIVED FROM THE SUBJECT, never hardcoded. It was pinned to "plutus-lsp", so
+    # every fixture's ledger row claimed to be the live server — a row that names the WRONG
+    # SUBJECT is worse than no row: it makes the evidence unusable for audit.
+    label = pathlib.Path(root).resolve().name or "unknown"
     if declared is None:
         print(f"FACT-FIREWALL T4: {lies}"); sys.exit(2)
     print(f"  ADVERTISED CAPABILITIES: {len(declared)}")

@@ -680,3 +680,50 @@ the subject — it is the same failure class as a silent pass, one level up. A p
 own reads and return a NAMED verdict, or its silence is indistinguishable from its honesty. And a
 fail-closed probe is DIAGNOSTIC INSTRUMENTATION: the UNMEASURED verdict is what located the deaf
 fixtures. A fail-open probe would have called them clean.
+
+## EN-118 · FR-6a: THE Q3 REWRITE FAILED THE BAR — and a mislabeled control nearly published a false pass
+
+**THE DESIGN.** Q3 was measured at 3/4 and rewritten to ask about TWO RUNS explicitly. The law
+(FR-6a): re-derive on a WIDENED set; below a +0.10 gap the question stays WARN-only and never
+BLOCKS.
+
+**THE WIDENED SET.** 9 cases — 4 POS (a response that varies with the subject) + 5 NEG (a
+response that cannot discriminate). Every case is a real pattern from this session's work:
+always-empty, real-lint, real-test, real-git, phantom-grep, constant-map, empty-scope,
+hc-return, stale-cache.
+
+**THE FALSE PASS, CAUGHT.** The first derivation printed:
+
+```
+  original Q3   pos_min=0.150  neg_max=0.347  gap=-0.197
+  rewritten Q3  pos_min=0.449  neg_max=0.285  gap=+0.165     <-- "PASSES at +0.165"
+```
+
+That is a FALSE FINDING. `always-empty` — *"diagnosticProvider returns [] for a file with 3 type
+errors AND for a clean file. The two runs are identical."* — was labelled POSITIVE (expect=YES).
+**It is a NEGATIVE**: the whole point of the case is that the response does NOT discriminate. The
+label inverted the gap and manufactured a pass.
+
+**THE MECHANISM.** A mislabeled control does not fail loudly. It moves `pos_min` and `neg_max` in
+the direction that flatters the question, and the gap — the ONLY number the derivation reads —
+comes out positive. **The instrument's error and the finding pointed the same way, again.**
+
+**THE CORRECTED DERIVATION:**
+
+```
+  original Q3   pos_min=0.436  neg_max=0.347  gap=+0.089   8/9
+  rewritten Q3  pos_min=0.496  neg_max=0.449  gap=+0.047   8/9
+  BAR: >= +0.10 to BLOCK
+  ✗ NEITHER PASSES — and the REWRITE IS WORSE (+0.089 -> +0.047)
+```
+
+**THE DECISION.** Per FR-6a, **Q3 stays WARN-only and never BLOCKS.** The rewrite is NOT adopted —
+it measured worse than the original on the corrected set. A third formulation is owed before Q3
+earns a block. The honest state: the ambiguity question does not yet discriminate reliably, and
+the kernel says so rather than shipping a threshold over a +0.047 gap.
+
+**LESSON.** Read the controls, not just the gap. A derivation whose POSITIVE set contains a case
+that describes non-discrimination will report a pass for any question at all. And the same defect
+class has now appeared three times in one session — the instrument's flaw and the conclusion
+pointing the same way — which is exactly why the control set is read by eye before any number is
+published.
