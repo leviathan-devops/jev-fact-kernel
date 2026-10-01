@@ -329,3 +329,71 @@ ad2c8e1 feat(w1): job runtime — crash-safe queue, resume sweep, pools, exact b
 - The extension goes to `~/.omp/agent/extensions/fact-firewall/` and needs a harness restart.
 - `FACT_FIREWALL_LSP` and `FACT_FIREWALL_TOOLCALL` set `refuse` (default) or `warn`.
 - The ledger is append-only; `wc -l` is the decision count.
+
+---
+
+## THE CARRIER THAT CAN SEE A REGISTRATION — `bin/lsp-gate`
+
+### THE FINDING THAT FORCED IT
+
+The extension bound `pi.on("lsp_registration", …)`. **The runtime emits no such event.** Measured:
+`grep -rl 'lsp_registration' <the shipped runtime>` → **0 files**; the plugin hook union carries 18
+events and none is an LSP event.
+
+**A handler bound to an unknown name never fires.** The gate was a NO-OP on the real host while every
+bench measurement read green, because the bench **called the handler directly** — proving the logic,
+never the binding.
+
+### THE ARCHITECTURE — the carrier law applied
+
+*A check runs on the carrier that can see its subject.* Nothing in the plugin API sees an LSP
+registration. **The `command` omp spawns IS the registration.**
+
+omp already wraps server commands natively — `pi-coding-agent/dist/types/lsp/lspmux.d.ts:35`
+declares `LspmuxWrappedCommand { command, args, env }` with the comment *"Wrap a server command to use
+lspmux client mode."* `bin/lsp-gate` is that pattern carrying a probe:
+
+```json
+"plutus-lsp": {
+  "command": "<kernel>/bin/lsp-gate",
+  "args":    ["bun", "…/PLUTUS-COMMON-SENSE-LSP/scripts/plutus-lsp.ts", "--stdio"]
+}
+```
+
+```
+BLOCK  -> the ledger row + the message + exit NON-ZERO, and `exec` is NEVER reached
+          ⇒ the server never runs ⇒ never completes `initialize` ⇒ NEVER REGISTERS
+PASS   -> `exec "$@"` — this process BECOMES the server. Zero indirection, zero overhead.
+UNREAD -> exit 2. An unread path is never a clean path. (FR-13)
+warn   -> FACT_FIREWALL_LSP=warn: the refusal is still ledgered; the registration proceeds.
+```
+
+### ENFORCEMENT BY ABSENCE
+
+A refused server leaves **no process, no socket, no state** — there is nothing to clean up and nothing
+to bypass. The proof is a count of what did not start:
+`ps -eo pid,cmd | grep -c '[s]erver.ts --stdio'` → **0.**
+
+### THE EVIDENCE — every tier, on the live wire
+
+| tier | the command | the output | verdict |
+|---|---|---|---|
+| T2 | the lying server through the **INSTALLED** `lsp.json` command | `[EXIT=1]` · `FACT-FIREWALL T4 BLOCK: 23 advertised capabilities answered -32601` · `registration REFUSED — the server was NEVER EXECUTED.` | PASS |
+| T2 | `ps -eo pid,cmd \| grep -c '[s]erver.ts --stdio'` | `0` | PASS |
+| T3 | `tail -1 ~/.omp/run/fact-firewall.jsonl` | `Pattern:"T4_LSP_CAPABILITY_LIE"` · `capability` · `method` · `code:-32601` | PASS |
+| T4 | `fixtures/lying-server` (declares 23) vs `fixtures/honest-server` (declares 0) | `BLOCK` (exit 1) vs `every advertised capability answered` (exit 0) | PASS |
+| live | the REAL `plutus-lsp`, read from the live registry | `[EXIT=0]` · `LIES (0)` | PASS |
+
+### INSTALLED
+
+`gi-lsp`, `plutus-lsp`, `jg-lsp` — all three spawn through `bin/lsp-gate` in
+`~/.omp/agent/lsp.json`. **A lying server pointed at through a gated entry cannot register on this
+host.** Scope, stated: only the `plutus-lsp` entry was driven on the live wire; the other two are
+gated and asserted, not individually driven (`context_management/RUNTIME_SEAT.md` §7).
+
+### WHAT THIS REPLACES
+
+The `pi.on("lsp_registration")` binding in `extensions/fact-firewall/` is **inert** and is retained
+only as the record of the finding. The gate lives in `bin/lsp-gate`, on a carrier that can see its
+subject. The extension's `tool_call` and `tool_result` bindings are unaffected — those two names ARE
+in the runtime's union.

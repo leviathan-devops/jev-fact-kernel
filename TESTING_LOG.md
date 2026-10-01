@@ -90,3 +90,112 @@ Every tier, every control, one command.
 | does any test depend on a network service? | the JUDGE (`:8090`) — Q3's derivation and the router's cascade call it. If the judge is down those two become UNMEASURABLE, never a pass |
 | does any test write outside the repo? | `/tmp/jev-t4-*` (the probe's temp fixture, cleaned on every exit path) and the LEDGER (`~/.omp/run/`), which is the kernel's artifact |
 | is any test order-dependent? | no — each drives its own subject |
+
+## THE CARRIER ROUND — 2026-10-01, against the LIVE wire
+
+The ADVERSARIAL LOOP's contract: every adversarial case, its verdict, and its tool output. This round
+is the one that mattered — the previous rounds' controls sat on the wrong axis (they proved the
+probe's LOGIC; the defect was in its BINDING), so this round drives the REGISTRATION CARRIER.
+
+### ADV-01 · the lying server through the LIVE registration position (the headline case)
+
+```
+the live plutus-lsp entry temporarily pointed at fixtures/lying-server/server.ts,
+then spawned through the INSTALLED command in /home/leviathan/.omp/agent/lsp.json:
+
+  [EXIT=1]                                              expect 1
+  BLOCK token in stdout: True
+  FACT-FIREWALL T4 BLOCK: 23 advertised capabilities answered -32601 MethodNotFound.
+                          The initialize reply is a FALSE CAPABILITY DECLARATION.
+  ERR  FACT-FIREWALL T4: registration REFUSED — the server was NEVER EXECUTED.
+```
+**VERDICT: BLOCK — the PASS token present and the exit non-zero.** The refusal is by ABSENCE: no
+process, no socket, no state, because the server was never exec'd.
+
+### ADV-02 · THE PS TOKEN — count what did not start
+
+```
+ps -eo pid,cmd | grep -c '[s]erver.ts --stdio'
+  before the spawn:  0
+  after  the spawn:  0        expect 0
+```
+**VERDICT: PASS.** Enforcement by absence, measured by counting the processes that never existed.
+
+### ADV-03 · the HONEST server through the same gate — the other polarity
+
+```
+fixtures/honest-server (declares 0) through the gate, from its own cwd:
+  FACT-FIREWALL T4: every advertised capability answered.
+  [EXIT=0]
+```
+**VERDICT: PASS-THROUGH.** The gate is not a blocker of servers; it is a blocker of LIES. A gate
+never observed passing is as untrustworthy as one never observed biting.
+
+### ADV-04 · THE LIVE WIRE — the REAL server, not a fixture path
+
+```
+the live plutus-lsp command+args and root read FROM the live registry, driven through the gate:
+  [EXIT=0]
+  IMPLEMENTED (1):  OK diagnosticProvider  textDocument/diagnostic  answered
+  ★ LIES (0) — DECLARED BUT NOT IMPLEMENTED:
+  FACT-FIREWALL T4: every advertised capability answered.
+```
+**VERDICT: PASS.** The premise of the whole section: *a probe that passes on fixtures and fails on
+the live wire is the failure this round exists to catch.* The live server is honest and the gate
+lets it through; the fixture server lies and the gate refuses it.
+
+### ADV-05 · the ledger, both row shapes
+
+```
+T4_LSP_CAPABILITY_LIE   verdict=BLOCK  evidence_keys=[capability, code, method, pid, server, verdict_detail]
+T4_LSP_CAPABILITY_OK    verdict=PASS   evidence_keys=[declared, implemented, pid, server]
+```
+**VERDICT: PASS — and the OK row is NOT VACUOUS.** It names its subject (`server: "honest-server"`,
+`pid`, `declared: 0`, `implemented: 0`). A PASS that named nothing would be the vacuous-pass defect;
+this one carries what passed.
+
+### ADV-06 · the gate against ITSELF — the anchors
+
+```
+the exit codes, measured WITHOUT a pipeline mask:
+  T1 POS    exit=1  ✓   T4 LYING  exit=1  ✓
+  T1 NEG    exit=0  ✓   T4 HONEST exit=0  ✓
+  T1 UNREAD exit=2  ✓
+```
+**VERDICT: 5/5.** The first measurement of this table read `[exit=0]` on the POS cases — because the
+harness read `$?` after a pipe (EN-128). The gates were right; the INSTRUMENT was broken. Re-measured
+with the status captured before formatting.
+
+### THE CORPUS STATUS
+
+The round's new failing class: **a gate bound to an event the runtime never emits** (EN-127).
+It is a class, not an instance — `lsp_registration` was one name, and any synthesized name in any
+extension is the same defect. The corpus is exhausted for THIS round when every gate in the kernel
+has been re-checked for a real carrier. Two are confirmed real: `tool_call` and `tool_result` (bound
+by live extensions elsewhere on the host and in this one). The LSP gate now binds to the COMMAND.
+
+**THE HAPPY PATH, RUN LAST:** `bash kernel/battery.sh` → `PASS=16 FAIL=0 UNMEASURED=0 ★ BATTERY GREEN`.
+
+---
+
+## THE ANCHOR INDEX — where each case's claim is backed
+
+- the acceptance criteria this round serves: `specs/DPL1_JEV_FACT_KERNEL.md:198`
+- the probe whose carrier was replaced: `specs/DPL1_JEV_FACT_KERNEL.md:203`
+- the tier that caught the motivating failure in 0.09 s: `context_management/EVIDENCE_STATE.md:14`
+- the gate that demanded this log's floor: `.githooks/pre-commit:76`
+- the CI gate carrying the checks: `.github/workflows/gates.yml:11`
+- the seat record for the live wire: `context_management/RUNTIME_SEAT.md:1`
+
+## WHAT THIS ROUND DID NOT DRIVE
+
+Stated so a future reader does not mistake the table above for total coverage — the remainder, in
+full, lives at `context_management/RUNTIME_SEAT.md:1` §7:
+
+- **A real omp session spawning a gated LSP.** The gate was driven through the installed `lsp.json`
+  command from a shell; omp's own LSP client did not perform the spawn. The next session that opens a
+  `.ts` file exercises it, and the ledger row is the receipt.
+- **`gi-lsp` and `jg-lsp` individually.** Both are gated and asserted in the registry; neither was
+  driven through the gate on the live wire. Only `plutus-lsp` was.
+- **The kill path under load.** Concurrency, a server hanging mid-probe, and the probe's own timeout
+  were not exercised on the live wire.
