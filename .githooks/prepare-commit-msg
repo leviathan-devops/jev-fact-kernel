@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# GATE W-8 — claim-evidence
+# JEV COUNT: 92   (the measured occurrences in the 298-file corpus)
+# ARTIFACT CLASS: a commit message
+# SURFACE: prepare-commit-msg
+# PREDICATE READS: a commit message — NEVER prose
+#
+# prepare-commit-msg — THE KEYSTONE: the absolute client-side anchor.
+#
+# WHY THIS FILE EXISTS:
+#   .git/hooks is NEVER versioned — git does not track it, it dies on a
+#   clone. The fix is `core.hooksPath` pointing at this committed directory
+#   (.githooks/). This hook is versioned, so every clone gets it.
+#
+# WHY prepare-commit-msg AND NOT commit-msg:
+#   From the git manual, verbatim behavior:
+#     - pre-commit  "can be bypassed with the --no-verify option."
+#     - commit-msg  "can be bypassed with the --no-verify option."
+#     - pre-push    has no --no-verify escape, but only fires on push.
+#     - prepare-commit-msg "is not suppressed by the --no-verify option."
+#   THIS is the only absolute client hook. commit-msg is kept as a
+#   bypassable twin (conventional location, fires for `git merge`).
+#
+# INPUT: $1 = message file path, $2 = source
+#   (message|template|merge|squash|commit <sha>), $3 = sha when amending.
+set -uo pipefail
+
+MSG_FILE="${1:?usage: prepare-commit-msg <msg-file> [source] [sha]}"
+SOURCE="${2:-message}"
+
+# A merge/squash/template message is GENERATED, not authored — there is no
+# human claim to police, so the checks are skipped for those sources.
+# FIXED (W1 audit): 'template' (repo commit.template) is exempt — a stock
+# template carries no authored claim.
+# NOT exempt: 'commit' (--amend). An amend RE-AUTHORS the commit; its message
+# is still a claim, so it is policed like any other. (The prior comment claimed
+# a 'commit' exemption that the code never implemented — the ocr gate caught
+# the doc-vs-code mismatch; the code was right, the comment was wrong.)
+case "$SOURCE" in
+  merge|squash|template) exit 0 ;;   # generated messages: nothing authored to police
+  *) : ;;                            # message|commit(amend): the message IS the claim
+esac
+
+# Strip git's own commented help lines before checking.
+MSG="$(grep -v '^#' "$MSG_FILE" 2>/dev/null || true)"
+
+# An empty message aborts the commit on its own; nothing to police.
+if [ -z "$(printf '%s' "$MSG" | tr -d '[:space:]')" ]; then
+  exit 0
+fi
+
+# CHECK 1 — the semantic prefix.
+# FIXED 2026-09-23 (the sweep of the commit-msg HIGH): grep -qE tests EACH line,
+# so a BODY line starting "feat: " satisfied the check when the SUBJECT lacked a
+# prefix (a FALSE PASS). Anchor to the first non-empty line (the subject) ONLY.
+FIRST_LINE="$(printf '%s\n' "$MSG" | grep -v '^[[:space:]]*$' | head -n1)"
+if ! printf '%s' "$FIRST_LINE" | grep -qE '^(feat|fix|docs|test|build|refactor|blueprint|goal|chore|spec|perf)(\([^)]+\))?: '; then
+  echo 'REJECT(W-8): message lacks semantic prefix ^(feat|fix|docs|test|build|refactor|blueprint|goal|chore|spec|perf)(scope)?: ' >&2
+  exit 1
+fi
+
+# CHECK 2 — the claim-evidence rule (W-8): a claim word with no artifact
+# is a bare claim and is rejected.
+#
+# FIRING 006 / HARDENED (2026-09-22): the original anchor regex was too
+# narrow — `SKILL.md:100` (uppercase) and `pre-commit:24` (no extension)
+# both failed even though they are real anchors. Three evidence shapes:
+#   1. test count:       "42 pass" / "3 tests"
+#   2. full sha:         \b[0-9a-f]{7,40}\b (word-bounded, must contain a letter)
+#   3. file:line anchor: word-bounded, realistic path with extension or slash
+#
+# FIXED (W1 audit):
+# - Claim words use \b boundaries to prevent false matches in prose
+#   ("works" in "networks/reworks", "done" in "abandoned").
+# - Evidence file:line anchor requires a path-like prefix (slash or known
+#   extension) to reject `a:1`, `12:30` (timestamps).
+# - SHA evidence requires word boundaries and at least one hex letter.
+if printf '%s' "$MSG" | grep -qiE '\b(verified|passed|tested|works|green|done|complete|completed|finished|shipped|landed|delivered)\b'; then
+  HAS_EVIDENCE=0
+  # FIXED 2026-09-23 (ocr round-3 HIGH): the claim-word test above is `-qiE`
+  # (case-insensitive), so `DONE`/`VERIFIED` trigger it — but the evidence
+  # tests were case-SENSITIVE, so uppercase evidence (`42 PASS`, `README.MD:100`)
+  # was not recognized and a valid message was falsely REJECTed. Every evidence
+  # test now carries `-i`, consistent with the claim detection.
+  # Test count: "42 pass" / "3 tests" (case-insensitive)
+  printf '%s' "$MSG" | grep -qiE '[0-9]+ (pass|tests)' && HAS_EVIDENCE=1
+  # SHA: word-bounded, 7-40 hex chars with at least one letter
+  printf '%s' "$MSG" | grep -qiE '\b[0-9a-f]*[a-f][0-9a-f]{6,39}\b' && HAS_EVIDENCE=1
+  # file:line anchor: requires a path-like prefix (slash or known extension)
+  # e.g. src/runtime.ts:233, packages/x/DPL1_SPEC.md:12, SKILL.md:100, pre-commit:24
+  # Rejects: a:1, 12:30 (timestamps), bare word:NN
+  printf '%s' "$MSG" | grep -qiE '\b[a-zA-Z0-9_/.-]+\.(ts|tsx|md|sh|yml|yaml|json|py|js|txt|toml):[0-9]+\b' && HAS_EVIDENCE=1
+  printf '%s' "$MSG" | grep -qiE '\b[a-zA-Z0-9_/.-]+/[^ ]+:[0-9]+\b' && HAS_EVIDENCE=1
+  printf '%s' "$MSG" | grep -qiE '\b[a-zA-Z][a-zA-Z0-9_-]{1,}:[0-9]+\b' && HAS_EVIDENCE=1
+  if [ "$HAS_EVIDENCE" -eq 0 ]; then
+    echo 'REJECT(W-8): claim word (verified|passed|tested|works|green|done|complete|completed|finished|shipped|landed|delivered) with no artifact; include a test count ("N pass"/"N tests"), a sha ([a-f0-9]{7,40}), or a file:line (path.ext:NN)' >&2
+    exit 1
+  fi
+fi
+
+exit 0

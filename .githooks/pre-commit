@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# pre-commit — fast local checks. Each prints REJECT(<id>) and sets FAIL.
+# Deliberately dependency-free: no `bun test` here (keep it fast).
+# NOTE: bypassable with --no-verify; prepare-commit-msg is the anchor.
+set -uo pipefail
+
+FAIL=0
+
+# FIXED (ocr audit high, the fail-open class): `|| true` masked EVERY git failure
+# (no repo, a locked index, OOM) to an EMPTY staged set, and the next line treated
+# empty as PASS — a broken git state disabled every gate. An empty set and a
+# FAILED command are now distinguished: a nonzero git exit is a LOUD refusal.
+STAGED="$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)"
+GIT_RC=$?
+if [ "$GIT_RC" -ne 0 ]; then
+  echo "REJECT(W-14): git diff --cached failed (exit $GIT_RC) — a broken git state must not disable the gates" >&2
+  exit 1
+fi
+[ -z "$STAGED" ] && { echo 'PRE-COMMIT: PASS'; exit 0; }
+
+# W-9 doc-density: each staged *.md must be >= 100 lines AND carry
+#
+# SCOPED (2026-09-22, orchestrator fix): the floor is an ENGINEERING-DOC law
+# (architecture/spec/report/audit/log). GitHub's own .github/ artifacts --
+# pull_request_template.md, ISSUE_TEMPLATE/*.md -- are a DIFFERENT artifact
+# class: their length and structure are set by GitHub's UI, and a 100-line PR
+# template is unusable. The floor applies to docs; the templates are exempt.
+# This is the same defect class as W-1: a gate ported without checking the
+# artifact class it lands on.
+# >= 3 path.ext:NN anchors.
+#
+# FIXED (W1 audit): read staged blob via git show, not the worktree file,
+# so the gate validates exactly what is being committed.
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    .github/*)     continue ;;   # GitHub-format templates: exempt (own format law)
+    packages/jarvis-upper-tier/*) continue ;;  # the VENDORED mission package: byte-identical
+                                 # copies of the operator's EXTERNAL build package
+                                 # (sha256-proven), NOT docs authored in this repo.
+                                 # Same artifact class as Checkpoints/* — a verbatim
+                                 # COPY, not an authored doc (the W-1 class).
+    Checkpoints/*) continue ;;   # a SNAPSHOT: its docs are byte-identical COPIES
+                                 # (diff -q proves it) and its manifest is a
+                                 # structural INDEX, not an authored doc
+    packages/*/08-GOAL-PIN.txt) continue ;;   # a PIN is capped at 200 lines by design
+    dossiers/*/dossier.md|dossiers/*/origin.json|dossiers/*/manifest.sha16|dossiers/*/dossier.md.tmp-*|dossiers/*/origin.json.tmp-*|dossiers/*/manifest.sha16.tmp-*)
+                                 continue ;;   # a KICK DOSSIER's THREE generator outputs
+                                 # FIXED (the W25 ship gate LOW): `dossiers/*` (shell `*`
+                                 # crosses `/`) exempted ANY file under dossiers/ — an
+                                 # authored .md there bypassed the density law. Narrowed.
+                                 # (dossier.md + origin.json + manifest.sha16), the same
+                                 # artifact class as .trident/* — produced by a tool, not
+                                 # authored. Its LENGTH is set by the bug, not a doc law.
+    .trident/*)    continue ;;   # the WORKING-STATE dir: machine-generated findings,
+                                 # plans, audits, ledgers, test plans — produced by
+                                 # tools, not authored. Same artifact class as
+                                 # Checkpoints/* (the W-1 class: a gate ported
+                                 # without checking the artifact class it lands on).
+  esac
+  case "$f" in
+    *.md)
+      # Read the staged blob, not the worktree file.
+      # FIXED (ocr audit high): `|| continue` silently EXEMPTED a file the gate
+      # could not read (a path with spaces/quotes, a rename, an index lock) — the
+      # gate was bypassed by making it fail. A read failure is now a REJECT.
+      STAGED_BLOB="$(git show :"$f" 2>/dev/null)"
+      if [ $? -ne 0 ]; then
+        echo "REJECT(W-14): cannot read the staged blob for $f — an unreadable file must not be exempt" >&2
+        FAIL=1
+        continue
+      fi
+      LINES="$(printf '%s\n' "$STAGED_BLOB" | wc -l | tr -d ' ')"
+      ANCHORS="$(printf '%s\n' "$STAGED_BLOB" | grep -cE '[a-zA-Z0-9_/.-]+\.(ts|md|json|sh|yml):[0-9]+' 2>/dev/null || true)"
+      if [ "$LINES" -lt 100 ]; then
+        echo "REJECT(W-9): $f has $LINES lines (< 100)" >&2
+        FAIL=1
+      fi
+      if [ "$ANCHORS" -lt 3 ]; then
+        echo "REJECT(W-9): $f has $ANCHORS file:line anchors (< 3)" >&2
+        FAIL=1
+      fi
+      ;;
+  esac
+done <<< "$STAGED"
+
+# W-6 source-string: no staged tests/*.ts may contain .includes("<Ident>").
+#
+# FIXED (W1 audit): narrowed to PascalCase identifiers only. Legitimate
+# string-containment assertions (`brief.includes("deadbeef01")`,
+# `err.includes("Timeout")`, `msg.includes("error: 42")`) use lowercase,
+# quoted strings, or numbers. Only PascalCase identifiers match the
+# fake-wiring shape (grepping source for a Symbol name).
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    tests/*.ts|tests/*/*.ts|tests/*/*/*.ts|tests/*/*/*/*.ts)
+      # Read the staged blob, not the worktree file.
+      # FIXED (ocr audit high): `|| continue` silently EXEMPTED a file the gate
+      # could not read (a path with spaces/quotes, a rename, an index lock) — the
+      # gate was bypassed by making it fail. A read failure is now a REJECT.
+      STAGED_BLOB="$(git show :"$f" 2>/dev/null)"
+      if [ $? -ne 0 ]; then
+        echo "REJECT(W-14): cannot read the staged blob for $f — an unreadable file must not be exempt" >&2
+        FAIL=1
+        continue
+      fi
+      # FIXED 2026-09-23 (ocr F5 / the audit's DEFECT B): the previous form
+      # fired on ANY .includes("<PascalCase>"), blocking legitimate
+      # string-containment assertions (err.includes("Timeout")). The ocr's
+      # sanctioned narrowing: "source-text grep shapes (e.g. reading src/ file
+      # content)". The fake-wiring shape is a SOURCE-TEXT receiver asserting a
+      # symbol NAME appears in it instead of importing the symbol. A legit
+      # assertion (err.includes("Timeout"), brief.includes("deadbeef01")) has a
+      # NON-source receiver and passes.
+      W6_RE='(src|source|content|code|text|blob|raw|file|readme|spec|dpl)[A-Za-z0-9_]*\.includes\("[A-Z][a-zA-Z0-9_]+"\)'
+      if printf '%s\n' "$STAGED_BLOB" | grep -qE "$W6_RE" 2>/dev/null; then
+        HIT="$(printf '%s\n' "$STAGED_BLOB" | grep -nE "$W6_RE" | head -1)"
+        echo "REJECT(W-6): $f asserts a symbol against SOURCE TEXT via .includes() instead of importing it: $HIT" >&2
+        FAIL=1
+      fi
+      ;;
+  esac
+done <<< "$STAGED"
+
+# W-1 deploy-freshness: a staged src/ change must ship with an
+# extensions/ change.
+#
+# SCOPED (2026-09-22, orchestrator fix): this predicate was derived from the
+# GI kernel, whose deploy layout is src/ -> extensions/<plugin>/index.js.
+# A repo WITHOUT an extensions/ dir has no dist step, so the gate can never
+# pass there and would refuse every src/ commit forever. That is a gate that
+# gets bypassed -- worse than no gate. The check therefore applies ONLY when
+# the repo actually has an extensions/ directory.
+SRC_TOUCHED=0
+EXT_TOUCHED=0
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    src/*) SRC_TOUCHED=1 ;;
+    extensions/*) EXT_TOUCHED=1 ;;
+  esac
+done <<< "$STAGED"
+if [ -d extensions ] && [ "$SRC_TOUCHED" -eq 1 ] && [ "$EXT_TOUCHED" -eq 0 ]; then
+  echo 'REJECT(W-1): staged src/ change with no staged extensions/ change' >&2
+  FAIL=1
+fi
+
+# GATE W-13 — silent-fallback
+# JEV COUNT: 119   (the measured occurrences in the 298-file corpus)
+# ARTIFACT CLASS: a staged src/**/*.ts diff
+# SURFACE: pre-commit
+# PREDICATE READS: a staged src/**/*.ts diff — NEVER prose
+#
+# W-13 silent-fallback (Jev 119, highest count): a staged src/**/*.ts diff
+# that swallows an error path — an empty or comment-only catch, a ??-literal
+# masking failure inside a check/verify/gate function, `|| true` after a
+# command-shaped call, or a pass-shaped literal returned from a catch.
+# Header text generated by: pattern_header W-13 119 "a staged src/**/*.ts diff" "silent-fallback" "pre-commit"
+#
+# GATE W-14 — no-stub
+# JEV COUNT: 68   (the measured occurrences in the 298-file corpus)
+# ARTIFACT CLASS: a staged src/**/*.ts diff
+# SURFACE: pre-commit
+# PREDICATE READS: a staged src/**/*.ts diff — NEVER prose
+#
+# W-14 no-stub (Jev 68): a staged src/**/*.ts diff that ships a stub as done —
+# `stubbed: true`, TODO/FIXME-implement, a NotImplemented-only function body,
+# or a PROPOSED/PLACEHOLDER marker.
+# Header text generated by: pattern_header W-14 68 "a staged src/**/*.ts diff" "no-stub" "pre-commit"
+#
+# SCOPE (artifact-class law): BOTH gates read ONLY staged src/**/*.ts files.
+# Checkpoints/** copies (snapshots), *.md docs, tests/**, fixtures, and every
+# other path are NOT scanned — the predicate was derived for src diffs, and
+# firing elsewhere is the W-1/W-9 defect class this build exists to close.
+# FIXED (ocr audit high): the lib dir resolution and the three `source` calls were
+# unchecked — a missing lib/ (or a symlinked $0) left gate_reject/scan_silent/
+# scan_stub UNDEFINED, and the later `$(scan_silent ... || true)` then silently
+# scanned nothing. A gate whose scanner failed to load must NOT pass: fail closed.
+HOOK_LIB_DIR="$(cd "$(dirname "$0")/lib" 2>/dev/null && pwd)"
+if [ -z "$HOOK_LIB_DIR" ] || [ ! -d "$HOOK_LIB_DIR" ]; then
+  echo "REJECT(W-14): cannot resolve the hook lib dir — the scanners are unavailable" >&2
+  exit 1
+fi
+for _lib in pattern-header.sh scan-silent.sh scan-stub.sh; do
+  # shellcheck disable=SC1091
+  if ! source "$HOOK_LIB_DIR/$_lib" 2>/dev/null; then
+    echo "REJECT(W-14): cannot source $_lib — a gate with no scanner must not pass" >&2
+    exit 1
+  fi
+done
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    src/*)
+      case "$f" in
+        *.ts) ;;
+        *) continue ;;
+      esac
+      ;;
+    *) continue ;;   # *.md, Checkpoints/**, tests/**, fixtures: out of class
+  esac
+  # FIXED (ocr audit high x2): (1) `[ -f "$f" ]` checked the WORKTREE, not the
+  # staged blob — deleting the worktree file after `git add` skipped the scan;
+  # (2) `mktemp --suffix=.ts` is GNU-only, and `|| continue` exempted the file on
+  # BSD/macOS; (3) a failed `git show` also exempted it. The staged blob is now
+  # read directly and every failure is a REJECT (the fail-closed class).
+  TMPFILE="$(mktemp 2>/dev/null)"
+  if [ -z "$TMPFILE" ]; then
+    echo "REJECT(W-14): mktemp failed — cannot scan $f" >&2
+    FAIL=1
+    continue
+  fi
+  git show :"$f" > "$TMPFILE" 2>/dev/null
+  if [ $? -ne 0 ]; then
+    rm -f "$TMPFILE"
+    echo "REJECT(W-14): cannot read the staged blob for $f" >&2
+    FAIL=1
+    continue
+  fi
+  # FIXED (ocr audit high then CRITICAL): the FIRST version of this fix treated any
+  # nonzero exit as a crash — but scan_silent's DOCUMENTED contract is "returns the
+  # HIT COUNT as the exit code (capped at 125)". So a file WITH hits exited nonzero,
+  # the block REJECTed it as W-14 and `continue`d, SKIPPING the per-hit W-13 report.
+  # The correct distinction: 0 = clean, 1..125 = hits (the normal path), > 125 =
+  # anomalous (a crashed/undefined scanner, since the cap is 125).
+  SILENT_OUT="$(scan_silent "$TMPFILE" 2>/dev/null)"
+  SC_RC=$?
+  if [ "$SC_RC" -gt 125 ]; then
+    rm -f "$TMPFILE"
+    echo "REJECT(W-14): scan_silent failed on $f (exit $SC_RC > the 125 hit-count cap) — a crashed scanner must not read as clean" >&2
+    FAIL=1
+    continue
+  fi
+  if [ -n "$SILENT_OUT" ]; then
+    n=$(printf '%s\n' "$SILENT_OUT" | grep -c . || true)
+    if [ "$n" -gt 0 ]; then
+      while IFS= read -r hit; do
+        [ -z "$hit" ] && continue
+        gate_reject W-13 "$hit"
+      done <<< "$SILENT_OUT"
+    fi
+  fi
+  # FIXED (ocr audit high then CRITICAL): same contract — scan_stub returns the hit
+  # count (capped at 255). > 255 is anomalous; 1..255 is the normal hit path.
+  STUB_OUT="$(scan_stub "$TMPFILE" 2>/dev/null)"
+  ST_RC=$?
+  if [ "$ST_RC" -gt 255 ]; then
+    rm -f "$TMPFILE"
+    echo "REJECT(W-14): scan_stub failed on $f (exit $ST_RC > the 255 hit-count cap)" >&2
+    FAIL=1
+    continue
+  fi
+  if [ -n "$STUB_OUT" ]; then
+    n=$(printf '%s\n' "$STUB_OUT" | grep -c . || true)
+    if [ "$n" -gt 0 ]; then
+      while IFS= read -r hit; do
+        [ -z "$hit" ] && continue
+        gate_reject W-14 "$hit"
+      done <<< "$STUB_OUT"
+    fi
+  fi
+  rm -f "$TMPFILE"
+done <<< "$STAGED"
+
+# ── THE COMMON-SENSE FIREWALL (G-RATIO + G-SEAL) ─────────────────────
+# G-RATIO doc-ratio: doc commits must not outpace code commits on the
+# branch. Measured cost of the violation: 35 doc commits vs 45 fix commits
+# across a session that never drove a green — the doc mass became the
+# measure of progress. It is not. The doc count is capped at the code count.
+GR_BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo HEAD~50)
+GR_DOCS=$(git log --format=%s "$GR_BASE..HEAD" 2>/dev/null | grep -c '^docs' || true)
+GR_CODE=$(git log --format=%s "$GR_BASE..HEAD" 2>/dev/null \
+  | grep -cE '^(fix|feat|refactor|test)' || true)
+if [ "$GR_DOCS" -gt "$GR_CODE" ]; then
+  echo "REJECT(G-RATIO): doc commits ($GR_DOCS) outpace code ($GR_CODE) — the doc mass is not the work" >&2
+  FAIL=1
+fi
+
+# G-SEAL no-checkpoint-before-green: a snapshot of a dead system is slop.
+# Measured cost: 10 checkpoints sealed of a system that had never driven a
+# green path. A Checkpoints/ commit requires a fence PASS row in the ledger.
+# FIXED (ocr audit high): `*Checkpoints/*` matched ANY substring (e.g.
+# src/Checkpoints_helper.ts — a false positive) and the PASS grep missed the
+# whitespace variant `"verdict": "PASS"`. The match is now line-wise (a real
+# path segment) and the grep is whitespace-tolerant.
+if printf '%s\n' "$STAGED" | grep -qE '(^|/)Checkpoints/'; then
+  # FIXED (ocr audit high): $FENCE_LEDGER let the COMMITTER point the trust root at
+  # an attacker-chosen file (/tmp/fake-with-pass) — a local gate's adversary IS the
+  # committer, so the env must not select the root. The canonical path is fixed; the
+  # env override is honoured ONLY when it resolves to that same canonical path.
+  GR_LEDGER="$HOME/JARVIS_WORKSPACE/Shared_Workspace/JARVIS-CORE/b6/verdicts.jsonl"
+  if [ -n "${FENCE_LEDGER:-}" ] && [ "$(readlink -f "$FENCE_LEDGER" 2>/dev/null)" = "$(readlink -f "$GR_LEDGER" 2>/dev/null)" ]; then
+    GR_LEDGER="$FENCE_LEDGER"
+  fi
+  # FIXED (ocr audit high): `grep` over the WHOLE ledger matched ANY historical
+  # PASS row — a weeks-old green unblocked a dead-system snapshot. The window is
+  # now BOUNDED (the most recent 200 rows), so a stale green falls out of it.
+  if ! tail -n 200 "$GR_LEDGER" 2>/dev/null | grep -qE '"verdict":[[:space:]]*"PASS"'; then
+    echo 'REJECT(G-SEAL): no fence PASS row — a checkpoint now is a snapshot of a dead system' >&2
+    FAIL=1
+  fi
+fi
+
+[ "$FAIL" -eq 0 ] && echo 'PRE-COMMIT: PASS' || exit 1

@@ -1,0 +1,97 @@
+name: drift
+
+# Plan B nightly drift sweep: the ruleset's strict_required_status_checks_policy
+# re-gates PRs when main moves, but three drift classes need a scheduled eye:
+#   1. stale-gate drift  — open PRs whose required checks are stale vs head sha
+#   2. doc-floor drift   — tracked *.md outside .github/ under the W-9 100-line floor
+#   3. wiring drift      — contract/ruleset agreement (the Plan A x Plan B boundary)
+# Every sweep below fails closed with exit 1. A drift workflow that cannot fail
+# is not a gate. Only schedule + workflow_dispatch triggers are used here — the
+# _target trigger variant must never appear in this file (it hands secrets to
+# fork PRs).
+"on":
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: drift
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: oven-sh/setup-bun@v2
+      - name: install locked dependencies
+        run: bun install --frozen-lockfile || exit 1
+      - name: stale-gate sweep — flag open PRs with stale required checks
+        run: |
+          set -e
+          FAIL=0
+          # FIXED 2026-09-23 (ocr): `|| echo ""` masked a real gh failure (a bad
+          # token / API error) as "no open PRs" — a silent fallback. A failed
+          # MEASUREMENT is now a named, loud exit, never an empty result.
+          if ! OPEN=$(gh pr list --state open --json number,headRefName,mergeStateStatus --jq '.[].number'); then
+            echo "stale-gate-sweep: gh pr list FAILED — cannot measure (this is NOT 'no open PRs')"; exit 2
+          fi
+          if [ -z "$OPEN" ]; then
+            echo "stale-gate-sweep: no open PRs"
+          else
+            for N in $OPEN; do
+              STATUS=$(gh pr view "$N" --json mergeStateStatus --jq '.mergeStateStatus')
+              SHA=$(gh pr view "$N" --json headRefOid --jq '.headRefOid')
+              echo "PR #$N head=$SHA mergeStateStatus=$STATUS"
+              case "$STATUS" in
+                BEHIND|DIRTY|DRAFT)
+                  echo "STALE-GATE: PR #$N is $STATUS — required checks are stale against head $SHA (strict_required_status_checks_policy will re-gate)"
+                  FAIL=1
+                  ;;
+                BLOCKED|CLEAN|HAS_HOOKS|UNKNOWN|UNSTABLE)
+                  echo "PR #$N: $STATUS — current"
+                  ;;
+                *)
+                  echo "STALE-GATE: PR #$N has unrecognized mergeStateStatus=$STATUS — treating as drift"
+                  FAIL=1
+                  ;;
+              esac
+            done
+          fi
+          if [ "$FAIL" -ne 0 ]; then echo "stale-gate-sweep: VIOLATIONS FOUND"; exit 1; fi
+          echo "stale-gate-sweep: clean"
+      - name: doc-floor sweep — flag tracked markdown under the W-9 floor
+        run: |
+          set -e
+          FAIL=0
+          # FIXED 2026-09-23 (ocr): `for f in $(git ls-files '*.md')` word-splits
+          # on whitespace — a filename with a space broke the loop. NUL-delimited
+          # read instead. The exemptions mirror the W-9 gate's own (a snapshot and
+          # a machine-generated working dir are different artifact classes).
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              .github/*)     continue ;;   # GitHub-format templates: exempt (own format law)
+              packages/jarvis-upper-tier/*) continue ;;   # FIXED (ao-review-4 round 3):
+                                 # the VENDORED mission package — byte-identical copies of
+                                 # an EXTERNAL build package, NOT authored docs. The pre-
+                                 # commit W-9 exempts it; drift.yml did not, so this sweep
+                                 # would red on main after merge. The exemptions now MATCH.
+              packages/*/08-GOAL-PIN.txt) continue ;;   # a PIN is capped at 200 lines by design
+              Checkpoints/*) continue ;;   # a SEALED SNAPSHOT: its docs are byte-copies
+              .trident/*)    continue ;;   # machine-generated working state
+            esac
+            LINES=$(wc -l < "$f" | tr -d ' ')
+            if [ "$LINES" -lt 100 ]; then
+              echo "DOC-FLOOR: $f has $LINES lines (< 100, the W-9 floor)"
+              FAIL=1
+            fi
+          done < <(git ls-files -z '*.md')
+          if [ "$FAIL" -ne 0 ]; then echo "doc-floor-sweep: VIOLATIONS FOUND"; exit 1; fi
+          echo "doc-floor-sweep: clean"
+      - name: wiring sweep — the contract/ruleset agreement must hold nightly
+        run: |
+          set -e
+          OUT=$(bun run scripts/interface-check.ts)
+          echo "$OUT"
+          echo "$OUT" | grep -q "INTERFACE:MATCH" || { echo "WIRING-DRIFT: interface-check did not print INTERFACE:MATCH"; exit 1; }
+          echo "wiring-sweep: clean"

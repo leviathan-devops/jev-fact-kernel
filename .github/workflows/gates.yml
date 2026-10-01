@@ -1,0 +1,211 @@
+name: gates
+
+# Plan B unbypassable anchor: six jobs whose names become the required
+# status contexts. Only pull_request + merge_group triggers are used here — the
+# _target trigger variant must never appear in this file (it hands secrets
+# to fork PRs). Every job below fails closed with exit 1.
+"on": [pull_request, merge_group]
+
+jobs:
+  anti_theatrical:
+    name: gates/anti-theatrical
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: no empty catch, no bare task-marker comment, no AI disclaimers
+        run: |
+          set -e
+          HITS=$(grep -rnE 'except:[[:space:]]*pass|catch[[:space:]]*\{[[:space:]]*\}|[T]ODO|as an AI|implement later' src/ ao-client/ || true)
+          if [ -n "$HITS" ]; then echo "$HITS"; exit 1; fi
+          echo "anti-theatrical-grep: clean"
+      - name: every commit subject in the PR range conforms
+        env: { BASE: '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}' }
+        run: |
+          set -e
+          # F10: github.base_ref is EMPTY on merge_group, so origin/<base>..HEAD
+          # fails under set -e. The base comes from the event payload; when
+          # neither side is present we REFUSE LOUDLY instead of guessing.
+          [ -n "${BASE}" ] || { echo "no base ref (neither pull_request.base.sha nor merge_group.base_sha present) — refusing to guess"; exit 1; }
+          BAD=$(git log --no-merges --format='%s' "${BASE}..HEAD" | grep -vE '^(feat|fix|docs|test|build|refactor|blueprint|goal|chore|spec|perf)(\([^)]+\))?: ' || true)
+          if [ -n "$BAD" ]; then echo "$BAD"; exit 1; fi
+          echo "commit-subjects: clean"
+
+  issue_link:
+    name: gates/issue-link
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: the PR body must close an issue
+        env: { BODY: '${{ github.event.pull_request.body }}' }
+        run: |
+          set -e
+          echo "$BODY" | grep -qE '(Closes|Fixes) #[0-9]+' || { echo "no Closes/Fixes #N in PR body"; exit 1; }
+
+  spec_gate:
+    name: gates/spec-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: oven-sh/setup-bun@v2
+      - name: every spec item maps to a changed file
+        run: bun run scripts/spec-diff.ts || exit 1
+      # REMOVED 2026-09-23 (a self-defeating gate bug, MEASURED): this step
+      # created an EMPTY ledger when none existed. fence-check.py treats an
+      # ABSENT ledger as NO-LEDGER-SKIP -> exit 0 (nothing to check yet), but an
+      # EMPTY ledger as NO-PASS-ROW -> exit 1 (FAIL). So the "provision" step
+      # CONVERTED a passing check into a failing one, and the spec-gate could
+      # never pass in a fresh checkout. The comment claimed the code "exits 2
+      # ledger-missing" — the code exits 0. The step is deleted; the check runs
+      # against whatever ledger exists (a real fence run's rows when present).
+      # FIXED (ao-review-4 round 3 finding): github.sha on pull_request is the
+      # EPHEMERAL MERGE COMMIT, not the PR head. The ledger holds HEAD prefixes,
+      # so a merge-commit lookup could never match and reported NO-PASS-ROW even
+      # when the head was green. The PR head sha is the correct subject.
+      - name: the fence must hold a PASS row for this sha
+        # FIXED (ocr audit high): fence-check.py returns 3 for the named SKIP (no
+        # host ledger in a CI checkout) and 0 only for a REAL PASS row. The old
+        # `|| exit 1` could not tell them apart. The skip is acknowledged HERE, with
+        # the reason printed, never silently counted as a pass.
+        run: |
+          set +e
+          python3 gates/fence-check.py "${{ github.event.pull_request.head.sha || github.sha }}"
+          RC=$?
+          if [ "$RC" -eq 3 ]; then
+            echo "fence: explicit SKIP (no host ledger in this CI checkout) — the fence row is enforced on the host"
+            exit 0
+          fi
+          exit "$RC"
+
+  diff_budget:
+    name: gates/diff-budget
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: refuse an unbudgeted diff
+        env:
+          BASE: '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}'
+          LABELS: '${{ toJSON(github.event.pull_request.labels.*.name) }}'
+          EVENT: '${{ github.event_name }}'
+        run: |
+          set -e
+          # F10: github.base_ref is EMPTY on merge_group — refuse loudly, never guess.
+          [ -n "${BASE}" ] || { echo "no base ref (neither pull_request.base.sha nor merge_group.base_sha present) — refusing to guess"; exit 1; }
+          # FIXED 2026-09-23: the budget counts REVIEWABLE lines. The generated
+          # records (Checkpoints/ = machine snapshots, .trident/ = tool working
+          # state) are EXEMPT — the same artifact-class law the W-9 gate applies.
+          # Counting them made a 646-file snapshot diff read as 100K+ lines.
+          L=$(git diff --numstat "${BASE}..HEAD" | awk -F'\t' '$3 !~ /^(Checkpoints|\.trident)\// {s+=$1+$2} END{print s+0}')
+          echo "lines=$L"
+          # pull_request.labels is undefined on merge_group, so the oversized
+          # escape hatch exists ONLY on pull_request. An over-budget
+          # merge_group run fails closed with a named reason.
+          OVERSIZED=0
+          if [ "$EVENT" = "pull_request" ] && echo "$LABELS" | grep -q oversized; then OVERSIZED=1; fi
+          # FIXED (ao-review-4 finding): 10000 removed most of the gate's force
+          # (nearly every PR slipped under it unreviewed). Restored to the
+          # original intent — a tight reviewable-diff bound — with the SAME
+          # `oversized` label escape hatch for a legitimately large change.
+          BUDGET=800
+          if [ "$L" -gt "$BUDGET" ] && [ "$OVERSIZED" -ne 1 ]; then
+            if [ "$EVENT" = "merge_group" ]; then
+              echo "over budget on merge_group with no label escape hatch (pull_request labels unavailable)"; exit 1; fi
+            echo "over budget without the oversized label"; exit 1; fi
+
+  test:
+    name: gates/test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: oven-sh/setup-bun@v2
+      - name: install locked dependencies
+        run: bun install --frozen-lockfile || exit 1
+      - name: run the suite
+        run: bun test || exit 1
+      - name: typecheck
+        run: bunx tsc --noEmit || exit 1
+      # THE ARTIFACT-CLASS SCOPE (the EIGHTH instance of the class this build
+      # exists to close): `does_anything_run.sh` answers "has the RUNTIME ever
+      # run HERE?" — it reads runtime/ticks.log + runtime/wire_capture.json,
+      # which are GITIGNORED runtime state. In a CI checkout nothing has ever
+      # ticked, so the gate correctly reports DOES-NOT-RUN — a HOST-LIVENESS
+      # answer, not a code defect. It is a LOCAL/host gate, not a CI gate.
+      # It still runs in .githooks/pre-commit, where the host runtime exists.
+      - name: the host-liveness gate is NOT a CI gate (documented, not run)
+        run: |
+          echo "does_anything_run.sh is a HOST-LIVENESS gate (it reads gitignored runtime state)."
+          echo "CI has no host runtime, so it would correctly report DOES-NOT-RUN. Skipped by design."
+          echo "It runs locally in .githooks/pre-commit where the runtime exists."
+          bash -n gates/does_anything_run.sh && echo "syntax: ok"
+
+  theatrical_verification:
+    name: gates/theatrical-verification
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: scan changed test files for the theatrical-verification family
+        env: { BASE: '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}' }
+        run: |
+          set -e
+          # F10: github.base_ref is EMPTY on merge_group — refuse loudly, never guess.
+          [ -n "${BASE}" ] || { echo "no base ref (neither pull_request.base.sha nor merge_group.base_sha present) — refusing to guess"; exit 1; }
+          FAIL=0
+          CHANGED=$(git diff --name-only "${BASE}..HEAD" -- 'tests/**/*.test.ts' || true)
+          if [ -z "$CHANGED" ]; then
+            echo "theatrical-verification: no changed test files"
+            exit 0
+          fi
+
+          NL=$'\n'
+          # Newline-safe loop: `for f in $CHANGED` splits paths on spaces.
+          # Herestring (not a pipe) so FAIL propagates out of the loop.
+          while IFS= read -r f || [ -n "$f" ]; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue
+            HITS=""
+            # F11: FILE-LEVEL co-occurrence. The normal theatrical shape is a
+            # mock setup at the top of the file with expects lines later —
+            # same-line adjacency (grep mock | grep expect) misses it.
+            # FIXED (ao-review-4 finding): the check was FILE-LEVEL mock+expect co-
+            # occurrence, which flags EVERY legitimate mocked test (a mock setup at
+            # the top + expects below) and would block the whole queue. Narrowed to
+            # the REAL theatrical shape: a module mock with ZERO assertions in the file.
+            HAS_MOCK=$(grep -nEi 'jest\.mock\(|vi\.mock\(' "$f" 2>/dev/null || true)
+            EXPECT_N=$(grep -cE 'expect\(' "$f" 2>/dev/null || true)
+            if [ -n "$HAS_MOCK" ] && [ "${EXPECT_N:-0}" -eq 0 ]; then
+              MOCK_AT=$(printf '%s\n' "$HAS_MOCK" | head -20)
+              HITS="${HITS}${NL}  mock-only: mock with ZERO assertions in file: ${MOCK_AT}"
+            fi
+            SYMBOL=$(grep -nE "includes\(['\"]Symbol['\"]|includes\([\"']Symbol[\"']\)" "$f" 2>/dev/null || true)
+            if [ -n "$SYMBOL" ]; then HITS="${HITS}${NL}  source-string-assert: ${SYMBOL}"; fi
+            WIRING=$(grep -nE "(test|it|describe)\([^)]*(wiring|wired)" "$f" 2>/dev/null || true)
+            if [ -n "$WIRING" ]; then
+              # Adjudicated: the quoted `^[import|from|require]` char-class shape
+              # is NOT present — this already uses a real alternation. Kept as-is.
+              HAS_IMPORT=$(grep -E "^[[:space:]]*(import|from|require)\b" "$f" 2>/dev/null | wc -l || true)
+              if [ "$HAS_IMPORT" -eq 0 ]; then
+                HITS="${HITS}${NL}  wiring-name-no-import: ${WIRING}"
+              fi
+            fi
+            TAUT=$(grep -nE "expect\(true\)|expect\(1\)\.toBe\(1\)|expect\(\s*true\s*\)\.toBeTruthy|expect\(\s*true\s*\)\.toEqual\(true\)" "$f" 2>/dev/null || true)
+            if [ -n "$TAUT" ]; then HITS="${HITS}${NL}  tautology: ${TAUT}"; fi
+            if [ -n "$HITS" ]; then
+              echo "theatrical-verification hit in ${f}:"
+              printf '%s\n' "$HITS"
+              FAIL=1
+            fi
+          done <<< "$CHANGED"
+
+          if [ "$FAIL" -ne 0 ]; then
+            exit 1
+          fi
+          echo "theatrical-verification: clean"

@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# GATE W-2 — reachability
+# JEV COUNT: 26   (the measured occurrences in the 298-file corpus)
+# ARTIFACT CLASS: the pushed commit range's src tree
+# SURFACE: pre-push
+# PREDICATE READS: the pushed commit range's src tree — NEVER prose
+#
+# pre-push — local early-deny for the protected branch.
+#
+# CHECK 1: main is protected by the ruleset (later wave); this refuses the push
+# locally before it ever reaches the remote. Has no --no-verify escape.
+#
+# CHECK 2 (W-2 reachability, Jev 26): every src/**/*.ts module in the pushed
+# range must have at least ONE non-test reference (a file under src/, scripts/,
+# gates/, or bin/ that names the module's stem). A module with zero non-test
+# callers is an orphan — proof that the module is built but unreachable.
+# Derived from gates/orphan_scan.sh's scan() function.
+#
+# INPUT: $1 = remote name, $2 = remote url; stdin lines:
+#   <local-ref> <local-sha> <remote-ref> <remote-sha>
+set -uo pipefail
+
+if ! source "$(dirname "$0")/lib/pattern-header.sh" 2>/dev/null; then
+  printf 'REJECT(GATE-LIB): pattern-header.sh failed to load — the gates cannot run\n' >&2
+  exit 1
+fi
+# WIRED 2026-09-23 (ocr F1 / the audit DEFECT A): scan-phantom.sh existed as a
+# proper library but was NEVER sourced here, so W-3 never fired. A gate on disk
+# that never fires is a FALSE GREEN.
+# FIXED 2026-09-23 (ocr round-3): `|| true` silently swallowed a missing or
+# broken library — the gate would then run with an undefined function and, under
+# `set -u`, die with an unhelpful unbound-variable error (or worse, pass). A lib
+# that cannot load is now a LOUD, named failure.
+if ! source "$(dirname "$0")/lib/scan-phantom.sh" 2>/dev/null; then
+  printf 'REJECT(GATE-LIB): scan-phantom.sh failed to load — the W-3 gate cannot run\n' >&2
+  exit 1
+fi
+command -v scan_phantom >/dev/null 2>&1 || {
+  printf 'REJECT(GATE-LIB): scan_phantom is not defined after sourcing — the W-3 gate cannot run\n' >&2
+  exit 1
+}
+
+REMOTE="${1:-}"
+REMOTE_URL="${2:-}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# FIXED 2026-09-23: the 4-field ref line MUST use the default IFS. `IFS= read -r
+#   a b c d` assigns the WHOLE line to `a` and leaves b/c/d EMPTY -> the
+#   `[ -z "$remote_sha" ]` guard is always true -> every ref `continue`s ->
+#   W-2 and W-3 NEVER FIRE. (Found by RUNNING the hook, not reading it.)
+# --- CAPTURE STDIN ONCE (git sends the ref lines on stdin; a second read
+#     gets nothing — the bug that made this gate never fire) ---
+STDIN_LINES="$(cat)"
+
+# --- CHECK 1: refuse direct pushes to main ---
+while read -r local_ref _local_sha remote_ref _remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo 'REJECT: direct pushes to main are not permitted; open a PR.' >&2
+    exit 1
+  fi
+done <<< "$STDIN_LINES"
+
+# --- CHECK 2: W-2 reachability gate ---
+# FIXED (W1 audit): loop ALL pushed refs (not just the first), derive
+# per-ref range from STDIN (<remote-sha>..<local-sha>), use NUL-safe
+# while loops, and anchor stem match with word boundaries.
+#
+# Strategy: for each pushed ref, compute the diff range, find changed
+# src/**/*.ts files, and check each has at least one non-test caller
+# using word-boundary grep.
+
+FAIL=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+  # Skip DELETEs only.
+  [ "$local_ref" = "DELETE" ] && continue
+  # FIXED 2026-09-23: the old guard `[ -z "$remote_sha" ] || [ "$remote_sha" =
+  # "000...0" ] && continue` ALSO skipped every NEW branch (git sends the all-zero
+  # remote sha for a new ref), so a first push of a branch was never checked.
+  # A new ref is a real push and MUST be scanned. (Same false-green class as the
+  # IFS bug above — found by pushing, not reading.)
+  if [ -z "${local_sha:-}" ] || [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    continue   # the local ref was deleted; nothing to scan
+  fi
+  if [ -z "${remote_sha:-}" ] || [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    RANGE="$local_sha"          # NEW ref: scan all commits reachable from it
+    NEW_REF=1
+  else
+    RANGE="${remote_sha}..${local_sha}"
+    NEW_REF=0
+  fi
+
+  # --- CHECK 3 (W-3 phantom-completion): a commit in this ref's range claims a
+  #     file was created/added, but that file does not exist at the commit.
+  # FIXED 2026-09-23 (ocr round-3 HIGH): `2>/dev/null || true` swallowed ALL
+  # stderr and non-zero exits. A runtime error in scan_phantom produced empty
+  # stdout -> no reject -> W-3 silently PASSED (a false green). stderr is now
+  # captured; a non-empty stderr is a LOUD, named failure, not a silent pass.
+  PHANTOM_ERR="$(mktemp)"
+  PHANTOM_OUT="$(scan_phantom "$RANGE" 2>"$PHANTOM_ERR")" || true
+  if [ -s "$PHANTOM_ERR" ]; then
+    printf 'REJECT(GATE-LIB): scan_phantom errored — the W-3 gate cannot verify:\n' >&2
+    head -n 3 "$PHANTOM_ERR" >&2
+    FAIL=1
+  fi
+  rm -f "$PHANTOM_ERR"
+  if [ -n "$PHANTOM_OUT" ]; then
+    printf 'REJECT(W-3): %s\n' "$PHANTOM_OUT" >&2
+    FAIL=1
+  fi
+
+  # Find changed src/**/*.ts files in this ref's range.
+  if [ "${NEW_REF:-0}" = "1" ]; then
+    CHANGED_SRC=$(git ls-tree -r --name-only "$local_sha" 2>/dev/null | grep '^src/.*\.ts$' || true)
+  else
+    CHANGED_SRC=$(git diff --name-only --diff-filter=ACM "$RANGE" 2>/dev/null | grep '^src/.*\.ts$' || true)
+  fi
+
+  [ -z "$CHANGED_SRC" ] && continue
+
+  # NUL-safe loop over filenames (no word-splitting).
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+
+    BASENAME=$(basename "$f" .ts)
+
+    # Skip known entry points (derived from gates/orphan_scan.sh).
+    # FIXED 2026-09-23 (ocr round-3): a TEST file under src/ (src/foo.test.ts)
+    # is not a production module — its stem `foo.test` also carried a regex dot.
+    # Skip test/spec files by suffix, then the small entry-point skip list.
+    case "$f" in
+      *.test.ts|*.spec.ts|*_test.ts) continue ;;
+    esac
+    case "$BASENAME" in
+      main|runtime|cli|status) continue ;;
+    esac
+
+    # Count non-test references using word-boundary grep.
+    # `-w` matches the stem as a whole word, preventing `run` from matching
+    # `runtime`, `plan` from matching `explain`.
+    # FIXED 2026-09-23 (ocr round-3): (a) `git grep` against $local_sha — the
+    # PUSHED tree — not the working tree (a push of a branch that is not checked
+    # out, or with uncommitted edits, gave a wrong reference set); (b) the
+    # test-file filter now matches by SEGMENT/SUFFIX (`__tests__/`, `*.test.ts`,
+    # `*.spec.ts`); the old `grep -v '^tests'` was a NO-OP because every result
+    # path already began with src/ scripts/ gates/ bin/ — so a module whose only
+    # importer was a test file was NOT flagged as an orphan.
+    # FIXED 2026-09-23 (ocr round-3): `-F` — $BASENAME is a LITERAL, but bare
+    # `-w` treats it as a regex, so a stem like `foo.test` had its `.` match any
+    # char (false positives like `fooxtest`). `git -C "$ROOT"` — the script
+    # computed ROOT but relied on PWD; run from a subdirectory, git silently
+    # returned empty and the gate could false-green.
+    # FIXED 2026-09-23 (a DEAD-GATE bug found by a real push): `git grep
+    # --include='*.ts'` is an UNKNOWN OPTION in git 2.43 -> the command errored
+    # `unknown option  include=*.ts` -> REFS=0 for EVERY module -> the gate
+    # rejected EVERY push. The reference set is now a PATHSPEC (git grep has no
+    # --include). This is why the branch was never pushed and the end-to-end
+    # lifecycle was never exercised.
+    REFS=$(git -C "$ROOT" grep -lFw \
+           -e "$BASENAME" "$local_sha" -- 'src/*.ts' 'src/*.js' 'scripts/*.ts' 'scripts/*.sh' 'gates/*' 'bin/*' 2>/dev/null \
+           | sed "s/^[^:]*://" \
+           | grep -vE '(^|/)(tests?|__tests__|__test__)/|\.(test|spec|_test)\.[a-z]+$' \
+           | grep -vxF "$f" | wc -l | tr -d ' ')
+
+    if [ "$REFS" = "0" ]; then
+      printf 'REJECT(W-2): ORPHAN:%s (0 non-test callers)\n' "$f" >&2
+      FAIL=1
+    fi
+  done <<< "$CHANGED_SRC"
+
+done <<< "$STDIN_LINES"
+
+[ "$FAIL" -eq 1 ] && exit 1
+exit 0

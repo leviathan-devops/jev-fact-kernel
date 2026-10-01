@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 sample.ts
 /tmp/
+
+# the jarvis-upper enrollment's runtime state — the daemon's per-project store, not source
+runtime/
+gates/__pycache__/
+packages/*/node_modules/
