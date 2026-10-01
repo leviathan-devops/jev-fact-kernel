@@ -986,3 +986,38 @@ drifted from its subject. The fix states no count it can drift from.
 against the author's blind spots is an agent with no stake in the claims. Every adversarial probe
 the auditor ran was one the author COULD have run and did not. The author drove the paths they
 believed mattered; the auditor drove the ones that did not look like paths at all.
+
+## EN-125 · C7 CLOSED — the auditor's UNVERIFIABLE claim, verified by the one thing it could not do
+
+**THE AUDITOR'S GAP, AND WHY IT WAS CORRECT TO GRADE IT UNVERIFIABLE.** The spec gate's carrier is
+
+    git diff --cached --name-only | grep -E '^(kernel/|extensions/fact-firewall/)'
+
+With NOTHING staged, CHANGED is empty and the gate exits 0 **before reading the message** — so a
+staged-mode test that stages nothing cannot arm the REFUSE branch. The auditor was dispatched
+READ-ONLY and correctly refused to mutate the index to arm it. **It graded the claim UNVERIFIABLE
+rather than guessing, which is the correct verdict for an untestable claim.**
+
+It verified by proxy instead: the refuse branch exists in source; the message regex discriminates;
+the range mode PASSes (`HEAD~1..HEAD` -> "names FR-8"); all 13 branch commits carry FR ids.
+
+**THE CLOSE — a staging verifier.** I am not READ-ONLY. The procedure, run this turn:
+
+```
+  stage a REAL kernel touch            git add kernel/ledger.py         (a comment line)
+  C7-NEG  no-FR message                -> SPEC-GATE REFUSE   [EXIT=1]
+            "1 kernel file(s) changed but no FR/SC named."
+  C7-POS  the SAME staged change with "— FR-10"
+                                       -> SPEC-GATE PASS     [EXIT=0]
+  RESTORE                              git reset + the file from backup; worktree 0 dirty
+```
+
+**★ C7 CONFIRMED.** The gate REFUSES an un-FR'd kernel commit and PASSES an FR'd one, driven both
+ways on a real staged change.
+
+**THE AUDIT'S FINAL COUNT: 8 CONFIRMED · 0 REFUTED · 0 UNVERIFIABLE.**
+
+**LESSON.** "UNVERIFIABLE" was not a failure — it was the auditor naming the exact constraint that
+blocked the test, plus the proxy evidence it COULD gather. That is what let a second party close it
+in four commands. An auditor that guessed CONFIRMED would have made the claim weaker, not stronger:
+the value of the audit is the honesty of its verdicts, not their count.
