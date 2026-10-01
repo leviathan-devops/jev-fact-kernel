@@ -1,11 +1,12 @@
 // @bun
 // ../../../../../tmp/ff.ts
 import { existsSync, writeFileSync, mkdtempSync, rmSync } from "fs";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
 import { execFile } from "child_process";
 import { tmpdir } from "os";
 var KERNEL = process.env.FACT_FIREWALL_KERNEL || "/home/leviathan/JARVIS_WORKSPACE/worktrees/jev-fact-kernel/kernel";
 var MODE = (process.env.FACT_FIREWALL_LSP || "refuse").toLowerCase();
+var TOOLCALL = (process.env.FACT_FIREWALL_TOOLCALL || "refuse").toLowerCase();
 function run(cmd, timeoutMs = 120000) {
   return new Promise((res) => {
     execFile(cmd[0], cmd.slice(1), { timeout: timeoutMs, maxBuffer: 8000000 }, (e, out, err) => res({ code: e?.code ?? 0, out: out || "", err: err || "" }));
@@ -67,7 +68,39 @@ function ff_default(pi) {
         console.error(`FACT-FIREWALL T4 WARN: ${r.refused} (LSP mode=warn, registering anyway)`);
         return;
       }
-      return { block: true, reason: `FACT-FIREWALL T4 BLOCK: ${r.refused}. ${r.lies ? `${r.lies} advertised capabilities answered -32601. ` : ""}` + `The initialize reply is a FALSE CAPABILITY DECLARATION. Implement the method, or remove the ` + `capability from the reply. (Set FACT_FIREWALL_LSP=warn to register anyway.)` };
+      throw new Error(`FACT-FIREWALL T4 BLOCK: ${r.refused}. ${r.lies ? `${r.lies} advertised capabilities answered -32601. ` : ""}` + `The initialize reply is a FALSE CAPABILITY DECLARATION. Implement the method, or remove the ` + `capability from the reply. (Set FACT_FIREWALL_LSP=warn to register anyway.)`);
+    });
+  }
+  if (typeof pi.on === "function") {
+    pi.on("tool_call", async (e) => {
+      const ev = e;
+      const tool = ev?.toolName || "";
+      const input = ev?.input || {};
+      if (tool === "bash" && typeof input.command === "string") {
+        const r = await lintInstrument(input.command);
+        if (r.ok)
+          return;
+        if (r.refused === "T0_UNMEASURED")
+          return;
+        const msg = `FACT-FIREWALL T0 BLOCK: ${r.refused}. ${r.detail || ""} ` + `A number produced by this measurement would measure the INSTRUMENT. ` + `Use a buffered read, or state the instrument's validation in the claim.`;
+        if (TOOLCALL === "warn") {
+          console.error(msg + " (toolcall mode=warn)");
+          return;
+        }
+        throw new Error(msg);
+      }
+      if ((tool === "write" || tool === "edit") && typeof input.path === "string") {
+        const parent = dirname(resolve(input.path));
+        if (!existsSync(parent)) {
+          const msg = `FACT-FIREWALL T4 BLOCK: T4_PHANTOM_ARTIFACT. The parent directory of ` + `${input.path} does not exist (${parent}). Create it, or correct the path.`;
+          if (TOOLCALL === "warn") {
+            console.error(msg + " (toolcall mode=warn)");
+            return;
+          }
+          throw new Error(msg);
+        }
+      }
+      return;
     });
   }
   pi.registerTool({

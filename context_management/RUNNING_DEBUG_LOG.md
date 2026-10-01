@@ -816,3 +816,48 @@ and every expected verdict named. The battery runs the in-repo set. `/tmp` is no
 **LESSON.** A control that lives outside the repo is a control that can be deleted by anything, and
 its absence reads as a pass. The instrument and its controls are ONE artifact; shipping them apart
 ships an instrument whose silence has two meanings.
+
+## EN-121 · THE BLOCK CONVENTION WAS WRONG — and the tool_call guard is wired
+
+**SYMPTOM.** The LSP gate's first version RETURNED `{block:true, reason}` on a lie. The harness
+passed it, but the host's contract is different.
+
+**ROOT CAUSE — THE CARRIER LAW, AGAIN.** Reading the omp host's own working blocker (`omp-ct`,
+which refuses bash) showed the convention:
+
+```js
+pi.on("tool_call", (event, ctx) => {
+  ...
+  throw new Error(message);      // <-- THE BLOCK IS A THROW
+});
+```
+
+A returned `{block:true}` is NOT the contract. The host's call is cancelled by a thrown Error; the
+return value carries only an optional `{input}` rewrite. The first version would have been a NO-OP
+on the real host — a gate that reads as armed and refuses nothing. **The same class as the
+`pre-commit` carrier defect: the right check on the carrier that cannot deliver it.**
+
+**THE FIX + THE SECOND HALF (ST-402).** The LSP gate now throws. And the `tool_call` guard is
+wired — on the carrier that can see the ARGUMENTS, with the spillover controlled by construction:
+
+  1 · a `bash` command carrying T0's instrument pattern     -> THROW
+  2 · a `write`/`edit` whose PARENT DIRECTORY does not exist -> THROW (a true phantom target)
+
+It does NOT gate prose, does NOT gate a legitimate new file in an existing directory, and every
+block names its remedy. `FACT_FIREWALL_TOOLCALL=warn` observes without refusing.
+
+**DRIVEN BOTH WAYS — 7/7:**
+
+```
+  ST-401  LYING server -> THREW   "FACT-FIREWALL T4 BLOCK: T4_LSP_CAPABILITY_LIE. 23 advertised..."
+          HONEST server -> passed
+  ST-402  bash + T0's byte-read pattern  -> THREW   "T0_INSTRUMENT_DEFECT"
+          bash with a CLEAN command      -> passed   (no spillover)
+          write to an EXISTING dir       -> passed   (no spillover)
+          write to a NONEXISTENT dir     -> THREW   "T4_PHANTOM_ARTIFACT"
+          a read tool                    -> passed   (never gated)
+```
+
+**LESSON.** A gate's CONTRACT is not a detail — it is the whole mechanism. `{block:true}` and
+`throw` differ by one character of syntax and by whether the gate exists at all. Read the working
+implementation of the host's own blocker before writing a blocker for that host.

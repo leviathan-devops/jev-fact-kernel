@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 const KERNEL = process.env.FACT_FIREWALL_KERNEL ||
   "/home/leviathan/JARVIS_WORKSPACE/worktrees/jev-fact-kernel/kernel";
 const MODE = (process.env.FACT_FIREWALL_LSP || "refuse").toLowerCase();   // refuse | warn
+const TOOLCALL = (process.env.FACT_FIREWALL_TOOLCALL || "refuse").toLowerCase();  // refuse | warn
 
 function run(cmd: string[], timeoutMs = 120_000): Promise<{ code: number; out: string; err: string }> {
   return new Promise((res) => {
@@ -90,10 +91,47 @@ export default function (pi: {
         console.error(`FACT-FIREWALL T4 WARN: ${r.refused} (LSP mode=warn, registering anyway)`);
         return undefined;
       }
-      return { block: true, reason:
+      throw new Error(
         `FACT-FIREWALL T4 BLOCK: ${r.refused}. ${r.lies ? `${r.lies} advertised capabilities answered -32601. ` : ""}` +
         `The initialize reply is a FALSE CAPABILITY DECLARATION. Implement the method, or remove the ` +
-        `capability from the reply. (Set FACT_FIREWALL_LSP=warn to register anyway.)` };
+        `capability from the reply. (Set FACT_FIREWALL_LSP=warn to register anyway.)`);
+    });
+  }
+
+  // ── THE TOOL-CALL GUARD — the carrier that can see the ARGUMENTS (ST-402) ────────────────────
+  // SPILLOVER CONTROL: it fires on exactly TWO shapes, both named, both deterministic.
+  //   1 · a `bash` command carrying T0's instrument pattern (a byte-at-a-time read in a measured
+  //       path) — the exact class T0 exists for.
+  //   2 · a `write` whose PARENT DIRECTORY does not exist — a true phantom target.
+  // It does NOT gate prose, does NOT gate a legitimate new file in an existing dir, and every
+  // block names its remedy. Set FACT_FIREWALL_TOOLCALL=warn to observe without refusing.
+  if (typeof pi.on === "function") {
+    pi.on("tool_call", async (e: unknown) => {
+      const ev = e as { toolName?: string; input?: Record<string, unknown> };
+      const tool = ev?.toolName || "";
+      const input = ev?.input || {};
+
+      if (tool === "bash" && typeof input.command === "string") {
+        const r = await lintInstrument(input.command);
+        if (r.ok) return undefined;
+        if (r.refused === "T0_UNMEASURED") return undefined;   // nothing to inspect is not a defect
+        const msg = `FACT-FIREWALL T0 BLOCK: ${r.refused}. ${r.detail || ""} ` +
+          `A number produced by this measurement would measure the INSTRUMENT. ` +
+          `Use a buffered read, or state the instrument's validation in the claim.`;
+        if (TOOLCALL === "warn") { console.error(msg + " (toolcall mode=warn)"); return undefined; }
+        throw new Error(msg);
+      }
+
+      if ((tool === "write" || tool === "edit") && typeof input.path === "string") {
+        const parent = dirname(resolve(input.path));
+        if (!existsSync(parent)) {
+          const msg = `FACT-FIREWALL T4 BLOCK: T4_PHANTOM_ARTIFACT. The parent directory of ` +
+            `${input.path} does not exist (${parent}). Create it, or correct the path.`;
+          if (TOOLCALL === "warn") { console.error(msg + " (toolcall mode=warn)"); return undefined; }
+          throw new Error(msg);
+        }
+      }
+      return undefined;
     });
   }
 
