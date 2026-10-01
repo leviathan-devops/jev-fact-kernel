@@ -41,6 +41,14 @@ echo "── THE BRAIN · the router cascade (ST-302) ──"
 t "the cascade, 8 spans"               0 python3 kernel/router.py
 printf "        %s\n" "$(tail -2 /tmp/batt-out | head -1)"
 echo ""
+echo "── ST-403 · THE WORKER-RETURN AUDIT ──"
+printf 'I built `kernel/ledger.py` and it records every verdict.\n' | python3 kernel/audit-return.py >/dev/null 2>&1
+[ $? = 0 ] && { printf "  PASS  %-46s an existing artifact -> ACCEPTED\n" "ST-403a"; PASS=$((PASS+1)); } || { printf "  FAIL  ST-403a\n"; FAIL=$((FAIL+1)); }
+printf 'I created `kernel/fact-firewall.ts` and wired it.\n' | python3 kernel/audit-return.py >/dev/null 2>&1
+[ $? = 1 ] && { printf "  PASS  %-46s an absent artifact -> REFUSED\n" "ST-403b"; PASS=$((PASS+1)); } || { printf "  FAIL  ST-403b\n"; FAIL=$((FAIL+1)); }
+printf 'I reviewed the design.\n' | python3 kernel/audit-return.py >/dev/null 2>&1
+[ $? = 2 ] && { printf "  PASS  %-46s no artifact claim -> UNMEASURED\n" "ST-403c"; PASS=$((PASS+1)); } || { printf "  FAIL  ST-403c\n"; FAIL=$((FAIL+1)); }
+
 echo "── T3 LEDGER ──"
 N=$(wc -l < ~/.omp/run/fact-firewall.jsonl 2>/dev/null || echo 0)
 L=$(grep -c 'T4_LSP_CAPABILITY_LIE' ~/.omp/run/fact-firewall.jsonl 2>/dev/null || echo 0)

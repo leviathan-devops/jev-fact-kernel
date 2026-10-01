@@ -861,3 +861,29 @@ block names its remedy. `FACT_FIREWALL_TOOLCALL=warn` observes without refusing.
 **LESSON.** A gate's CONTRACT is not a detail — it is the whole mechanism. `{block:true}` and
 `throw` differ by one character of syntax and by whether the gate exists at all. Read the working
 implementation of the host's own blocker before writing a blocker for that host.
+
+## EN-122 · ST-403 — the worker-return audit, and the polarity law's third application
+
+**THE DESIGN QUESTION.** A subagent's return is a RESULT: it already exists by the time any hook
+sees it. The polarity law (the LSP REPORTS; the HOOK REFUSES) therefore puts the refusal at the
+CONSUMPTION point, not at the hook — the parent runs the audit BEFORE it acts on the return, and
+the audit's verdict IS the refusal.
+
+**WHAT IT SETTLES — the artifact-naming claims only**, because those are the ones a machine can
+settle. A return naming a path gets T4-FILE on that path. A return naming no artifact is UNSETTLED
+(exit 2), **not** a pass: the kernel's contract is CHECKABLE claims, and a claim with no subject
+cannot be probed. Recording it as a pass would be the fail-open this kernel exists to kill.
+
+**DRIVEN BOTH WAYS — 3/3:**
+
+```
+  a return naming `kernel/ledger.py`            -> ACCEPTED    exit 0
+  a return naming `kernel/fact-firewall.ts`     -> REFUSED     exit 1  T4_PHANTOM_ARTIFACT
+  a return with no artifact claim               -> UNMEASURED  exit 2
+```
+
+**ST-403b is the motivating case exactly:** "I created `kernel/fact-firewall.ts` and wired it into
+the CLI" — the phantom-artifact claim, refused against the disk.
+
+**W4 IS COMPLETE.** ST-401 (the LSP refusal), ST-402 (the tool_call guard), ST-403 (the return
+audit) — all three wired surfaces, each driven both ways, none gating prose.
