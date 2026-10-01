@@ -1124,3 +1124,36 @@ can see the subject, the carrier is the COMMAND.
 **CONFIDENCE 1.0 IN THE LEDGER, NAMED.** That field is not a threshold — nothing was judged. It is a
 mechanical COMPARISON: the server declared 23 capabilities, answered 23 with -32601. A comparison
 with no judgment needs no derived cut; a threshold would.
+
+## EN-128 · MY OWN INSTRUMENT, THIRD TIME — `| tail -1` ate the exit code
+
+**SYMPTOM.** The final verification printed `T1 POS [exit=0] expect 1` and `T4 lying [exit=0]`.
+A reader would conclude the gates had stopped biting.
+
+**ROOT CAUSE.** The harness line was `python3 probe.py … 2>&1 | tail -1; printf "[exit=$?]"`.
+**`$?` after a PIPELINE is the LAST COMMAND's status — `tail`'s, always 0.** The probe's own exit
+code was discarded by the pipe before it could be read. The gates were correct the whole time; the
+MEASUREMENT was broken.
+
+**THE FIX.** Re-measured without a pipeline:
+```
+T1 POS    exit=1  ✓     T4 LYING  exit=1  ✓
+T1 NEG    exit=0  ✓     T4 HONEST exit=0  ✓
+T1 UNREAD exit=2  ✓
+```
+
+**THE PATTERN.** This is the third instrument defect of the session, and all three are one class:
+- EN-12x: the harness invoked the handler DIRECTLY, so the BINDING could not be wrong.
+- EN-12x: the installer read the wrong config shape and printed `gated: []` as success.
+- EN-128: the pipeline discarded the exit code it claimed to report.
+
+**Every one is the kernel's own thesis pointed at its own tooling:** *the instrument is the first
+thing to validate, because a broken instrument reports plausible numbers and there is nothing in the
+output that distinguishes it from a working one.*
+
+**LESSON.** Never read `$?` after a pipeline. Capture the status first, then format:
+```
+python3 probe.py … > out 2>&1; RC=$?; tail -1 out; echo "[exit=$RC]"
+```
+The kernel's own T0 lint exists to catch this class in Python. It has no equivalent for shell
+harnesses — **a shell probe's exit-code discipline is manual, and this entry is the receipt.**
