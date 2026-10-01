@@ -1372,3 +1372,63 @@ probe-error, adjudicated per the two-sided law before it shipped. D-3 survives t
 The two blind auditors' returns had not landed when this entry was written. **Their verdict is the
 one that blesses or breaks the claims** — my own pass is contaminated by authorship and cannot
 stand alone.
+
+## EN-134 · THE TWO BLIND AUDITORS — both returned; 5 FOUND, 5 CLEAN, and two findings land on me
+
+**THE INDEPENDENT LAYER (the author cannot be the only auditor).** Two scouts, zero build context,
+both told NOT to read my conclusions until they had their own numbers.
+
+### BlindReproducer — 7/7 reached claims REPRODUCED
+
+All exit codes captured correctly (it heeded the pipe-trap warning). **It audited its own count**:
+naive `grep -c LIE` = 24 because the section header `LIES (23)` matches; the per-row `^    LIE` = 23 —
+*"the 23 claim holds only for the per-row pattern."* **It independently reproduced my B-13
+retraction** from the code alone. And it named its own limit: *"I did not independently strace the
+probe spawn."*
+
+### FraudHunter — five classes FOUND, five CLEAN
+
+**CLEAN, each with its command:** SHA drift (every claimed SHA matches its named artifact — *the
+spec sha16 and the src+tests tree sha both verify*); weakened checks (no defect-pinned pass
+condition); circular evidence (every sampled token pairs with a command + exit); scope creep (22/22
+first-parent commits FR-cited).
+
+**FOUND — and the two that land on me:**
+
+**F-A · THE BYPASS SURVIVES IN THE SECOND CARRIER.** I removed `FACT_FIREWALL_LSP` from
+`bin/lsp-gate` and reported B-10 closed. **`extensions/fact-firewall/index.js:8,86,90` still retains
+the `FACT_FIREWALL_LSP`/`TOOLCALL` warn path.** *"bin/lsp-gate's bypass removal does not cover the
+(dead-bound) extension path."* The binding is dead, but the path is there — **a fix applied to one of
+two carriers, reported as done.**
+
+**F-B · THE OVERCLAIM RESIDUE.** `TESTING_LOG.md:110` + `:113` and `BUILD_REPORT.md:381` still carry
+the retracted *"the server was NEVER EXECUTED."* My own report listed propagating the correction as
+pending item #1. **It is now independently confirmed as unfixed.**
+
+**F-C · MY TREE-SHA MEASUREMENT WAS WRONG-SCOPED.** My reports carry `6a108e…` / `af788d…` from
+`find kernel bin extensions`. **`scripts-seal.sh` defines the tree sha over `src+tests *.ts`** → the
+docs' `b6a16d9c6742cba8f46feea59dbd7315` is the correct one. *The auditor caught my instrument, not
+my code.*
+
+**F-D · 5 NAPKIN CANON DOCS** — `BUILD_STATE.md` 7 lines, `CURRENT_STATE.md` 17, `DECISION_CHAIN.md`
+18, `NEXT_STEPS.md` 19, `EVIDENCE_STATE.md` 37. The auditor read them and judged them *"pointers,
+not substance"* — accurate, and still under the contract's 100-line CRITICAL floor.
+
+**F-E · 7 PADDED DOCS** — over 200 lines with <3 `file:line` refs, incl. `README.md` (804 lines, 0
+anchors) and `MASTER_PROMPT.md` (247/0), which the auditor read as *"JM decision-engine docs…
+legacy-corpus padding in this tree."*
+
+**F-F · the fixed `/tmp/batt-out` + `/tmp/t1c.txt` paths** (known as E-4, now independently confirmed;
+the auditor correctly rested the finding on the CODE, not on the files' existence).
+
+### ITS OWN INSTRUMENT FAILURES — 7, all recorded
+
+Including the wrong-scope null on CLASS 3 (my task's tree command), the `debug`-substring false
+positives in the debris grep, and the runtime d.ts instance skew across `.omp/wt/*/m` copies.
+
+### THE VERDICT
+
+**No fabricated fix. No embellished stat. No circular evidence.** The build's claims about its own
+fixes survived two independent blind audits. **But two of my "done/pending" items are confirmed
+unfixed (F-A, F-B), one of my measurements was wrong-scoped (F-C), and the canon carries 5 napkin
+docs (F-D).** *Judging changes nothing — this entry reports; it does not fix.*
