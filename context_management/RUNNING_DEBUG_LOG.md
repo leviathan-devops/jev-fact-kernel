@@ -636,3 +636,47 @@ it"*.
 attempts came from rewriting the question — the derived cut never moved. And a "NONE" label is a
 LOAD-BEARING decision: an over-broad NONE is an escape hatch for the exact claims the kernel
 exists to catch, and it looks like a correct abstention while it does it.
+
+## EN-117 · THE PROBE HUNG (exit 124) AND MY FIXTURES WERE DEAF — two defects, one adversarial round
+
+**SYMPTOM.** The adversarial proof (T4 against the lying server, then the honest one) timed out
+FOUR times: 600 s, 240 s, 600 s, 138 s. `timeout(1)` killed the probe both times — including
+against the HONEST server, which declares nothing and should answer instantly.
+
+**DEFECT 1 — THE PROBE'S READ BLOCKED FOREVER.** `read_msg()` used `proc.stdout.readline()`, a
+BLOCKING read, and checked its `timeout` argument only BETWEEN calls. A server that writes no
+newline blocks the probe indefinitely.
+
+- **Why this is worse than a wrong answer:** a hang produces NO VERDICT — the caller gets exit
+  124 from `timeout(1)` instead of a named refusal, and cannot tell "the server is silent" from
+  "the probe is broken". The temp dir also never cleans (2 residual `/tmp/jev-t4-*` measured).
+- **The fix:** `select()` on the fd with the REMAINING budget, then a non-blocking `os.read` —
+  the same bounded-read discipline the T0 comparison needed. A read's cost must be bounded by the
+  budget, never by the peer's willingness to speak.
+
+**DEFECT 2 — THE FIXTURE SERVERS COULD NOT HEAR.** With the read bounded, the probe correctly
+returned `UNMEASURED` (exit 2) — and it was RIGHT. The servers used `readline()`, which STRIPS the
+newline. The probe frames as `Content-Length: N\r\n\r\n{json}`; `readline()` yields
+`"Content-Length: N"` with the terminator gone, so the handler's
+`/Content-Length: (\d+)\r?\n\r?\n/` could NEVER match. **Both fixture servers read the header and
+waited forever.**
+
+- **The realisation:** the probe's UNMEASURED was DIAGNOSTIC, not obstructive. A fail-closed probe
+  turned a two-sided silence into a one-sided fault it could name. Had the probe defaulted to
+  "clean", the deaf fixtures would have passed as honest.
+- **The fix:** both servers parse RAW frames (`process.stdin.on("data")` + a byte buffer + the
+  `\r\n\r\n` separator), exactly as the probe frames them.
+
+**THE PROOF (after both fixes — the adversarial round, both directions):**
+
+```
+  honest-server (declares 0, answers everything)   exit=0  want=0    52ms  lies=0
+  lying-server  (declares 23, implements 0)        exit=1  want=1    61ms  lies=23
+  litter: 0 sample.ts   ·   residual temp dirs: 0
+```
+
+**LESSON.** A timeout is not a refusal. `timeout(1)` returning 124 tells the caller NOTHING about
+the subject — it is the same failure class as a silent pass, one level up. A probe must bound its
+own reads and return a NAMED verdict, or its silence is indistinguishable from its honesty. And a
+fail-closed probe is DIAGNOSTIC INSTRUMENTATION: the UNMEASURED verdict is what located the deaf
+fixtures. A fail-open probe would have called them clean.

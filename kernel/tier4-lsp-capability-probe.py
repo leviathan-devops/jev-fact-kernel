@@ -12,8 +12,9 @@ PROMISE that a corresponding method is implemented. This probe:
 It is MECHANICAL: -32601 is a documented JSON-RPC error, not a judgement call.
 Exit 0 = every advertised capability answered.  Exit 1 = at least one lie.
 """
-import json, subprocess, sys, time, os
+import json, subprocess, sys, time, os, tempfile, shutil, select
 from pathlib import Path
+import pathlib
 
 # The LSP capability -> the method it PROMISES. (spec 3.17)
 CAP2METHOD = {
@@ -47,26 +48,65 @@ def frame(obj):
     return b"Content-Length: %d\r\n\r\n" % len(b) + b
 
 def read_msg(proc, timeout=8.0):
-    """Read ONE framed LSP message from the child's stdout."""
+    """Read ONE framed LSP message from the child's stdout — WITH A HARD DEADLINE.
+
+    THE DEFECT THIS REPLACES: the first version used proc.stdout.readline(), a BLOCKING read, and
+    checked its `timeout` argument only BETWEEN calls. A server that never writes a newline blocked
+    the probe FOREVER — measured: BOTH adversarial fixtures hit exit 124 under timeout(1), the
+    honest one (which declares nothing and should answer instantly) included. A probe that HANGS
+    is worse than one that answers wrongly: the caller gets no verdict, and the temp dir never
+    cleans (2 residual /tmp/jev-t4-* dirs measured).
+
+    THE FIX: select() on the fd with the REMAINING time budget, then a non-blocking os.read. The
+    same read discipline the T0 comparison needed — a read whose cost is bounded by the budget,
+    never by the peer's willingness to speak.
+    """
+    fd = proc.stdout.fileno()
     t0 = time.time()
     buf = b""
+    # ── the header, up to the blank line ──
     while time.time() - t0 < timeout:
-        line = proc.stdout.readline()
-        if not line: return None
-        buf += line
-        if line in (b"\r\n", b"\n"):
+        r, _, _ = select.select([fd], [], [], max(0.0, timeout - (time.time() - t0)))
+        if not r:
+            return None                                   # the deadline, named — not a hang
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            return None                                   # EOF: the server exited
+        buf += chunk
+        if b"\r\n\r\n" in buf or b"\n\n" in buf:
             break
-    if b"Content-Length:" not in buf: return None
-    try: n = int(buf.decode().split("Content-Length:")[1].split("\r\n")[0].strip())
-    except Exception: return None
-    body = proc.stdout.read(n)
-    try: return json.loads(body)
-    except Exception: return None
+    if b"Content-Length:" not in buf:
+        return None
+    try:
+        n = int(buf.decode(errors="ignore").split("Content-Length:")[1].split("\n")[0].strip())
+    except Exception:
+        return None
+    # ── the body, exactly n bytes, still under the deadline ──
+    sep = buf.find(b"\r\n\r\n")
+    sep = sep + 4 if sep >= 0 else (buf.find(b"\n\n") + 2)
+    body = buf[sep:]
+    while len(body) < n and time.time() - t0 < timeout:
+        r, _, _ = select.select([fd], [], [], max(0.0, timeout - (time.time() - t0)))
+        if not r:
+            return None
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            return None
+        body += chunk
+    try:
+        return json.loads(body[:n])
+    except Exception:
+        return None
 
 def probe(cmd, root, label):
-    uri = "file://" + str(Path(root, "sample.ts").resolve())
-    try: Path(root, "sample.ts").write_text("export const x: number = 1;\nexport function f() { return x; }\n")
+    # THE PROBE MUST NOT MUTATE ITS SUBJECT. sample.ts used to be written into `root` and left
+    # there (the baseline found `?? sample.ts` in the worktree). It now lives in a temp dir that
+    # is removed on every exit path.
+    tmp = tempfile.mkdtemp(prefix="jev-t4-")
+    sample = Path(tmp) / "sample.ts"
+    try: sample.write_text("export const x: number = 1;\nexport function f() { return x; }\n")
     except Exception: pass
+    uri = "file://" + str(sample.resolve())
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL, cwd=root)
     # 1 · initialize
@@ -81,7 +121,8 @@ def probe(cmd, root, label):
             cap = (m.get("result") or {}).get("capabilities") or {}
             break
     if cap is None:
-        p.kill(); return label, None, [], "NO INITIALIZE REPLY"
+        p.kill(); shutil.rmtree(tmp, ignore_errors=True)
+        return label, None, [], "NO INITIALIZE REPLY"
     p.stdin.write(frame({"jsonrpc":"2.0","method":"initialized","params":{}})); p.stdin.flush()
 
     declared = [k for k, v in cap.items() if v not in (None, False)]
@@ -113,6 +154,7 @@ def probe(cmd, root, label):
     try: p.stdin.write(frame({"jsonrpc":"2.0","id":999,"method":"shutdown","params":{}})); p.stdin.flush()
     except Exception: pass
     p.kill()
+    shutil.rmtree(tmp, ignore_errors=True)          # no litter, on any path
     return label, declared, lies, oks
 
 if __name__ == "__main__":
@@ -130,10 +172,25 @@ if __name__ == "__main__":
     print(f"  ★ LIES ({len(lies)}) — DECLARED BUT NOT IMPLEMENTED:")
     for c, m, why in lies: print(f"    LIE  {c:<34} {m:<40} {why}")
     print()
+    # ── THE LEDGER: one row per verdict. No triad, no block. A ledger write failure is LOUD but
+    # does not change the verdict — the decision already stands on the wire evidence.
+    try:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import ledger as _led
+    except Exception:
+        _led = None
     if lies:
+        if _led:
+            for cap, method, why in lies:
+                _led.append("T4_LSP_CAPABILITY_LIE", "BLOCK", 4, 1.0,
+                            capability=cap, method=method, code=-32601,
+                            server=label, verdict_detail=why, pid=os.getpid())
         print(f"FACT-FIREWALL T4 BLOCK: {len(lies)} advertised capabilit{'y' if len(lies)==1 else 'ies'} "
               f"answered -32601 MethodNotFound. The initialize reply is a FALSE CAPABILITY DECLARATION. "
               f"Either implement the method, or remove the capability from the reply.")
         sys.exit(1)
+    if _led:
+        _led.append("T4_LSP_CAPABILITY_OK", "PASS", 4, 1.0,
+                    declared=len(declared), implemented=len(oks), server=label, pid=os.getpid())
     print("FACT-FIREWALL T4: every advertised capability answered.")
     sys.exit(0)
