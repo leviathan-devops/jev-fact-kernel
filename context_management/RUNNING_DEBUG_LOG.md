@@ -1246,3 +1246,32 @@ JSON-RPC. Now `>&2`. **RE-PROVEN:** `stdout bytes on a BLOCK: 0`.
 
 `L=$(grep -c … || echo 0)`. **`grep -c` on a MISSING file PRINTS 0 and EXITS 1**, so `|| echo 0`
 appended a SECOND 0: **`L=[0<newline>0]`** — proven. Assign, then default.
+
+## EN-131 · THE FIX'S OWN BLAST RADIUS — my repair opened the gap it closed
+
+**SYMPTOM.** The third gate run (`session=f0590f96`) reported 1 critical: *"probe blocking only
+treats codes 1/2 as blocked, so timeout/signal (code=-1) or any other non-zero code falls through
+to ok:true."*
+
+**ROOT CAUSE — MINE, ONE TURN OLD.** EN-130 fixed `run()` to return `-1` for a timeout/signal
+kill instead of the false `0`. **But the CALLERS still tested `code === 1` and `code === 2` and let
+everything else fall to `return { ok: true }`.** So `-1` — the very sentinel the fix introduced —
+fell straight through. `lintInstrument` was worse: its tail **hardcoded** `{ ok: true, exit: 0 }`.
+
+**THE CLASS.** A fix that changes a function's RETURN SHAPE must be re-verified at every CALL SITE.
+This is the `asserting-scripted-edits` law in the wild: *the fix's own blast radius is the next
+defect.* The gate found it in one round because it re-reads the whole file, not the diff.
+
+**FIX.** Both callers now default to REFUSE: every non-zero code is a refusal, with `-1` and 127
+and anything else landing on the named codes `T4_PROBE_FAILED` / `T0_LINT_FAILED`.
+
+**VERIFICATION — the REAL exported functions, driven with a probe that exits 127:**
+```
+probeCapabilities -> {"ok":false,"refused":"T4_PROBE_FAILED","exit":127}
+lintInstrument    -> {"ok":false,"refused":"T0_LINT_FAILED","exit":127}
+```
+And the predicate table: `-1`, `127`, `3` all changed verdict from `ok:true` to `refuse`.
+
+**LESSON.** When a fix changes what a function RETURNS, the callers are part of the fix. The gate
+that re-reads the whole file catches it in one round; the gate that reads only the diff would have
+shipped it.

@@ -40,6 +40,13 @@ async function probeCapabilities(serverRoot, argv) {
     }
     return { ok: false, refused: "T4_LSP_CAPABILITY_LIE", lies, detail: out.trim().slice(0, 1200), exit: code };
   }
+  // EVERY non-zero code is a refusal. This is the guard MY OWN FIX to run() exposed: run() now
+  // returns -1 for a timeout/signal kill, and the old tail here (`return { ok: true, ... }`) caught
+  // -1, 127, 3 — anything that was not exactly 1 or 2 — and reported ok:true. A probe that NEVER
+  // RAN was attesting capability. The default must be REFUSE, never ok.
+  if (code !== 0) {
+    return { ok: false, refused: "T4_PROBE_FAILED", detail: (err || out).trim().slice(0, 400), exit: code };
+  }
   return { ok: true, detail: out.trim().slice(0, 200), exit: code };
 }
 async function lintInstrument(command) {
@@ -55,7 +62,12 @@ async function lintInstrument(command) {
       return { ok: false, refused: "T0_INSTRUMENT_DEFECT", detail: out.trim().slice(0, 800), exit: code };
     if (code === 2)
       return { ok: false, refused: "T0_UNMEASURED", detail: out.trim().slice(0, 400), exit: code };
-    return { ok: true, exit: 0 };
+    // SAME GAP, SAME FIX as probeCapabilities: the old tail returned `{ ok: true, exit: 0 }` —
+    // hardcoding 0 — so a lint that timed out (-1), failed to spawn (127), or died on a signal was
+    // reported as a CLEAN instrument. An unread path must never read as clean.
+    if (code !== 0)
+      return { ok: false, refused: "T0_LINT_FAILED", detail: out.trim().slice(0, 400), exit: code };
+    return { ok: true, exit: code };
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
