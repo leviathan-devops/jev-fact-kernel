@@ -1317,3 +1317,58 @@ append-only, so this entry supersedes the phrase rather than erasing it; `RUNTIM
 gate was reading the code and the docs were reading the *message*. **A claim about what a system
 prevents must name the mechanism that prevents it — "never executed" described a wall I had not
 built, and the probe I wrote to prove the wall was the thing that walked through it.**
+
+## EN-133 · THE ZERO-TRUST AUDIT — my own pressure test, and the probe error it produced
+
+**THE AUDIT'S DISQUALIFIER APPLIED TO MYSELF.** I built this. Per the zero-trust law, *the auditor is
+never the author* — so two BLIND subagents were dispatched with zero build context and told not to
+read my conclusions until they had their own numbers (`BlindReproducer`, `FraudHunter`). This entry
+records MY OWN pass, run in parallel.
+
+### THE EMBELLISHMENT HUNT — the v4.5.1 class, turned on my own report
+
+My report claims **"8 defects fixed and re-proven."** A claimed stat is guilty until re-counted, so I
+grepped the CODE for each fix's signature rather than trusting the prose:
+
+| the claimed fix | the code says |
+|---|---|
+| B-1 the hash floor | `below the 16-char floor` — **PRESENT** |
+| B-2 the fail-closed verdict | `BATTERY UNMEASURED` — **PRESENT** |
+| B-8 the `-1` sentinel | `typeof e.code === "number" ? e.code : -1` — **PRESENT** |
+| B-9 the caller guards | `T4_PROBE_FAILED` + `T0_LINT_FAILED` + `FACT-CHECK FAILED` — **3/3 PRESENT** |
+| B-10 the bypass removed | `FACT_FIREWALL_LSP:-block` — **ABSENT (correctly)** |
+| B-11 the stdout redirect | stdout **0 bytes**, stderr 3594 — **PRESENT** |
+| B-12 the double-zero | `N=${N:-0}` — **PRESENT** |
+| B-13 the overclaim corrected | `NEVER EXECUTED` **absent** from the gate — **PRESENT** |
+
+**8/8 present. No fabricated fix.** The embellishment hunt found no embellishment in the *fix* claims.
+
+### THE PRESSURE TEST — two REAL defects reproduced independently of the gate
+
+**D-1 · `probe_wire` FALSE PASS.** A corpus where the symbol appears ONLY as (a) a substring of a
+longer identifier, (b) a test file, (c) its own definition line:
+```
+  probe_wire("foo", <that corpus>)  ->  PASS  T4_WIRED
+```
+**It reports WIRING for a symbol with no production consumer.** This is the gate's B-6, and it
+reproduces on the real function.
+
+**D-2 · `tier1.ground` FALSE GROUNDED.** `ground("99", "the count was 1999 and the price 19.99")`
+→ `GROUNDED`. **Neither `1999` nor `19.99` is `99`.** This is the gate's B-4, reproduced.
+
+**D-3 · NEW — the comma splits a number.** `1,000 rows` parses to `['1,000', '000']` — one number
+becomes two tokens, and the `000` fragment is a phantom measurement. Not previously reported.
+
+### MY OWN PROBE ERROR — RECORDED, NOT DELETED
+
+I first reported *"tier1 cannot parse a decimal at all"* from `ground("19.99", corpus)` returning
+UNMEASURED. **THE PROBE WAS WRONG.** The tier's contract (its own docstring) grounds *"a measure with
+a unit or a count with a noun"* — a bare `19.99` carries neither, so exclusion is **by design**.
+Re-probed with nouns: `19.99 tests passed` → `['19.99']` — **it parses.** The finding was a
+probe-error, adjudicated per the two-sided law before it shipped. D-3 survives the re-probe.
+
+### WHAT THIS PASS DOES NOT COVER
+
+The two blind auditors' returns had not landed when this entry was written. **Their verdict is the
+one that blesses or breaks the claims** — my own pass is contaminated by authorship and cannot
+stand alone.
