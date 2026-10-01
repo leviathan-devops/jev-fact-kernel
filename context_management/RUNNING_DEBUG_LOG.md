@@ -779,3 +779,40 @@ regression surface, and the only thing that catches it is executing the probe �
 diff. And the second defect is the RECURRING class: a failure signal that is also a success signal
 (exit 1 = lies OR crash; exit 0 = clean OR unread at T0 before FR-10). **Every code that can mean
 two things must be split, or the ambiguity becomes a false verdict.**
+
+## EN-120 · THE CONTROL SET MOVED INTO THE REPO, AND THE BATTERY WENT GREEN
+
+**THE DEFECT THE BATTERY FOUND.** The first full battery run came back `PASS=9 FAIL=1`. The failure
+was T5 — the five-probe controls — and the cause was NOT a probe: it was the CONTROL SET LIVING IN
+`/tmp`. The battery ran `/tmp/probe-run.py`, the ORIGINAL set that used `true` as the "passing
+suite". The probe correctly returned `T4_TEST_UNMEASURED` — `true` prints no pass count — and the
+stale set called it a failure.
+
+**FR-13 says it plainly: the controls ship WITH the kernel.** They were in `/tmp`, which is not
+durable — and this was the SECOND time it bit. The FIRST probe's `/tmp/broken-probe.py` had already
+been deleted between runs, so a T0 control re-ran `clean` and nearly got published as a pass.
+
+**THE MOVE.** `fixtures/probe-controls.py` (66 lines) now carries all 16 controls: the five probes
+driven both ways, with REAL mini runners instead of `true`, a temp dir for the spec/wire fixtures,
+and every expected verdict named. The battery runs the in-repo set. `/tmp` is no longer load-bearing.
+
+**THE BATTERY, GREEN:**
+
+```
+  T0 POS   fixtures/broken-probe.py     exit=1   token FACT-FIREWALL T0 BLOCK x1
+  T0 NEG   fixtures/clean-probe.py      exit=0
+  T0 UNREAD /tmp/NOPE.py                exit=2
+  T0 SELF  kernel/                      exit=0
+  T4 ADV   lying (declares 23)          exit=1   token FACT-FIREWALL T4 BLOCK  LIES x23
+  T4 ADV   honest (declares 0)          exit=0
+  T5       the five probes, 16 controls exit=0   PROBE CONTROLS: 16/16
+  BRAIN    the cascade, 8 spans         exit=0   PASS-1: 8/8
+  T3       the ledger                   rows=121  lies=115
+  GATE     scripts-spec-gate.sh         present + executable
+
+  PASS=10  FAIL=0  UNMEASURED=0   ★ BATTERY GREEN
+```
+
+**LESSON.** A control that lives outside the repo is a control that can be deleted by anything, and
+its absence reads as a pass. The instrument and its controls are ONE artifact; shipping them apart
+ships an instrument whose silence has two meanings.
