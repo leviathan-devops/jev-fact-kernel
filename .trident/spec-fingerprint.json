@@ -1,0 +1,7 @@
+{
+  "spec": "specs/DPL1_JEV_FACT_KERNEL.md",
+  "specSha16": "1f0339511782204f",
+  "gate": "every commit touching kernel/ or extensions/fact-firewall/ MUST cite a FR id",
+  "pattern": "(FR-[0-9]+|SC[0-9]+)",
+  "selfAudit": "bash scripts/spec-gate.sh"
+}

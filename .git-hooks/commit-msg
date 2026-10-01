@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# THE SPEC GATE, on the commit-msg carrier — the message is visible here, unlike pre-commit.
+set -uo pipefail
+exec bash "$(git rev-parse --show-toplevel)/scripts-spec-gate.sh" --staged "$1"
