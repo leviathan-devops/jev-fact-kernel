@@ -41,6 +41,21 @@ echo "── THE BRAIN · the router cascade (ST-302) ──"
 t "the cascade, 8 spans"               0 python3 kernel/router.py
 printf "        %s\n" "$(tail -2 /tmp/batt-out | head -1)"
 echo ""
+echo "── T1 GROUNDING · the number-producer check ──"
+cat > /tmp/t1c.txt <<'CORP'
+PASS=13  FAIL=0  UNMEASURED=0
+265 rows
+CASCADE ACCURACY: 8/8
+LIES (23)
+CORP
+python3 kernel/tier1-grounding.py /tmp/t1c.txt "it reports 13 pass, 0 fail, 265 rows and 8/8" >/dev/null 2>&1
+[ $? = 0 ] && { printf "  PASS  %-46s numbers present -> GROUNDED\n" "T1a"; PASS=$((PASS+1)); } || { printf "  FAIL  T1a\n"; FAIL=$((FAIL+1)); }
+python3 kernel/tier1-grounding.py /tmp/t1c.txt "it found 417 defects in 92 files" >/dev/null 2>&1
+[ $? = 1 ] && { printf "  PASS  %-46s phantom numbers -> UNGROUNDED\n" "T1b"; PASS=$((PASS+1)); } || { printf "  FAIL  T1b\n"; FAIL=$((FAIL+1)); }
+python3 kernel/tier1-grounding.py /tmp/t1c.txt "everything works" >/dev/null 2>&1
+[ $? = 2 ] && { printf "  PASS  %-46s no number -> UNMEASURED\n" "T1c"; PASS=$((PASS+1)); } || { printf "  FAIL  T1c\n"; FAIL=$((FAIL+1)); }
+
+echo ""
 echo "── ST-403 · THE WORKER-RETURN AUDIT ──"
 printf 'I built `kernel/ledger.py` and it records every verdict.\n' | python3 kernel/audit-return.py >/dev/null 2>&1
 [ $? = 0 ] && { printf "  PASS  %-46s an existing artifact -> ACCEPTED\n" "ST-403a"; PASS=$((PASS+1)); } || { printf "  FAIL  ST-403a\n"; FAIL=$((FAIL+1)); }

@@ -887,3 +887,35 @@ the CLI" — the phantom-artifact claim, refused against the disk.
 
 **W4 IS COMPLETE.** ST-401 (the LSP refusal), ST-402 (the tool_call guard), ST-403 (the return
 audit) — all three wired surfaces, each driven both ways, none gating prose.
+
+## EN-123 · T1 — the grounding check, WITH ITS BOUNDARY PROVEN RATHER THAN CLAIMED
+
+**WHAT IT DOES.** Extracts every ASSERTION-SHAPED number from a claim and looks for a producer in
+the tool results that preceded it. A number with a producer is GROUNDED; a number in NO tool result
+is UNGROUNDED. Only assertion-shaped numbers are extracted — a measure with a unit or a count with
+a noun — because a rule that fires on "the 2026 build" is a rule that misfires (the EN-115 lesson,
+applied before the fact this time).
+
+**DRIVEN BOTH WAYS — 3/3:**
+
+```
+  T1a  the corpus carries 13 / 0 / 265 / 8/8  -> GROUNDED    exit 0
+  T1b  a claim asserting 417 defects, 92 files-> UNGROUNDED  exit 1
+  T1c  a claim with no number                 -> UNMEASURED  exit 2   (NOT a pass)
+```
+
+**THE BOUNDARY, PROVEN — THE IMPORTANT PART.** T1 was driven against THE MOTIVATING INCIDENT
+ITSELF:
+
+```
+  the claim:  "luxalgo takes 9.99s to reach tools/list"
+  the corpus: a probe printed "9.99s elapsed"
+  VERDICT:    GROUNDED  [EXIT=0]     <-- T1 PASSES IT
+```
+
+**T1 CANNOT CATCH THE BYTE-READ CLASS, and the kernel says so.** The number was PRESENT in a tool
+output; the OUTPUT was wrong, not absent. T0 catches that one, before the number exists.
+
+This is the DPL1's §10 residual made executable: a tier that claimed to catch the class it cannot
+catch would be the exact failure the kernel exists to kill. **The boundary is a test, not a
+footnote.**
