@@ -164,6 +164,7 @@ if __name__ == "__main__":
     # every fixture's ledger row claimed to be the live server — a row that names the WRONG
     # SUBJECT is worse than no row: it makes the evidence unusable for audit.
     label = pathlib.Path(root).resolve().name or "unknown"
+    label, declared, lies, oks = probe(cmd, root, label)   # THE CALL — restored
     if declared is None:
         print(f"FACT-FIREWALL T4: {lies}"); sys.exit(2)
     print(f"  ADVERTISED CAPABILITIES: {len(declared)}")

@@ -1,0 +1,119 @@
+// fact-firewall — the Jev fact kernel's LSP-registration gate + the tool_call guard.
+//
+// WIRED ON THE CARRIER THAT CAN SEE THE SUBJECT (the carrier law):
+//   · LSP REGISTRATION is where a capability reply becomes a TRUSTED server. T4-CAP runs there,
+//     BEFORE the server is trusted, so a lying server never injects a single diagnostic.
+//   · tool_call arguments are where a claimed artifact becomes a shell command. T0 + T4-FILE/HASH
+//     run there, BEFORE execution.
+//
+// D1 (the spec's stated default): REFUSE. A server that declares a capability it does not
+// implement is refused registration. The behaviour is CONFIGURABLE via FACT_FIREWALL_LSP so the
+// alternative (WARN) is a one-line change if the operator rules it.
+//
+// THE POLARITY LAW: the LSP REPORTS; the HOOK REFUSES. This extension NEVER gates prose.
+import { existsSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
+
+const KERNEL = process.env.FACT_FIREWALL_KERNEL ||
+  "/home/leviathan/JARVIS_WORKSPACE/worktrees/jev-fact-kernel/kernel";
+const MODE = (process.env.FACT_FIREWALL_LSP || "refuse").toLowerCase();   // refuse | warn
+
+function run(cmd: string[], timeoutMs = 120_000): Promise<{ code: number; out: string; err: string }> {
+  return new Promise((res) => {
+    execFile(cmd[0], cmd.slice(1), { timeout: timeoutMs, maxBuffer: 8_000_000 },
+      (e: unknown, out: string, err: string) => res({ code: (e as { code?: number })?.code ?? 0, out: out || "", err: err || "" }));
+  });
+}
+
+/** T4-CAP — probe the claimed capabilities against the wire. */
+export async function probeCapabilities(serverRoot: string, argv: string[]) {
+  const probe = resolve(KERNEL, "tier4-lsp-capability-probe.py");
+  if (!existsSync(probe)) {
+    return { ok: false, refused: "T4_PROBE_MISSING", detail: `no probe at ${probe}` };
+  }
+  const { code, out, err } = await run(["python3", probe, serverRoot, ...argv]);
+  if (code === 2) {
+    // UNMEASURED — the server never answered. NOT a pass. (The fail-closed law.)
+    return { ok: false, refused: "T4_UNMEASURED", detail: out.trim().slice(0, 400), exit: code };
+  }
+  if (code === 1) {
+    const lies = (out.match(/^\s+LIE\s+/gm) || []).length;
+    // ── A CRASH IS NOT A FINDING. Exit 1 is BOTH "lies found" and "the probe raised" — a
+    // NameError returns 1 with no LIE lines. Treating the crash as a finding blocked an HONEST
+    // server in ST-401. A finding must carry its evidence: the LIE lines. No lines, no finding.
+    if (lies === 0) {
+      return { ok: false, refused: "T4_PROBE_CRASHED",
+               detail: (err || out).trim().slice(0, 400), exit: code };
+    }
+    return { ok: false, refused: "T4_LSP_CAPABILITY_LIE", lies, detail: out.trim().slice(0, 1200), exit: code };
+  }
+  return { ok: true, detail: out.trim().slice(0, 200), exit: code };
+}
+
+/** T0 — lint the measurement code a tool_call is about to run. */
+export async function lintInstrument(command: string) {
+  const lint = resolve(KERNEL, "tier0-instrument-lint.py");
+  if (!existsSync(lint)) return { ok: false, refused: "T0_LINT_MISSING", detail: lint };
+  // The lint reads FILES; a command string is scanned by writing it to a temp file.
+  const d = mkdtempSync(resolve(tmpdir(), "ff-t0-"));
+  const f = resolve(d, "cmd.py");
+  try {
+    writeFileSync(f, command);
+    const { code, out } = await run(["python3", lint, f]);
+    if (code === 1) return { ok: false, refused: "T0_INSTRUMENT_DEFECT", detail: out.trim().slice(0, 800), exit: code };
+    if (code === 2) return { ok: false, refused: "T0_UNMEASURED", detail: out.trim().slice(0, 400), exit: code };
+    return { ok: true, exit: 0 };
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+}
+
+export default function (pi: {
+  zod: { object: Function; string: Function; number: Function; boolean: Function; enum: Function };
+  setLabel: (s: string) => void;
+  registerTool: (t: Record<string, unknown>) => void;
+  on?: (event: string, fn: (e: unknown) => unknown) => void;
+}) {
+  const z = pi.zod;
+  pi.setLabel(`fact firewall (LSP mode: ${MODE})`);
+
+  // ── THE LSP REGISTRATION GATE — the carrier that can see the capability reply ────────────────
+  if (typeof pi.on === "function") {
+    pi.on("lsp_registration", async (e: unknown) => {
+      const ev = e as { root?: string; argv?: string[]; serverName?: string };
+      if (!ev?.root || !ev?.argv) return undefined;
+      const r = await probeCapabilities(ev.root, ev.argv);
+      if (r.ok) return undefined;
+      if (MODE === "warn") {
+        console.error(`FACT-FIREWALL T4 WARN: ${r.refused} (LSP mode=warn, registering anyway)`);
+        return undefined;
+      }
+      return { block: true, reason:
+        `FACT-FIREWALL T4 BLOCK: ${r.refused}. ${r.lies ? `${r.lies} advertised capabilities answered -32601. ` : ""}` +
+        `The initialize reply is a FALSE CAPABILITY DECLARATION. Implement the method, or remove the ` +
+        `capability from the reply. (Set FACT_FIREWALL_LSP=warn to register anyway.)` };
+    });
+  }
+
+  // ── THE TOOL-CALL GUARD — the carrier that can see the ARGUMENTS ─────────────────────────────
+  pi.registerTool({
+    name: "fact-check",
+    label: "fact-check",
+    description:
+      "Run the Jev fact kernel against a subject: a claimed artifact (T4-FILE), a hash (T4-HASH), " +
+      "a capability wire (T4-CAP), a suite (T4-TEST), a spec section (T4-SPEC), a symbol's " +
+      "consumers (T4-WIRE), or a command's measurement code (T0). Use BEFORE asserting a claim.",
+    parameters: z.object({
+      i: z.string().describe("one line: the claim being checked"),
+      kind: z.enum(["FILE", "HASH", "CAP", "TEST", "SPEC", "WIRE", "T0"]).describe("which subject"),
+      subject: z.string().describe("the path, symbol, root, or command"),
+      claimed: z.string().optional().describe("HASH: the claimed value. TEST: the claimed pass count"),
+    }),
+    async execute(_id: string, p: { i?: string; kind: string; subject: string; claimed?: string }) {
+      const { out } = await run(["python3", resolve(KERNEL, "tier4-probes.py"), p.kind, p.subject, p.claimed || ""]);
+      return { content: [{ type: "text" as const, text: out || "(no output)" }], details: { kind: p.kind } };
+    },
+  });
+}

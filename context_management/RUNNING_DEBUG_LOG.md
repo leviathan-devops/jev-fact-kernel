@@ -727,3 +727,55 @@ that describes non-discrimination will report a pass for any question at all. An
 class has now appeared three times in one session — the instrument's flaw and the conclusion
 pointing the same way — which is exactly why the control set is read by eye before any number is
 published.
+
+## EN-119 · THE PROBE HAD BEEN CRASHING SINCE dc35064 — and the gate called the crash a finding
+
+**SYMPTOM.** ST-401 drove the extension's LSP gate against both fixtures. BOTH were blocked — the
+HONEST server included, which declares nothing and should register.
+
+**DEFECT A — MY OWN EDIT BROKE THE PROBE.** The label fix in `dc35064` replaced
+
+    label, declared, lies, oks = probe(cmd, root, "plutus-lsp")
+
+with a bare assignment
+
+    label = pathlib.Path(root).resolve().name or "unknown"
+
+— **dropping the `probe()` CALL**. `declared` was never bound, so every invocation raised
+
+    NameError: name 'declared' is not defined     [at line 167]   [EXIT=1]
+
+**THE PROBE WAS BROKEN FOR THE WHOLE SPAN BETWEEN `dc35064` AND THIS FIX**, and the "13/13" FR-5
+run and the adversarial proof were taken BEFORE that edit. **I edited and did not re-drive.** That
+is the asserting-scripted-edits failure: an unasserted replace is a silent no-op or a silent
+breakage, and the only defence is re-running the subject.
+
+**DEFECT B — THE EXTENSION COULD NOT TELL A CRASH FROM A FINDING.** The gate read exit 1 as
+"lies found". A `NameError` also returns 1 — **with no LIE lines.** So a crash was reported as a
+capability lie and an honest server was refused.
+
+- **The fix:** a LIE verdict now REQUIRES its evidence — the LIE lines. Zero lines plus exit 1 is
+  `T4_PROBE_CRASHED`, a distinct refusal, and it does NOT block registration.
+- **The law this encodes:** a finding must carry the evidence that constitutes it. An exit code is
+  not a finding; the code plus its lines is.
+
+**THE RE-DRIVEN CONTROLS (after both fixes):**
+
+```
+  fixtures/honest-server   exit=0  want=0     60ms  lies=0     PASS
+  fixtures/lying-server    exit=1  want=1    169ms  lies=23    PASS
+```
+
+**THE EXTENSION'S GATE, BOTH WAYS:**
+
+```
+  LYING  -> block=true          refused=T4_LSP_CAPABILITY_LIE
+  HONEST -> block=undefined     (REGISTERED)
+  ★ DISCRIMINATION: PASS
+```
+
+**LESSON.** Every fix re-runs its subject. A one-line edit to a probe's entry point is a full
+regression surface, and the only thing that catches it is executing the probe — not reading the
+diff. And the second defect is the RECURRING class: a failure signal that is also a success signal
+(exit 1 = lies OR crash; exit 0 = clean OR unread at T0 before FR-10). **Every code that can mean
+two things must be split, or the ambiguity becomes a false verdict.**
