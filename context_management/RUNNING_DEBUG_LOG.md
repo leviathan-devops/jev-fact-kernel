@@ -1058,3 +1058,69 @@ one this build keeps finding: *a gate behind an exit is not a gate.*
 first's carrier or it is lost. And the chain's INSERTION POINT is load-bearing: appending to a
 script whose last statement is `exit 0` writes dead code. **Drive the chain both ways or you will
 not know which one you wrote.**
+
+## EN-127 · THE HOOK THAT WAS A NO-OP — `lsp_registration` does not exist, and the carrier that does
+
+**SYMPTOM.** The extension binds `pi.on("lsp_registration", …)` at index.js:60, and the LSP gate
+read as DONE. The gate had been driven through the extension's own harness — 5/5, tokens present —
+and reported green.
+
+**ROOT CAUSE (measured, not theorized).** The name is not a runtime event. Two independent reads:
+
+```
+grep -rl 'lsp_registration' <the shipped runtime>   ->  0 files
+THE PLUGIN HOOK UNION (the authoritative type):
+  agent_start · agent_end · before_agent_start · before_provider_request · after_provider_response
+  message_start · message_end · message_update
+  session_start · session_stop · session_shutdown · session_switch · session_branch · session_compact · session_tree
+  tool_call · tool_result · ttsr_triggered
+"lsp" in the plugin extensibility surface: ONE hit — `lspServers?:` in MARKETPLACE types. NOT A HOOK.
+```
+
+A handler bound to an unknown name never fires. **The gate was a NO-OP on the real host** — the same
+class the kernel exists to catch, written into the kernel itself. The HARNESS did not catch it
+because the harness *called the handler directly*: it tested the handler's logic, never its BINDING.
+**A harness that invokes the handler bypasses the only thing that can be wrong.**
+
+**THE FIX — the CARRIER LAW applied.** *A check runs on the carrier that can see its subject.*
+Nothing in the plugin API sees an LSP registration, but omp's `lsp.json` carries a `command` it
+SPAWNS — and that command IS the registration. omp already wraps server commands natively
+(`lsp/lspmux.d.ts:35 LspmuxWrappedCommand {command,args,env}`). `bin/lsp-gate` is that pattern
+carrying a probe:
+
+```
+  lsp.json:  "plutus-lsp": { "command": "<kernel>/bin/lsp-gate",
+                             "args": ["bun", "…/plutus-lsp.ts", "--stdio"] }
+  lsp-gate:  probe -> BLOCK = print + ledger + exit non-zero, `exec` NEVER reached
+                     PASS  = `exec "$@"` — this process BECOMES the server, zero overhead
+                     UNREAD= exit 2, never clean
+```
+
+**ENFORCEMENT BY ABSENCE:** a refused server never execs, so it never completes `initialize`, so it
+never registers. There is no state to clean up because the process never existed.
+
+**VERIFICATION — the live wire, not the bench.**
+
+| tier | the command | the output | verdict |
+|---|---|---|---|
+| T2 | spawn the lying server through the INSTALLED `lsp.json` command | `[EXIT=1]` · `FACT-FIREWALL T4 BLOCK: 23 advertised capabilities answered -32601` · `registration REFUSED — the server was NEVER EXECUTED.` | PASS |
+| T2 | `ps -eo pid,cmd \| grep -c '[s]erver.ts --stdio'` | `0` | PASS |
+| T3 | `tail -1 ~/.omp/run/fact-firewall.jsonl` | `Pattern:"T4_LSP_CAPABILITY_LIE"` · `capability:"colorProvider"` · `method:"textDocument/documentColor"` · `code:-32601` | PASS |
+| live | the REAL `plutus-lsp` through the gate | `[EXIT=0]` · `LIES (0)` · `every advertised capability answered` | PASS |
+
+**INSTALLED:** all three live servers (`gi-lsp`, `plutus-lsp`, `jg-lsp`) now spawn through the gate.
+A lying server cannot register on this host.
+
+**A SECOND DEFECT, IN MY OWN INSTALLER.** The first install read `cfg["command"]` at the TOP level
+and reported `gated: []` — a silent no-op. The live shape is `{"servers": {name: {command, args}}}`
+with command and args SPLIT. The installer now asserts its own effect (`assert c['command'].endswith('lsp-gate')`)
+so a shape mismatch is LOUD.
+
+**LESSON.** A hook is only as real as the runtime's willingness to emit its name — **grep the
+runtime's event union before binding one.** And a harness that calls a handler directly tests the
+handler, never the binding; **the binding is testable only through the real carrier.** When no hook
+can see the subject, the carrier is the COMMAND.
+
+**CONFIDENCE 1.0 IN THE LEDGER, NAMED.** That field is not a threshold — nothing was judged. It is a
+mechanical COMPARISON: the server declared 23 capabilities, answered 23 with -32601. A comparison
+with no judgment needs no derived cut; a threshold would.
