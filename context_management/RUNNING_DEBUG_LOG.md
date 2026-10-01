@@ -1275,3 +1275,45 @@ And the predicate table: `-1`, `127`, `3` all changed verdict from `ok:true` to 
 **LESSON.** When a fix changes what a function RETURNS, the callers are part of the fix. The gate
 that re-reads the whole file catches it in one round; the gate that reads only the diff would have
 shipped it.
+
+## EN-132 · THE OVERCLAIM THE GATE CAUGHT — "never executed" was false, and my own probe said so
+
+**THE CLAIM I PUBLISHED.** The gate's message, this build report, the testing log and the runtime
+seat all carried: *"registration REFUSED — the server was NEVER EXECUTED."* It was the sentence the
+whole enforcement-by-absence argument rested on.
+
+**THE FINDING** (4th gate run, `session=c35c24a2`, critical): *"TOCTOU + probe executes the payload:
+enforcement-by-absence is false. `python3 $PROBE` does `Popen(cmd, cwd=root)` and speaks LSP
+`initialize` to the real server, so a malicious server already runs arbitrary code once during
+probing even when the gate later BLOCKs."*
+
+**IT IS CORRECT, AND MY OWN SOURCE SAYS SO.**
+
+```
+kernel/tier4-lsp-capability-probe.py:110
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, …)
+```
+
+**The probe EXECUTES the server to interrogate it.** That is how a capability probe works — it must
+speak `initialize` to the thing it is testing. So the server runs **once**, before any verdict.
+
+**THE CORRECTED CLAIM.**
+
+| what I said | what is true |
+|---|---|
+| "the server was NEVER EXECUTED" | the server runs **once**, under the probe's `Popen`, to be interrogated |
+| "enforcement by absence" | enforcement by **withheld registration** — the gate never `exec`s it as the live LSP |
+
+**What the gate actually withholds:** the long-lived client session, the editor wiring, the
+capability advertisement to any consumer. **A hostile server is not prevented from RUNNING; it is
+prevented from being ADOPTED.** That is a real and useful guarantee — and it is a smaller one than
+the sentence I shipped.
+
+**THE CORRECTION, APPLIED** to `bin/lsp-gate`'s message and recorded here. `RUNNING_DEBUG_LOG` is
+append-only, so this entry supersedes the phrase rather than erasing it; `RUNTIME_SEAT.md` §7 and
+`BUILD_REPORT.md` carry the corrected wording in their next revision.
+
+**LESSON.** The claim was stronger than the mechanism, and it survived three gate runs because the
+gate was reading the code and the docs were reading the *message*. **A claim about what a system
+prevents must name the mechanism that prevents it — "never executed" described a wall I had not
+built, and the probe I wrote to prove the wall was the thing that walked through it.**

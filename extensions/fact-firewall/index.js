@@ -133,8 +133,18 @@ function ff_default(pi) {
       claimed: z.string().optional().describe("HASH: the claimed value. TEST: the claimed pass count")
     }),
     async execute(_id, p) {
-      const { out } = await run(["python3", resolve(KERNEL, "tier4-probes.py"), p.kind, p.subject, p.claimed || ""]);
-      return { content: [{ type: "text", text: out || "(no output)" }], details: { kind: p.kind } };
+      const { code, out, err, signal } = await run(["python3", resolve(KERNEL, "tier4-probes.py"), p.kind, p.subject, p.claimed || ""]);
+      // THE CALLER GAP, THIRD SITE. This destructured only `out` and returned `out || "(no output)"`,
+      // so a crashed or timed-out probe read as a BENIGN check result — and the agent would assert an
+      // unchecked claim believing the kernel had spoken. A check that cannot fail is not a check.
+      if (code !== 0) {
+        const why = (err || out || "").trim().slice(0, 300) || "no diagnostic output";
+        return {
+          content: [{ type: "text", text: `FACT-CHECK FAILED (exit ${code}${signal ? ", signal " + signal : ""}): the kernel did not complete — the claim is UNCHECKED. ${why}` }],
+          details: { kind: p.kind, code, signal, failed: true }
+        };
+      }
+      return { content: [{ type: "text", text: out || "(no output)" }], details: { kind: p.kind, code: 0 } };
     }
   });
 }

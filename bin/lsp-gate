@@ -61,7 +61,14 @@ if [ "$RC" -ne 0 ] || printf '%s' "$OUT" | grep -q 'T4 BLOCK'; then
   # stdout is the LSP protocol channel — the probe's text goes to STDERR so a captured stdout
   # can never be parsed as JSON-RPC by the client. (`bin/lsp-gate:63` finding.)
   printf '%s\n' "$OUT" >&2
-  echo "FACT-FIREWALL T4: registration REFUSED — the server was NEVER EXECUTED." >&2
+  # THE CLAIM, CORRECTED (the gate-audit's sharpest finding). This once read "the server was NEVER
+  # EXECUTED" — FALSE, and my own probe disproves it: `tier4-lsp-capability-probe.py:110` does a
+  # `subprocess.Popen(cmd, …)` and speaks LSP `initialize` to the server to interrogate it. THE
+  # SERVER RUNS ONCE, under the probe, before any verdict. What the gate withholds is the LIVE
+  # REGISTRATION: no long-lived client session, no editor wiring, no capability advertisement to a
+  # consumer. A hostile server is not prevented from running — it is prevented from being ADOPTED.
+  echo "FACT-FIREWALL T4: registration REFUSED — the server gets no live registration (it ran once" >&2
+  echo "  under the probe; what it never gets is the client session and the capability surface)." >&2
   exit 1
 fi
 exec "$@"
