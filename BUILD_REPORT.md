@@ -397,3 +397,137 @@ The `pi.on("lsp_registration")` binding in `extensions/fact-firewall/` is **iner
 only as the record of the finding. The gate lives in `bin/lsp-gate`, on a carrier that can see its
 subject. The extension's `tool_call` and `tool_result` bindings are unaffected — those two names ARE
 in the runtime's union.
+
+---
+
+## THE MULTI-PROJECT ENROLLMENT — the kernel running two projects
+
+### WHAT WAS DONE
+
+This worktree was enrolled as `jarvis-upper`'s **second project** — which IS the multi-project runtime
+test: one kernel, two projects, disjoint stores, independent arms.
+
+```
+bun src/cli.ts enroll <worktree> jev-fact-kernel leviathan-devops jev-fact-kernel GH_TOKEN
+```
+
+The enrollment copied `gates/` (6 scripts), `.githooks/` (8 files incl. 4 lib scanners),
+`.github/workflows/{drift,gates}.yml`, and a package into this tree, then wrote its registry.
+
+### THE MEASURED RESULT
+
+```
+bun src/cli.ts projects          enrolled=2  issues=0
+  jev-fact-kernel   armed=ARMED
+  jarvis-upper      armed=ARMED
+
+journalctl {"started":true, counts:{armed:1, dark:1, enrolled:2}}
+  jev-fact-kernel   NOT-ARMED:TARGET:TARGET-NO-ORIGIN
+  jarvis-upper      ARMED:leviathan-devops/jarvis-upper
+```
+
+**The kernel runs two projects and published a NAMED REFUSAL for this one** —
+`TARGET-NO-ORIGIN: this tree has no origin remote — the target cannot be verified`. That is the
+fail-closed law observed on the live kernel: a dark project produces a loud, named refusal, never a
+green. **The enrollment daemon did not crash on the second project and dropped neither.**
+
+### THE HOOK-CHAIN CONFLICT — two gates, one `core.hooksPath`
+
+`core.hooksPath` permits **exactly one** directory. The enrollment ships `.githooks/`; this kernel's
+spec gate lives at `.git-hooks/`. The APPEND's step 5 (`git config core.hooksPath .githooks`) would
+have **displaced** the FR-citation check — a silent loss, discovered only by an unstamped commit
+landing.
+
+**THE FIX — CHAIN, NEVER DISPLACE.** The enrollment's own comment named the carrier: *"prepare-commit-msg
+is the absolute anchor"* (it fires where `commit-msg` cannot — `--no-verify` bypasses the latter). The
+spec gate chains there, **after** the enrollment's semantic-prefix and W-8 claim-evidence checks:
+
+```
+prepare-commit-msg:
+  1 · the enrollment's semantic-prefix check
+  2 · the enrollment's W-8 claim-evidence check
+  3 · THE KERNEL'S SPEC GATE   <- chained, before the exit
+  exit 0
+```
+
+**A DEFECT IN THAT FIX, CAUGHT BY DRIVING IT.** The first attempt **appended** the block — and the
+script **ends with `exit 0`**. The block was unreachable; both ways returned 0. **A gate behind an
+exit is not a gate.** Re-fixed by inserting before the exit, with the reason left in the code.
+
+**DRIVEN BOTH WAYS AFTER THE RE-FIX:**
+```
+NEG  a staged kernel change, no FR id  ->  SPEC-GATE REFUSE  [EXIT=1]
+POS  the same change, "— FR-10"        ->  SPEC-GATE PASS    [EXIT=0]
+```
+
+### WHAT THE ENROLLMENT'S GATES CAUGHT IN THIS TREE
+
+The chained gates are not decorative — they refused three real defects during this session:
+
+| the gate | what it refused | the fix |
+|---|---|---|
+| W-9 (doc density) | `RUNTIME_SEAT.md` 26 lines, 0 anchors | rewritten to 268 lines, 7 anchors |
+| W-9 (again) | `.js:60` and `.py` anchors do not match its `(ts\|md\|json\|sh\|yml)` alternation | added real anchors in the counted classes; the gate's own defect recorded as F-9 |
+| W-8 (claim evidence) | a commit body carrying a claim word and no artifact | the artifact added (`ps` count, ledger row, exit codes) |
+
+**A gate that has never refused anything has never been tested.** These refused three times, each time
+correctly, and each refusal named its remedy.
+
+---
+
+## THE FR MAP — what each requirement landed, and where its evidence lives
+
+| FR | what it required | where it landed | its evidence |
+|---|---|---|---|
+| FR-1 | the ledger row shape | `kernel/ledger.py` | `~/.omp/run/fact-firewall.jsonl`, 626 rows |
+| FR-2 | T0's instrument lint | `kernel/tier0-instrument-lint.py` | `fixtures/broken-probe.py` → exit 1 |
+| FR-3 | the grounding check | `kernel/tier1-grounding.py` | the battery's T1 rows |
+| FR-4 | the comparative brain | `kernel/tier2-comparative.py` | the battery's Q2 rows |
+| FR-5 | the router | `kernel/router.py` | the battery's span-set row |
+| FR-6 | the six T4 probes | `kernel/tier4-probes.py` | `fixtures/lying-server` → BLOCK |
+| FR-7 | the worker-return audit | `kernel/audit-return.py` | the battery's return row |
+| FR-8 | the twelve canon docs | `context_management/` | the canon index below |
+| FR-9 | the five ship docs | this file and its four siblings | the floors, measured |
+| FR-10 | the Q3 rewrite gap | `kernel/q3-control.py` | the battery's Q3 row |
+| FR-11 | the TTSR filing (never blocks) | the rules surface | the polarity law |
+| FR-12 | the LSP capability probe | `kernel/tier4-lsp-capability-probe.py` | 23 lies, exit 1 |
+| FR-13 | the fail-closed law | every probe's unread path | exit 2 on `/tmp/NOPE.py` |
+| FR-14 | the derived threshold | the Q2 cut and its controls | `kernel/q3-control.py` |
+| FR-15 | the container/host test | **the live wire this session** | `RUNTIME_SEAT.md` |
+| FR-16 | the docs contract | the 12 canon + 5 ship | the floors, measured |
+
+---
+
+## THE CANON INDEX — the twelve, and what each holds
+
+| doc | what it carries |
+|---|---|
+| `CURRENT_STATE.md` | the architecture as it now is |
+| `BUILD_STATE.md` | the dist sha and the battery numbers |
+| `CHANGELOG.md` | the appended wave history |
+| `EVIDENCE_STATE.md` | per-tier evidence: BUILT vs designed |
+| `DECISION_CHAIN.md` | the rulings and their reasons |
+| `NEXT_STEPS.md` | the next step number |
+| `TASK_QUEUE.md` | the queued work |
+| `POST-COMPACTION_PROMPT.md` | the resume point |
+| `COMPACTION_SURVIVAL.md` | the session record |
+| `RUNNING_DEBUG_LOG.md` | every bug, root cause, fix, lesson |
+| `RUNTIME_SEAT.md` | where the kernel was driven, and what the seat caught |
+| `CANON_MANIFEST.md` | the index and the floors |
+
+---
+
+## THE HONEST REMAINDER — what this build does NOT claim
+
+1. **A real omp session spawning a gated LSP.** The gate was driven through the installed `lsp.json`
+   command from a shell; omp's own LSP client did not perform the spawn. The next session opening a
+   `.ts` file exercises it (`RUNTIME_SEAT.md` §7).
+2. **`gi-lsp` and `jg-lsp` individually driven.** Both gated and asserted; only `plutus-lsp` was
+   driven on the live wire.
+3. **The kill path under load.** Concurrency, a mid-probe hang, and the probe's own timeout were not
+   exercised live.
+4. **The enrollment is locally complete, not armed.** `TARGET-NO-ORIGIN` — the worktree has no git
+   origin and `leviathan-devops/jev-fact-kernel` does not exist. Arming needs a repo that exists;
+   creating one is outward and was not ruled.
+5. **`pi.on("lsp_registration")` remains in the extension as the record of the finding.** It is inert;
+   `bin/lsp-gate` is the live gate.
