@@ -65,8 +65,11 @@ printf 'I reviewed the design.\n' | python3 kernel/audit-return.py >/dev/null 2>
 [ $? = 2 ] && { printf "  PASS  %-46s no artifact claim -> UNMEASURED\n" "ST-403c"; PASS=$((PASS+1)); } || { printf "  FAIL  ST-403c\n"; FAIL=$((FAIL+1)); }
 
 echo "── T3 LEDGER ──"
-N=$(wc -l < ~/.omp/run/fact-firewall.jsonl 2>/dev/null || echo 0)
-L=$(grep -c 'T4_LSP_CAPABILITY_LIE' ~/.omp/run/fact-firewall.jsonl 2>/dev/null || echo 0)
+N=$(wc -l < ~/.omp/run/fact-firewall.jsonl 2>/dev/null); N=${N:-0}
+# `grep -c` on a MISSING file PRINTS 0 and EXITS 1 — so `|| echo 0` appended a SECOND 0 and the
+# variable became "0\n0". PROVEN: L=[0<newline>0]. Any later `[ "$L" -gt ... ]` then errors or
+# mis-reads. Assign, then default. (The gate-audit's battery.sh:68 finding.)
+L=$(grep -c 'T4_LSP_CAPABILITY_LIE' ~/.omp/run/fact-firewall.jsonl 2>/dev/null); L=${L:-0}
 if [ "$N" -gt 0 ]; then printf "  PASS  %-46s rows=%s lies=%s\n" "the ledger carries rows" "$N" "$L"; PASS=$((PASS+1))
 else printf "  UNM   %-46s the ledger is empty\n" "the ledger"; UNM=$((UNM+1)); fi
 echo ""

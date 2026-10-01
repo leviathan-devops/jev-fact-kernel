@@ -40,31 +40,28 @@ if [ ! -f "$PROBE" ]; then
   exit 2
 fi
 
-# The probe runs against the server that WOULD have run. FACT_FIREWALL_LSP=warn flips the
-# posture for a server under repair — the refusal is still ledgered, the registration proceeds.
-MODE="${FACT_FIREWALL_LSP:-block}"
+# NO DOWNGRADE BY ENVIRONMENT (the gate-audit CRITICAL). This gate previously honoured
+# `FACT_FIREWALL_LSP=warn`, which flip the posture to ledger-and-register. THE DEFECT: the env is
+# INHERITED BY THE SERVER BEING GATED — so a lying server, or anything that owns its launch
+# environment, could set `warn` and neuter its own gate. A fail-closed gate is not downgrade-able
+# by a variable its own subject controls.
+#
+# THE REPAIR IS NOT A VARIABLE. To run a server through this gate while it is under repair, edit
+# the `command` in lsp.json — an action only the operator's own hand performs, on a file the
+# server does not write. fail-closed is the posture; the alternative is a documented edit.
 OUT="$(python3 "$PROBE" "$ROOT" "$@" 2>&1)"
 RC=$?
 
-case "$MODE" in
-warn)
-  if [ "$RC" -ne 0 ]; then
-    printf '%s\n' "$OUT" | sed 's/^/  /' >&2
-    echo "FACT-FIREWALL T4 WARN: registering anyway (FACT_FIREWALL_LSP=warn)." >&2
-  fi
-  exec "$@"
-  ;;
-*)
-  if [ "$RC" -eq 2 ] || printf '%s' "$OUT" | grep -q 'UNREAD'; then
-    printf '%s\n' "$OUT" >&2
-    echo "FACT-FIREWALL T4: the probe could not READ the server. Refusing to register UNVERIFIED." >&2
-    exit 2
-  fi
-  if [ "$RC" -ne 0 ] || printf '%s' "$OUT" | grep -q 'T4 BLOCK'; then
-    printf '%s\n' "$OUT"
-    echo "FACT-FIREWALL T4: registration REFUSED — the server was NEVER EXECUTED." >&2
-    exit 1
-  fi
-  exec "$@"
-  ;;
-esac
+if [ "$RC" -eq 2 ] || printf '%s' "$OUT" | grep -q 'UNREAD'; then
+  printf '%s\n' "$OUT" >&2
+  echo "FACT-FIREWALL T4: the probe could not READ the server. Refusing to register UNVERIFIED." >&2
+  exit 2
+fi
+if [ "$RC" -ne 0 ] || printf '%s' "$OUT" | grep -q 'T4 BLOCK'; then
+  # stdout is the LSP protocol channel — the probe's text goes to STDERR so a captured stdout
+  # can never be parsed as JSON-RPC by the client. (`bin/lsp-gate:63` finding.)
+  printf '%s\n' "$OUT" >&2
+  echo "FACT-FIREWALL T4: registration REFUSED — the server was NEVER EXECUTED." >&2
+  exit 1
+fi
+exec "$@"

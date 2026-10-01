@@ -9,7 +9,14 @@ var MODE = (process.env.FACT_FIREWALL_LSP || "refuse").toLowerCase();
 var TOOLCALL = (process.env.FACT_FIREWALL_TOOLCALL || "refuse").toLowerCase();
 function run(cmd, timeoutMs = 120000) {
   return new Promise((res) => {
-    execFile(cmd[0], cmd.slice(1), { timeout: timeoutMs, maxBuffer: 8000000 }, (e, out, err) => res({ code: e?.code ?? 0, out: out || "", err: err || "" }));
+    execFile(cmd[0], cmd.slice(1), { timeout: timeoutMs, maxBuffer: 8000000 }, (e, out, err) => {
+      // THE DEFECT THIS REPLACES: `code: e?.code ?? 0`. On a TIMEOUT or a SIGNAL kill, `e.code`
+      // is null and the reason lives in `e.signal`/`e.killed` — so `?? 0` mapped a probe that
+      // never finished to exit 0, and every caller reads 0 as ok:true. A timed-out probe was
+      // ATTESTING capability. A real numeric code survives; every abnormal exit gets -1.
+      const code = e ? (typeof e.code === "number" ? e.code : -1) : 0;
+      res({ code, out: out || "", err: err || "", signal: e?.signal ?? null, killed: e?.killed ?? false });
+    });
   });
 }
 async function probeCapabilities(serverRoot, argv) {

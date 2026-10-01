@@ -1208,3 +1208,41 @@ stages a throwaway kernel file, drives both ways, and unstages. **OBSERVED:**
 a verdict that greens on zero measurements, a gate counted instead of run — each is *shape without
 reachability* in a different costume: the FORM of verification without the substance. **The ship gate
 earned its place by finding them, and the fixes were proven both ways before the re-run.**
+
+## EN-130 · THE GATE'S SECOND PASS — two more criticals, both fixed and re-proven
+
+The re-run (`session=62621547`) found the first two criticals GONE and two NEW ones. **The count is
+the tool's design; the measure is the confirmed defects fixed.** All four are now closed.
+
+### CRIT-3 · `extensions/fact-firewall/index.js:10` — a timeout read as SUCCESS
+
+```js
+code: e?.code ?? 0        // THE DEFECT
+```
+On a TIMEOUT or a SIGNAL kill, `e.code` is **null** and the reason lives in `e.signal`/`e.killed`.
+`?? 0` therefore mapped a probe that **never finished** to exit 0 — and every caller reads 0 as
+`ok:true`. **A timed-out probe was attesting capability.**
+
+**FIX:** a real numeric code survives; every abnormal exit gets the non-zero sentinel `-1`; `signal`
+and `killed` are carried for the caller.
+**RE-PROVEN:** `run(["sleep","10"])` with a 2s timeout → `{"code":-1,"signal":"SIGTERM"}`.
+
+### CRIT-4 · `bin/lsp-gate:50` — the gate could be downgraded by its own subject
+
+`FACT_FIREWALL_LSP=warn` flipped the posture to ledger-and-register. **The env is inherited by the
+server being gated** — so a lying server, or anything owning its launch environment, could set `warn`
+and neuter its own gate. **A fail-closed gate is not downgrade-able by a variable its subject controls.**
+
+**FIX:** the variable is GONE. The repair path is an edit to `command` in `lsp.json` — an action only
+the operator's hand performs, on a file the server does not write.
+**RE-PROVEN:** the lying server with `FACT_FIREWALL_LSP=warn` set → **still EXIT=1, still REFUSED.**
+
+### And the stdout purity (the `:63` finding)
+
+The BLOCK path printed probe text to **stdout** — the LSP protocol channel, where a client parses
+JSON-RPC. Now `>&2`. **RE-PROVEN:** `stdout bytes on a BLOCK: 0`.
+
+### ALPHA-6 · `kernel/battery.sh:68-69` — the double-zero
+
+`L=$(grep -c … || echo 0)`. **`grep -c` on a MISSING file PRINTS 0 and EXITS 1**, so `|| echo 0`
+appended a SECOND 0: **`L=[0<newline>0]`** — proven. Assign, then default.
