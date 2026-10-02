@@ -532,3 +532,45 @@ against the author's blind spots is an agent with no stake in the claims. Every 
 the auditor ran was one the author COULD have run and did not. The author drove the paths they
 believed mattered; the auditor drove the ones that did not look like paths at all.
 
+
+## EN-137 — THE JM REGISTRY PINNED TO /tmp (2026-10-02)
+
+- **THE FINDING:** the operator ordered a jev scan; the tool answered `JM_INDEX_MISSING:
+  /tmp/jmdemo does not exist` and `JM_TARGET_UNKNOWN: … (have: shadow, reports, demo, failurelogs)`.
+- **THE ROOT CAUSE:** `~/.jm/targets.json` was authored 2026-09-22 for a demo — it carried
+  `{"name":"demo","root":"/tmp/jmdemo"}` (a scratch dir that does not exist) and NO target for
+  `/home/leviathan/JARVIS_WORKSPACE/OMP`. Every real tree was invisible to the tool.
+- **THE FIX:** the registry rewritten to the real workspace — `shadow` · `reports` · `failurelogs` ·
+  `omp` (JARVIS_WORKSPACE/OMP) · `extensions` (.omp/agent/extensions) · `agent` (.omp/agent).
+  `/tmp/jmdemo` removed. Backup: `~/.jm/targets.json.bak-*`.
+- **THE VERIFICATION:** all six roots exist; `jm index` → `JM_INDEX_OK files=62` (extensions),
+  `files=43` (pbk-v2/src); `jm scan ext --re 'https?://(api\.typesafe|…)'` returned the backup-only
+  hits and — decisively — **the LIVE dist.js did NOT appear**, proving the endpoint fix is deployed.
+- **THE LESSON:** *when the operator NAMES a tool, the tool's OWN configuration is the first artifact
+  to read.* A tool pointed at the wrong place is indistinguishable from a tool that works, until
+  someone asks it a question.
+
+## EN-138 — THE STALE KEY GUARDS (2026-10-02)
+
+- **THE FINDING:** the jm scan for the bug class surfaced `kernel-judge.ts:306` and
+  `claim-bind.ts:104` — each `if (!key) { … }` before the judge, printing *"CLAIM JUDGE UNAVAILABLE —
+  no TYPESAFE_AI_API_KEY."*
+- **THE ROOT CAUSE:** the key was a REMOTE requirement, left in place when every judge moved to
+  loopback. The guard was correct when written and became a LIE when the endpoint changed. **The wire
+  was fixed; the precondition in front of it was not.**
+- **THE FIX:** both guards read `if (!key && !isLocalJudgeUrl(resolveJudgeUrl("…")))` — they fire
+  only for a credentialed judge, and every judge is loopback-only by construction. Build OK
+  222.36 KB, deployed, committed `f07592a4`.
+- **THE VERIFICATION:** `grep 'if (!key) {' src/ext/*.ts` → the two guards, both carrying the
+  local-judge escape; the deployed bundle loads.
+- **THE LESSON:** **when an endpoint changes, every precondition in front of it is a candidate lie.**
+  Fixing the wire is half the fix; the gate that guards the wire must be re-read.
+
+### EN-138 · THE ANCHOR INDEX
+
+- the chokepoint this session added: `src/ext/judge-endpoint.ts:1`
+- the stale guard, kernel side: `src/ext/kernel-judge.ts:311`
+- the stale guard, claim side: `src/ext/claim-bind.ts:108`
+- the hatches deleted: `src/ext/tool-gate.ts:137`
+- the registry that was wrong: `~/.jm/targets.json:1`
+- the scan that found the guards: `TESTING_LOG.md:1`

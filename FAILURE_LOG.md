@@ -131,3 +131,46 @@ write for the gate rather than for the reader.
 **THE LESSON.** A predicate carries an implicit unit and an implicit class. **Name both in the gate,
 or the gate will measure a different thing than it meant to** — and its subjects will learn to satisfy
 the measurement instead of the intent.
+
+## F-10 · THE JM TOOL PINNED TO /tmp — the scanner pointed at a scratch dir (2026-10-02)
+
+**What happened:** the operator ordered *"use the jev tool scan for every other instance of the same
+bug."* The tool refused twice: `JM_INDEX_MISSING: /tmp/jmdemo does not exist` and
+`JM_TARGET_UNKNOWN: /home/leviathan/.omp/agent/extensions (have: shadow,reports,demo,failurelogs)`.
+
+**Found:** by the OPERATOR, mid-task, verbatim: *"WHY IS THE TOOL PINNED TO A FUCKING TMP."*
+
+**Root cause:** `~/.jm/targets.json` held a `demo` target rooted at `/tmp/jmdemo` — a scratch dir
+that does not exist — and carried NO target for `/home/leviathan/JARVIS_WORKSPACE/OMP`, the tree
+this entire session's work lives in. The registry was authored once (Sep 22) for a demo and never
+updated to the real workspace.
+
+**Impact:** the primary scanning tool was inert for every real tree. Every "scan" against it would
+have returned a target error, and the operator's instruction could not execute at all.
+
+**Disposition: FIXED+PROVEN.** The registry now carries: shadow · reports · failurelogs · `omp`
+(`/home/leviathan/JARVIS_WORKSPACE/OMP`) · `extensions` (`.omp/agent/extensions`) · `agent`
+(`.omp/agent`). All six roots verified to exist. `/tmp/jmdemo` REMOVED. Backup at
+`~/.jm/targets.json.bak-*`. **PROVEN:** `jm index` → `JM_INDEX_OK files=62` on the extensions and
+`files=43` on pbk-v2/src; `jm scan` returned real hits.
+
+## F-11 · THE STALE KEY GUARDS — a working local judge reported DOWN (2026-10-02)
+
+**What happened:** `kernel-judge.ts:306` and `claim-bind.ts:104` each ran `if (!key) { … }` before
+reaching the judge, emitting *"CLAIM JUDGE UNAVAILABLE — no TYPESAFE_AI_API_KEY"*. The local judge
+at 127.0.0.1:8090 requires no key, so a healthy judge was reported DOWN and the ABIDE + claim layers
+skipped on every call.
+
+**Found:** by the jm scan for the bug class — **only after the operator demanded the scan.**
+
+**Root cause:** the key was a REMOTE requirement, left in place when every judge moved to loopback.
+The guard was correct when written and became a lie when the endpoint changed. **The same class as
+the dead remote itself, one layer in: the wire was fixed, the precondition in front of it was not.**
+
+**Impact:** the claim judge had recorded ZERO rows across 1245 firings; this guard is WHY the count
+was zero even after the endpoint fix.
+
+**Disposition: FIXED+PROVEN.** Both guards now read
+`if (!key && !isLocalJudgeUrl(resolveJudgeUrl("…")))` — they fire only for a credentialed judge,
+and every judge is loopback-only by construction, so they can never fire. Build OK 222.36 KB,
+deployed, committed `f07592a4`.
