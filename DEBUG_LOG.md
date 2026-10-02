@@ -574,3 +574,30 @@ believed mattered; the auditor drove the ones that did not look like paths at al
 - the hatches deleted: `src/ext/tool-gate.ts:137`
 - the registry that was wrong: `~/.jm/targets.json:1`
 - the scan that found the guards: `TESTING_LOG.md:1`
+
+## EN-139 — THE JEV TOOL, TESTED END TO END (2026-10-02)
+
+- **THE FINDING:** after the operator's restart order (*"TEST THE JEV TOOL AND MAKE SURE IT WORKS
+  PROPERLY"*), every verb was driven against the real workspace.
+- **THE RESULTS — every verb, with its measurement:**
+
+  | verb | state | the measurement |
+  |---|---|---|
+  | `index` | **OK** | 37,524 files · 43,557 fts rows (the `all` index) + ext + pbk |
+  | `query` | **OK** | via the MCP: 11 ranked rows with sha256 + rank |
+  | `scan` | **OK** | keyless; the bug class cleared (backups only) |
+  | `filter` | **OK — JUDGED** | 62 candidates → 62 judged → **2 kept** · **requests=1** (batched) |
+  | `find` | **OK — JUDGED** | **13 judged → 1 kept** on a SHARP question; **47 judged → 0 kept** on a compound one |
+  | `route` | **OK — JUDGED** | `agg=0.59 in [flag=0.5, act=0.8) -> escalate` · requests=1 |
+  | `report` | **OK** | — |
+  | `mcp` | **OK** | `jev_query` + `jev_index` both answered |
+
+- **THE QUESTION-SHAPE LAW, RE-PROVEN LIVE** (the same defect class as the SSTGF misfire):
+  `"a gate calling a remote API instead of the local judge"` → **0 kept of 47**;
+  `"a judge endpoint URL"` → **1 kept of 13**. **A compound question caps below the bar and returns
+  nothing — one claim per question, no conjunctions.**
+- **THE MCP-vs-CLI RULE:** the MCP caps a call at 30s; the `all` ingest takes **615s**. **Bulk
+  indexes run via the CLI; the MCP is for the read verbs.** (F-13.)
+- **THE LESSON:** **a tool's verbs are not equal.** A named-index scan that "works" says nothing
+  about `--in all`; a fast read surface says nothing about the ingest budget. **Test each verb
+  against the corpus you will actually use it on, and read `report` before trusting a scan.**

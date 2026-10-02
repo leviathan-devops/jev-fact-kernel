@@ -174,3 +174,56 @@ was zero even after the endpoint fix.
 `if (!key && !isLocalJudgeUrl(resolveJudgeUrl("…")))` — they fire only for a credentialed judge,
 and every judge is loopback-only by construction, so they can never fire. Build OK 222.36 KB,
 deployed, committed `f07592a4`.
+
+## F-12 · THE jm `all` INDEX WAS EMPTY — 0 files, 0 fts rows (2026-10-02)
+
+**What happened:** the operator ordered *"use the jev tool scan."* After the registry was fixed, the
+scan ran against the NAMED indexes (ext, pbk) — but `jm report all` showed
+`files: 0 live · 0 gone · 0 with text · docs/fts: 0 docs · 0 fts rows`. **The multi-target index had
+never been built**, so `jm query --in all` / `jm filter all` / `jm find --in all` would all have
+returned nothing — a tool that answers every question with silence.
+
+**Found:** by reading `jm report all` before trusting a scan that had "worked".
+
+**Root cause:** the `all` index is built by `jm index --in all`, which had never been run — the
+registry was authored for a demo and the real targets were added only today (F-10). **A registry
+without an index is a phone book with no numbers dialed.**
+
+**Impact:** every `--in all` verb was silently empty. Named-index scans worked, which is exactly what
+made it invisible — **the tool "worked" until you asked it something broad.**
+
+**Disposition: FIXED+PROVEN.** `jm index --in all --name all` → **37,524 files · 43,557 fts rows**
+(and still ingesting: 74,642 files at the last read). The tool now answers across every target.
+
+## F-13 · THE MCP 30-SECOND TIMEOUT — the SURFACE is fast, the INDEX is slow (2026-10-02)
+
+**What happened:** `jev_index` via the MCP returned `Request timeout after 30000ms` and
+`retryable: no`, with `the request outcome is unknown`.
+
+**Found:** when testing the tool after the operator's restart order.
+
+**Root cause — NOT a tool defect.** The MCP transport caps a call at 30s. `jev_index` over a large
+tree exceeds that **by design** (the CLI run took **615 seconds** for the `all` index).
+`jev_query` — the read surface — answered the MCP in milliseconds.
+
+**Impact:** the first attempt to use the tool LOOKED broken. It was a transport budget mismatch.
+
+**Disposition: DIAGNOSED + RULE RECORDED.** **Big ingest runs via the CLI; the MCP is for the READ
+verbs.** The MCP surface itself is healthy: `jev_query` returned 11 ranked rows with sha256 + rank;
+`jev_index` on a bounded target answered.
+
+## F-14 · THE INDEX BLOAT — 16 GB, 6.1 GB of it from MY OWN timed-out call (2026-10-02)
+
+**What happened:** `du -sh ~/.jm/index` read **16 GB**. The largest file, `enforcement.sqlite` at
+**6.1 GB**, was created by my own `jev_index` MCP call that TIMED OUT mid-ingest — it had indexed
+`extensions,agent`, and the agent tree carries the session transcripts.
+
+**Found:** during the operator's *"CLEAN EVERYTHING UP."*
+
+**Root cause:** an interrupted bulk index leaves its output behind. **A timeout is not a rollback.**
+
+**Impact:** 6-10 GB of disk for an index nobody asked for, on a disk at 95% used.
+
+**Disposition: FIXED.** Removed `enforcement.sqlite` (6.1 GB) · `enforcement-surface.sqlite` ·
+`tinyA/k/gate.sqlite` (scratch) · `shadow.sqlite` (4.0 GB, Sep 22, rebuildable via
+`jm index /home/leviathan/.local/share/opencode/storage --name shadow`). **16 GB → 7.8 GB.**
