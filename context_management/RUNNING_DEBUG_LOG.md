@@ -1545,3 +1545,67 @@ verdict + one real evidence row → `ring length: 1`, `source=tool_result`, the 
 
 **DEPLOYED — NOT YET LIVE.** omp loads extensions at session start, so these take effect on the next
 session (or an omp restart). Backups: `dist.js.bak-pre-f142-*`, `.bak-pre-f143-*`.
+
+## EN-136 · ALL JEV GATES -> THE LOCAL JUDGE ONLY — the chokepoint, the hatches destroyed, the judge supervised
+
+**THE ORDER:** *"make sure ALL Jev gates are wired to LOCAL Jev ONLY · remove ALL possibilities for failure."*
+
+### THE STATE FOUND — three judges, each with its own remote or escape hatch
+
+| the wire | what it did |
+|---|---|
+| `ext/kernel-judge.ts:365` | hardcoded `api.typesafe.ai` **+ a Bearer key** — the ABIDE per-edit judge |
+| `ext/claim-bind.ts:140` | `api.typesafe.ai` — the claim judge (**ZERO rows across 1245 firings**) |
+| `ext/tool-gate.ts:42` | `process.env.TOOLGATE_URL ?? <local>` — **no host validation at all** |
+| `ext/tool-gate.ts:136` | `TOOLGATE_ALLOW_URL=1` — an opt-in that **disabled the host check entirely** |
+
+**All three remotes answer HTTP 402 PAYMENT REQUIRED.** Every gate degraded to fail-closed, silently.
+
+### THE CHOKEPOINT — `src/ext/judge-endpoint.ts` (new)
+
+```
+LOCAL_JUDGE_URL = http://127.0.0.1:8090/v1/systemone
+LOOPBACK_HOSTS  = {127.0.0.1, localhost, ::1, [::1], 0.0.0.0}
+isLocalJudgeUrl(raw) — loopback HTTP(S) or false. Nothing else is a judge.
+resolveJudgeUrl(v)   — absent -> local · a loopback URL -> that URL · ANYTHING ELSE -> REFUSED
+                       LOUDLY on stderr, and the LOCAL judge is used.
+warmJudge()          — probes /health once, so the first judged call is not the warm-up call.
+```
+
+**THE GUARANTEE IS MECHANICAL, NOT PROCEDURAL: a non-loopback value cannot be returned. There is no
+configuration, no env var, and no opt-in that puts a judge off this machine.**
+
+### THE WIRING + THE HATCHES DESTROYED
+
+- `TOOLGATE_URL = resolveJudgeUrl("TOOLGATE_URL")` · `opts.url` must pass `isLocalJudgeUrl` — **the
+  `TOOLGATE_ALLOW_URL` opt-in is DELETED**
+- `claim-bind.ts` → `fetch(resolveJudgeUrl("CLAIM_JUDGE_URL"))`
+- `kernel-judge.ts` → `fetch(resolveJudgeUrl("KERNEL_JUDGE_URL"))` — **no key, no remote**
+- **F-145 · the cold-judge false block removed:** one warm-up probe + one retry with a doubled
+  timeout, so a cold GGUF can never produce a block for a command that was never judged.
+
+**VERIFIED ON THE DEPLOYED BUNDLE:** every fetch target is `resolveJudgeUrl(...)`; **remote fetch
+targets: 0**; no other extension carries a remote judge. **A remote env var → REFUSED → local.**
+
+### THE LAST FAILURE MODE — THE JUDGE WAS UNSUPERVISED
+
+Both processes ran `parent=1` with **no systemd unit** — a `setsid` launch. **A crash was permanent; a
+reboot killed both; and every gate behind them failed closed.** Now:
+
+```
+~/.config/systemd/user/judge-jevk5.service       the model  (:8008, OOMScoreAdjust=-500)
+~/.config/systemd/user/judge-systemone.service   the adapter (:8090, Requires=judge-jevk5)
+both: Restart=always · enabled at boot
+```
+
+**PROVEN BY SIGKILL — the worst case:**
+```
+THE ADAPTER  kill -9 -> HEALED in 4s  (NRestarts=1, new pid)
+THE MODEL    kill -9 -> HEALED in 20s
+FINAL        {"ok":true,"model":"jevk5-4b-v0.2-Q8_0","backend":"llama:200"}
+```
+
+**AND THE JUDGE DISCRIMINATES, live:** a supported claim `noul=0.869` (165ms); a fabricated one
+`noul=0.619` (98ms).
+
+**COMMITTED** `31185c13` — the source, so a parallel rebuild carries it instead of erasing it.
