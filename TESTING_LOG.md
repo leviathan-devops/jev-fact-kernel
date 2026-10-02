@@ -107,10 +107,13 @@ then spawned through the INSTALLED command in /home/leviathan/.omp/agent/lsp.jso
   BLOCK token in stdout: True
   FACT-FIREWALL T4 BLOCK: 23 advertised capabilities answered -32601 MethodNotFound.
                           The initialize reply is a FALSE CAPABILITY DECLARATION.
-  ERR  FACT-FIREWALL T4: registration REFUSED — the server was NEVER EXECUTED.
+  ERR  FACT-FIREWALL T4: registration REFUSED — the server gets no live registration.
 ```
-**VERDICT: BLOCK — the PASS token present and the exit non-zero.** The refusal is by ABSENCE: no
-process, no socket, no state, because the server was never exec'd.
+**VERDICT: BLOCK — the PASS token present and the exit non-zero.** CORRECTED (the audit's F-B): this
+once read *"the refusal is by ABSENCE … the server was never exec'd"* — FALSE. The probe's
+`Popen` at `kernel/tier4-lsp-capability-probe.py:110` EXECUTES the server once to interrogate it.
+What the gate withholds is the LIVE REGISTRATION — no client session, no editor wiring, no
+capability surface. The server runs; it is not ADOPTED.
 
 ### ADV-02 · THE PS TOKEN — count what did not start
 

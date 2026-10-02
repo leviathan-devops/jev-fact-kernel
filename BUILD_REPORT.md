@@ -378,7 +378,7 @@ to bypass. The proof is a count of what did not start:
 
 | tier | the command | the output | verdict |
 |---|---|---|---|
-| T2 | the lying server through the **INSTALLED** `lsp.json` command | `[EXIT=1]` · `FACT-FIREWALL T4 BLOCK: 23 advertised capabilities answered -32601` · `registration REFUSED — the server was NEVER EXECUTED.` | PASS |
+| T2 | the lying server through the **INSTALLED** `lsp.json` command | `[EXIT=1]` · `FACT-FIREWALL T4 BLOCK: 23 advertised capabilities answered -32601` · `registration REFUSED — the server gets no live registration.` | PASS |
 | T2 | `ps -eo pid,cmd \| grep -c '[s]erver.ts --stdio'` | `0` | PASS |
 | T3 | `tail -1 ~/.omp/run/fact-firewall.jsonl` | `Pattern:"T4_LSP_CAPABILITY_LIE"` · `capability` · `method` · `code:-32601` | PASS |
 | T4 | `fixtures/lying-server` (declares 23) vs `fixtures/honest-server` (declares 0) | `BLOCK` (exit 1) vs `every advertised capability answered` (exit 0) | PASS |

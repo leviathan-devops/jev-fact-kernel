@@ -5,8 +5,14 @@ import { resolve, dirname } from "path";
 import { execFile } from "child_process";
 import { tmpdir } from "os";
 var KERNEL = process.env.FACT_FIREWALL_KERNEL || "/home/leviathan/JARVIS_WORKSPACE/worktrees/jev-fact-kernel/kernel";
-var MODE = (process.env.FACT_FIREWALL_LSP || "refuse").toLowerCase();
-var TOOLCALL = (process.env.FACT_FIREWALL_TOOLCALL || "refuse").toLowerCase();
+// THE DOWNGRADE IS GONE FROM BOTH CARRIERS (the zero-trust audit's F-A). bin/lsp-gate lost its
+// FACT_FIREWALL_LSP=warn bypass; THIS FILE KEPT ITS OWN — a fix applied to one of two carriers and
+// reported as done. An environment inherited by the gated subject must not be able to neuter its
+// own gate: `lsp.json`'s `env` block, a shell export, or a dotfile could set warn and pass a liar.
+// The repair path is an edit to `command` in lsp.json — the operator's hand on a file the server
+// does not write. Fail-closed is not a mode.
+var MODE = "refuse";
+var TOOLCALL = "refuse";
 function run(cmd, timeoutMs = 120000) {
   return new Promise((res) => {
     execFile(cmd[0], cmd.slice(1), { timeout: timeoutMs, maxBuffer: 8000000 }, (e, out, err) => {
@@ -83,10 +89,7 @@ function ff_default(pi) {
       const r = await probeCapabilities(ev.root, ev.argv);
       if (r.ok)
         return;
-      if (MODE === "warn") {
-        console.error(`FACT-FIREWALL T4 WARN: ${r.refused} (LSP mode=warn, registering anyway)`);
-        return;
-      }
+      // the warn branch is DELETED (F-A) — MODE is a constant now, so this was dead either way.
       throw new Error(`FACT-FIREWALL T4 BLOCK: ${r.refused}. ${r.lies ? `${r.lies} advertised capabilities answered -32601. ` : ""}` + `The initialize reply is a FALSE CAPABILITY DECLARATION. Implement the method, or remove the ` + `capability from the reply. (Set FACT_FIREWALL_LSP=warn to register anyway.)`);
     });
   }

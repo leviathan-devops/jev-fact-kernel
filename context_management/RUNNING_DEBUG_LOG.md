@@ -1432,3 +1432,116 @@ positives in the debris grep, and the runtime d.ts instance skew across `.omp/wt
 fixes survived two independent blind audits. **But two of my "done/pending" items are confirmed
 unfixed (F-A, F-B), one of my measurements was wrong-scoped (F-C), and the canon carries 5 napkin
 docs (F-D).** *Judging changes nothing — this entry reports; it does not fix.*
+
+## EN-135 · THE SSTGF MISFIRE — THE AUDIT, THE ROOT CAUSE, AND THREE FIXES ON THE HOST EXTENSION
+
+**THE CHARGE.** A legitimate command was blocked:
+```
+[STTGF BLOCK] INLINE_EXEC — Inline exec is smoke test. Use container.
+the command: cd … && cat > /tmp/verify-fixes.py <<'PY' … PY
+             bash kernel/battery.sh > /tmp/bat.txt 2>&1; BR=$?
+             python3 kernel/tier0-instrument-lint.py fixtures/broken-probe.py >/tmp/q1 2>&1
+             python3 /tmp/verify-fixes.py 2>&1 | sed 's/^/  /'
+```
+**Every interpreter invocation names a FILE PATH. There is no inline code in it at all.**
+
+### THE AUDIT — the firing path, measured
+
+The gate lives in `~/.omp/agent/extensions/omp-ct/dist.js` and was ALREADY the right architecture:
+
+```
+pi.on("tool_call")  ->  checkSmokeTestFirewall()  ->  regex detects  ->  askGateDecision() [JEV]
+                    ->  serve p>=0.6 = ALLOW      |  refuse p>=0.6 = BLOCK (the throw)
+```
+
+Its ledger `~/.omp/run/gate-ledger.jsonl` (3467 rows) named the exact verdict:
+
+```
+11:07:28  MY BLOCKED CALL   choice=refuse  p=0.829  {serve:0.171, refuse:0.829}  degraded=false
+11:12:47  a later call      choice=serve   p=0.914  {serve:0.914, refuse:0.086}
+```
+
+**AND THE INVERSION — the judge's axis was backwards:**
+
+| the command | the judge | the truth |
+|---|---|---|
+| `cat config.json \| python3 -c "json.load(...)"` | refuse 0.72 | ✓ a real inline exec |
+| `sleep 500; python3 -c "json.load(...)"` | refuse 0.71 | ✓ a real inline exec |
+| **MY `bash kernel/battery.sh && python3 kernel/x.py`** | **refuse 0.83** | **★ WRONG — script files** |
+| `echo … && python3 -c "json.loads(...)"` | **serve 0.91** | **★ WRONG — a real inline exec** |
+
+**THE ROOT CAUSE IS THE CRITERION, NOT THE JUDGE.** `smokeCandidate` drew the line on *"is external
+data involved"* — so:
+- `refuse` matched *"code that imports/executes the PROJECT'S OWN MODULE to prove it works"* → **my
+  battery run read as a smoke test of the project's own modules.**
+- `serve` matched *"it opens/loads a FILE (open(...), json.load(open(...)))"* → **an actual
+  `python3 -c "json.load(open())"` read as legitimate data work.**
+
+**The judge followed its instructions exactly. The instructions pointed at the wrong axis.**
+
+### F-142 · THE FIX — a structural pre-check + the criteria rewritten to the real axis
+
+**(a) `hasInlineCode()` — the L1 fact, before any judge.** The real discriminator is STRUCTURAL:
+**is the code IN the command, or ON disk?** Only an inline flag (`-c`/`-e`/`--eval`), a shell `-c`,
+or code PIPED into an interpreter puts code in the command. A script path never does.
+
+```
+  clean    MY BLOCKED COMMAND (legit)     -> SERVE (mechanically, never judged)
+  clean    the project's own battery       -> SERVE
+  matches  A REAL inline exec              -> JUDGE ASKED
+  matches  A REAL pipe-into-interp         -> JUDGE ASKED
+```
+
+**(b) The narrowing.** The old arm was `-[a-zA-Z]*[ecr]` — **ANY flag ending in e/c/r** — which
+matched `--allow-read`, `-r`, `--reporter` and more. Now `-[a-zA-Z]*[ce]`.
+
+**(c) The criteria** rewritten to name the structural fact.
+
+**VERIFIED BOTH WAYS on the patched bundle, on the four real commands from the ledger:**
+```
+  ✓ my legit cmd   verb=other        served mechanically   want=serve
+  ✓ the config read verb=inline_exec judge=refuse 0.721    want=refuse
+  ✓ the ledger read verb=inline_exec judge=refuse 0.694    want=refuse
+  ✓ a bare script   verb=other        served mechanically   want=serve
+```
+**AND THE GATE IMMEDIATELY PROVED ITSELF: it blocked my own `bun -e '…'` load-check minutes later —
+a TRUE inline exec. The pre-check is live.**
+
+### F-143 · THE CLAIM JUDGE WAS POINTED AT A DEAD REMOTE
+
+The same file carries the claim/prose gate (`judgeClaimViaTypeSafe`) — **the thing that should kick on
+hallucination.** It fetched `https://api.typesafe.ai/v1/systemone`:
+
+```
+REMOTE  a TRUE claim -> ★ HTTP 402 PAYMENT REQUIRED
+        a LIE claim  -> ★ HTTP 402 PAYMENT REQUIRED
+        => `!resp.ok` fired on EVERY claim; the ledger held ZERO claim-bind rows across 1245 firings.
+
+LOCAL   a TRUE claim -> HTTP 200  115ms  noul=0.893
+        a LIE claim  -> HTTP 200   92ms  noul=0.606
+```
+
+**BOTH judge sites (the ABIDE rule judge at 4059, the claim judge at 4492) now route through
+`TOOLGATE_URL` — the local `127.0.0.1:8090` the SSTGF already used.** 0 remote fetches remain.
+
+**AND THE CHAIN IS ALREADY L1->L2->L3 — it was never dead for lack of design:**
+```
+settledHandler (agent_end/message_end)
+  1 armClaimFromCompletedMessage   2 parseClaimAtoms  [L1 structural]
+  3 ringFromLedger [THE EVIDENCE]  4 judgeClaimViaTypeSafe  [L2 — now on :8090]
+  5 bindAtoms -> verdict PASS/FAIL 6 isCompletionClaim -> the lexicon fallback
+DRIVEN: [pbk] [PBK CLAIM] FAIL_CLOSED  [pbk] [PBK SLOP] "…" — evidence: UNEVIDENCED  (jev_called=TRUE)
+```
+
+### F-144 · THE RING FED ON THE GATE'S OWN VERDICTS
+
+`ringFromLedger` filtered on `matched_span` and `session` — **with no filter on `rule`.** A
+`claim-bind` firing ALSO carries `matched_span`, so **the gate's own refusal of an earlier claim
+became "evidence" for the next one.** PROVEN: a ledger holding ONLY
+`{rule:"claim-bind", matched_span:"FABRICATED — …"}` yielded a ring of length 1.
+
+**FIXED:** a `RING_VERDICT_RULES` exclusion set. **VERIFIED on the deployed bundle:** seeded with one
+verdict + one real evidence row → `ring length: 1`, `source=tool_result`, the verdict EXCLUDED.
+
+**DEPLOYED — NOT YET LIVE.** omp loads extensions at session start, so these take effect on the next
+session (or an omp restart). Backups: `dist.js.bak-pre-f142-*`, `.bak-pre-f143-*`.

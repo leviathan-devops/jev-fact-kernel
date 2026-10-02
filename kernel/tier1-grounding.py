@@ -48,11 +48,16 @@ def ground(claim: str, corpus: str) -> dict:
         return {"verdict": "UNMEASURED", "numbers": [], "detail":
                 "the claim asserts no number — nothing this tier can ground (NOT a pass)"}
 
+    # THE TOKEN BOUNDARY (the zero-trust audit's D-2). The old form was `x in corpus`, which
+    # grounded `99` from a corpus containing only `1999` and `19.99` — a FALSE GROUNDED on the exact
+    # guarantee this tier exists to provide ("the number has a producer"). A number is grounded only
+    # when it appears as a COMPLETE token: not preceded by a digit or separator, not followed by one.
+    import re as _re
     grounded, ungrounded = [], []
     for v in nums:
         # a number is grounded when it appears in the corpus, with either separator
         variants = {v, v.replace(".", ","), v.replace(",", ".")}
-        if any(x in corpus for x in variants):
+        if any(_re.search(r"(?<![0-9.,])" + _re.escape(x) + r"(?![0-9])", corpus) for x in variants):
             grounded.append(v)
         else:
             ungrounded.append(v)

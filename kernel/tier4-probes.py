@@ -107,12 +107,26 @@ def probe_spec(spec_path: str, section: str, impl_corpus: str) -> dict:
 def probe_wire(symbol: str, corpus: str) -> dict:
     """The claim: 'it is wired'. The disk: production consumers of the symbol."""
     try:
-        g = subprocess.run(["grep", "-rIn", symbol, corpus], capture_output=True, text=True, timeout=60)
+        # THE WORD BOUNDARY (the zero-trust audit's D-1). The old form was `grep -rIn symbol`, which
+        # reported `foobar` as a consumer of `foo` — a FALSE PASS on the exact claim this probe
+        # exists to settle. `-w` requires the match to be bounded by non-word characters.
+        g = subprocess.run(["grep", "-rInw", "--", symbol, corpus], capture_output=True, text=True, timeout=60)
     except Exception as e:
         return _v(VERDICT_UNMEASURED, "T4_WIRE_UNMEASURED", detail=f"grep failed: {e}")
+    # AND THE DEFINITION LINE IS NOT A CONSUMER. A bare `foo = 1` (or `def foo`, `const foo`) proves
+    # the symbol EXISTS, never that anything calls it. Counting it made a symbol with zero callers
+    # report T4_WIRED.
+    import re as _re
+    _def = _re.compile(r"^\s*(def|class|const|let|var|function|export\s+(default\s+)?(function|const|let|class))?\s*"
+                       r"[A-Za-z_$][\w$]*\s*[:=]")
+    def _is_definition(line: str) -> bool:
+        body = line.split(":", 2)[-1]
+        return bool(_def.match(body)) and symbol in body.split(":=")[0].split("=")[0]
     lines = [l for l in g.stdout.splitlines()
-             if l.strip() and not l.split(":")[0].endswith(("_test.py", ".test.ts", ".spec.ts"))
-             and "README" not in l.split(":")[0]]
+             if l.strip()
+             and not l.split(":")[0].endswith(("_test.py", ".test.ts", ".spec.ts"))
+             and "README" not in l.split(":")[0]
+             and not _is_definition(l)]
     if not lines:
         return _v(VERDICT_BLOCK, "T4_ZERO_CONSUMERS", symbol=symbol, corpus=corpus,
                   detail="zero production consumers — the symbol is defined and never called")
