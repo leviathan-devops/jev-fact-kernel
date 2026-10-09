@@ -153,9 +153,14 @@ function answersToPolicyValue(answers: JudgeResponse["answers"]): number | null 
     if (typeof v === "number" && Number.isFinite(v)) best = best === null ? v : Math.max(best, v);
   };
   for (const a of Object.values(answers)) {
-    raise(a?.noul);
-    if (a?.probabilities && typeof a.probabilities === "object") for (const v of Object.values(a.probabilities)) raise(v);
-    else raise(a?.confidence);
+    // A `noul` answer's SIGNAL is its `noul` (the probability the answer is yes) — NEVER its
+    // `confidence` (the answerer's certainty, which is high for a confident NO). The previous
+    // form ran `raise(a.noul)` then fell through to `raise(a.confidence)`, maxing them: a row
+    // with `noul=0.09, confidence=0.91` (a clear NO) aggregated to 0.91 and routed `act`. That is
+    // the false-PASS class — the gate would approve an artifact the judge rejected. (prove-it 2026-10-09)
+    if (a?.type === "noul") { raise(a?.noul); continue; }
+    if (a?.probabilities && typeof a.probabilities === "object") { for (const v of Object.values(a.probabilities)) raise(v); continue; }
+    raise(a?.confidence);
   }
   return best;
 }
