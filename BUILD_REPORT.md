@@ -1970,3 +1970,45 @@ than a fabricated bundle — per the ship-package law: never fabricate a dist.
 | the MCP server | `scripts-jm-mcp.sh` → `bun run src/cli.ts mcp` | registered in `~/.omp/agent/mcp.json` |
 | the native OMP tool | `~/.omp/agent/extensions/jev-manager/index.js` | auto-discovered at session start |
 | the judge adapter | `~/jevk5-runtime/systemone-server.py` | :8090, wrapping the llama.cpp backend |
+
+---
+
+## [2026-10-07] THE JEV OMP TOOL — the registration delivered + audit-hardened (the ship milestone)
+
+**The built:** The `jev` OMP host extension (`~/.omp/agent/extensions/jev-manager/` —
+`index.js` + `index.ts.source`, in sync) — the Jev decision engine as a first-class OMP tool,
+now carrying: the hardened activation law (both-branch receipts, serialized `before_agent_start`
+re-assert with verify-after-write CAS, typeof-guarded host surface), the completed verb coverage
+(evaluate/watch/spec-audit/push-gate/st-detect), input-shape guards (leading-dash, numerics,
+file existence via async stat+R_OK+realpath), real exit truth (timeout/abort/errno never exit 0),
+`--json` integrity (raw stdout, in-band failure envelopes, surrogate-safe truncation), and a
+probe-cleanup judge health check.
+
+**The why:** the operator's three-day registration escalation (F-23) + the standing production-grade
+bar — "independently capable of registering the tool correctly and does not have any fucking
+issues" (the operator's verbatim).
+
+**The how:** the root cause chain (EN-115) isolated by a fresh-boot A/B + `/dump`; the fix shipped
+in both files; then the independent audit arc (EN-117) — six rounds, 19 critical/high adjudicated,
+every finding probed (fix / decline-with-evidence / refute).
+
+**The evidence:**
+- Registration: fresh boot receipts (`registered jev (loadMode=essential)` →
+  `jev already in the active set`); the clean-room `/dump` = **23 wire tools incl. jev**
+  (`/tmp/omp-llm-request-159d10a2ae721a7a.json`); the refreshed live session's direct call
+  (ledger `report=` 20 → 21).
+- Guards: the 5/5 runtime battery (RESULT-T9).
+- Audit: `AUDIT GATE: BLOCKED (lane) — 19/19 critical+high adjudicated: 15 fixed + 3
+  declined-with-evidence + 1 probe-error; 0 confirmed open` (sessions 685c7e4d · 970204df ·
+  e9e387bb · 21d2d920 · 9c975710 · 1c939723).
+- Extension SHAs (current): `index.js` sha256 `90a15480f27e2fdd9ec474c7b21451504635a03c69143b5ec14b4ec2417cdc75`
+  (pre-audit) — the audited chain's final SHAs recorded in the checkpoint manifest; the scratch
+  repo lineage `e5ddb8f → … → f2afbc1`.
+
+**The verification:** `bun build` 0 errors both files (every round); the guard battery verbatim
+above; the wire-schema read; the PTY receipts.
+
+**The honest notes:** the audit's later rounds are lane-BLOCKED (retry condition named); three
+findings declined with evidence (the CLI's own parameterization / contract / indexing purpose);
+one reviewer claim refuted mechanically. The pre-audit SHA in this entry is superseded by the
+checkpoint's recorded final SHAs.

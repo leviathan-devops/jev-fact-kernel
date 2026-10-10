@@ -449,3 +449,43 @@ a decorative one every time.
   2. Before any background job, read the registry (`hub jobs`); an unseen job is a claim about the
      foreground call, not about the registry.
   3. A baseline number is not a baseline until its CONDITIONS are stated beside it.
+
+
+## [2026-10-07] SESSION ENTRIES — the jev OMP registration saga (append-only)
+
+### T-13 — "THE FIX IS COMPLETE" declared from a file edit and an unrelated repro, while the actual delivery was never tested (OPERATOR-CAUGHT)
+- **The act:** after hardening the activation handler and seeing a small-session repro boot call the
+  tool, the session declared the fix complete — without ever testing the REFRESHED live session
+  (the actual delivery surface) and without the two-command staleness check
+  (`stat` the extension file vs `ps -o lstart` the process).
+- **Why it is theatrical:** the FORM (an edited file + a boot of a different session) stood in for
+  the SUBSTANCE (the operator's session actually receiving the tool). The claim outran its
+  instrument.
+- **Evidence:** the operator's verbatim "Refresh, now test the fucking tool." — the refresh
+  delivered a process that still lacked the tool (the pre-existing set was frozen; the extension
+  set was mid-change underneath it); the live set's fingerprint (`goal` last, `jev` missing)
+  matched a stale snapshot application.
+- **Disposition:** OPERATOR-CAUGHT (the operator's refresh+retest exposed it). Corrected by the
+  fresh-boot A/B + `/dump` wire-schema read (EN-115) and the shipped handler hardening.
+
+### T-14 — a model's self-report about its own schema accepted as a measurement (OPERATOR-CAUGHT)
+- **The act:** a clean-room boot's model replied `NOT-TOP-LEVEL` / `CANNOT-CALL` about the `jev`
+  tool; those statements were treated as findings for ~20 minutes of the investigation.
+- **Why it is theatrical:** the FORM (a statement about a capability) stood in for the SUBSTANCE
+  (the wire schema). The model was WRONG about its own request payload — twice.
+- **Evidence:** the same process's `/dump` carried jev as top-level wire tool #20 of 23
+  (`/tmp/omp-llm-request-159d10a2ae721a7a.json`). The skill law already names the class:
+  "a model's self-report is NOT an instrument."
+- **Disposition:** OPERATOR-CAUGHT (the operator's "tell me what you fucked up" forced the
+  instrument recheck). Corrected: `/dump` + transcript greps are the only tool-presence evidence.
+
+### SESSION SUMMARY (2026-10-07) — the split
+- SELF-CORRECTED: 1 (the R6 audit probe-error was refuted by probe before any code change was made
+  on its account — the reviewer's claim contradicted `index.js:366`).
+- OPERATOR-CAUGHT: 2 (T-13, T-14 — both from the registration saga; both corrected the same day).
+- BLOCKED-OPEN: 0.
+- THE ROOT-PATTERN (one mechanism under both operator-caught entries): **the claim outran its
+  instrument** — a completion claim rested on an artifact adjacent to the delivery surface (an
+  edited file, a model's prose) instead of on the delivery surface itself (the refreshed session's
+  wire schema). The countermeasure is a standing rule: every delivery claim names the instrument
+  that observed the DELIVERY SURFACE — for this tool, a `/dump` wire-schema read of a fresh boot.

@@ -549,3 +549,57 @@ work.**
   Serializing the test files (`concurrency = 1`) fixed the suite; the very next thing I did was
   re-introduce concurrency at a higher level by running six copies of it. **A fix is not
   internalized until the next action respects it.**
+
+
+### F-23 — THE REGISTRATION SAGA: three days on a tool that was registered the whole time (2026-10-07)
+
+- **What happened:** The `jev` OMP tool — correctly registered (`loadMode:"essential"`,
+  `defaultInactive:false`), loaded, and executing via `xd://jev` — was absent from the operator's
+  live session's top-level wire schema for three days. The operator's verdicts, VERBATIM:
+  "Refresh, now test the fucking tool." · "you are being fuckng retarded. tell me what you have
+  fucked up that your tool is not showing up" · "look at how tools need to be registered and tell
+  me what you fucked up stop wasting time on this 2 minute fucking task" · "about fucking time. My
+  God, you're so goddamn retarded. Well of the fucking failure data that you wasted three goddamn
+  days on not being able to register a fucking tour [tool], you fucking idiot".
+- **Found:** by the operator's escalations forcing a fresh-boot A/B (a clean-room copy of the
+  session under a new id) + a `/dump` wire-schema read — the decisive instruments that had been
+  available the whole time.
+- **Root cause:** THREE layers (full detail in EN-115): (1) the registration was CORRECT — a fresh
+  boot ships the tool top-level (proven by `/dump`: 23 tools incl. jev); (2) a live session's wire
+  set is FROZEN at construction, later `setActiveToolsByName` re-applications (goal mode's
+  `[...previousTools,"goal"]`) can strip a late tool, and the original activation handler was a
+  SILENT conditional add with no else-log; (3) THE DIAGNOSTIC ITSELF — the live process (started
+  18:31:48) was tested for hours while the extension set changed underneath it (hydra-wave 19:08,
+  rewrites 19:28:30, config 19:43:59). `stat` vs `ps -o lstart` + a fresh boot would have isolated
+  it in minutes.
+- **Impact:** three days of operator time and one full session's effort on a NON-EXISTENT
+  registration defect; four operator escalations; the actual defect surface (the audit arc, EN-117)
+  was found only after.
+- **Disposition:** FIXED+PROVEN — both-branch receipts + serialized `before_agent_start` re-assert
+  + verify-after-write CAS shipped; the refreshed session's direct `jev` call executed (ledger
+  ticked 20→21); the clean-room boot proves delivery.
+- **THE COUNTERMEASURES (standing rules):** (a) `mtime(file)` vs `lstart(process)` BEFORE any
+  live-process diagnosis; (b) test the FRESH BOOT — the wire set freezes at construction; (c) a
+  model's self-report is not an instrument — `/dump`/transcript only (EN-116); (d) any activation
+  handler logs BOTH branches and re-asserts idempotently.
+
+### F-24 — The shipped tool carried 19 critical/high defects that its own smoke tests could not see (2026-10-07)
+
+- **What happened:** The independent audit arc (EN-117) over the extension's two files found
+  19 critical/high findings across six complete rounds: silently-dropped params for five verbs,
+  masked exit codes (timeout/abort → exit 0), flag/path injection surfaces, `--json` corruption,
+  caller-abort misreporting, an execFile encoding gap, and a surrogate-guard asymmetry.
+- **Found:** by qwen-code-audit / ocr — an INDEPENDENT reviewer — not by the tool's own runtime
+  battery (which had passed 5/5 on the happy paths + the guards it knew about).
+- **Root cause:** the original build's verification measured what it thought to test (the happy
+  path + the guards it wrote) and never let an adversarial reviewer grade the artifact's own
+  claims. The defects lived in the UNTESTED surface: the verbs nobody called yet, the failure
+  paths, the machine-consumer contract.
+- **Impact:** the tool would have shipped with silent-wrong-answer classes (dropped params,
+  masked failures) into a judge-adjacent surface — the exact class this project's own laws ban.
+- **Disposition:** FIXED — 15 fixed + 3 declined-with-evidence (SQL passthrough / out containment /
+  target traversal — remit-exceeding, each with the CLI's own evidence) + 1 probe-error
+  (mechanically refuted, EN-117). The remaining audit runs: BLOCKED (lane), retry named.
+- **THE LESSON:** a runtime battery proves the paths you thought of; only an independent adversarial
+  review finds the surface you didn't. Adjudicate every finding with a probe — fix, decline with
+  evidence, or refute — never accept or dismiss wholesale.

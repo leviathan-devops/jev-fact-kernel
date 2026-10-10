@@ -1404,3 +1404,81 @@ THEATRICAL_CLAIM 38 · TEST_THEATRE 21 · STUB_MOCK_PROOF 14 · UNWIRED 13 · SC
 **Mean top-class probability is 0.29-0.46 — WEAK.** Ten labels over a 600-byte excerpt is too many
 for a 4B model. The RANK ORDER is usable; the individual labels are not evidence. A sharper second
 pass (3-4 classes, or a cascade) is the next step — not a re-run at the same granularity.
+
+
+## [2026-10-07] THE JEV OMP TOOL — the registration battery + the audit hardening arc
+
+## TEST PLAN ENTRY — 2026-10-07 — the jev OMP tool (registration delivery + guard surface)
+
+### SCRIPT
+- **What:** both extension files parse clean (`bun build`); the guard refusals fire by name.
+- **How:** `bun build <file> --target=node` for each; a fresh OMP boot driven through the guard
+  battery (evaluate/route/watch/missing-file).
+- **PASS criteria:** 0 build errors; `JEV_NEED_EVAL_ARGS`, `JEV_NEED_QUESTION`,
+  `JEV_WATCH_NEEDS_ONCE`, `JEV_FILE_MISSING` each appear in a TOOL RESULT.
+- **FAIL criteria:** any build error; any guard silent; any opaque `JEV_EXIT_*` where a named
+  refusal belongs.
+- **Status:** PASSED (see RESULT-T9).
+
+### HOST
+- **What:** the refreshed live session receives `jev` top-level; a fresh boot on a clean-room copy
+  of the session carries jev in the wire schema; direct calls execute.
+- **How:** `/dump` wire-schema read; direct `jev` calls in a fresh process; the PTY receipts.
+- **PASS criteria:** `tools[].name` contains `jev`; the direct call returns the report and the
+  ledger counter ticks; the receipt `jev already in the active set` fires.
+- **FAIL criteria:** jev absent from the schema; call routed via xd:// only; no receipt.
+- **Status:** PASSED (see RESULT-T9).
+
+### SCRIPT (audit)
+- **What:** the independent audit gate over the extension changeset.
+- **How:** qwen-code-audit `scan` in a scratch repo (the two files, two commits).
+- **PASS criteria:** `AUDIT GATE: PASS` or `BLOCKED` with every critical/high adjudicated
+  (fixed, declined-with-evidence, or refuted-by-probe).
+- **FAIL criteria:** an unadjudicated critical/high; a BLOCKED run reported as PASS.
+- **Status:** BLOCKED-WITH-ADJUDICATION (see RESULT-T10 + the AUDIT GATE line).
+
+## ZONE 2 — THE TEST RESULTS (what was observed)
+
+### RESULT-T9 — the registration battery `[SCRIPT + HOST]`
+- **The runs (verbatim):**
+  - Parse: `bun build index.js --target=node` → `Bundled 1 module in 3ms`; same for
+    `index.ts.source` — 0 errors, both files, every round.
+  - Fresh boot (pid 2680561) PTY receipts: `[jev-manager] registered jev (loadMode=essential)` →
+    `[jev-manager] jev already in the active set`.
+  - Clean-room A/B: `/dump` of a fresh process on a session copy →
+    `read, bash, edit, ask, eval, glob, grep, find, task, hub, todo, web_search, write, learn,
+    manage_skill, ripwire, opengrok, intercom, hydra_wave, jev, qwen-code-audit, spec-audit,
+    container-testing` — **23 tools; jev present** (`/tmp/omp-llm-request-159d10a2ae721a7a.json`).
+  - Guard battery (live process, 5 calls, verbatim):
+    `1. verb=report` → real output (`ledger … report=22`); `2. verb=evaluate` →
+    `JEV_NEED_EVAL_ARGS: evaluate needs cases, questions and qkey (the question-key column).`;
+    `3. verb=route` → `JEV_NEED_QUESTION: route needs question — the task to route.`;
+    `4. verb=watch` → `JEV_WATCH_NEEDS_ONCE: watch runs a daemon loop that outlives a tool call —
+    pass once:true for a single tick, or run jm watch in a terminal.`;
+    `5. verb=decision-tree rows=/tmp/does-not-exist.json recipe=/tmp/also-missing.json` →
+    `JEV_FILE_MISSING: rows is not a readable file: /tmp/does-not-exist.json`.
+  - Refreshed live session (pid 2236778): direct `jev` call executed; ledger `report=` ticked
+    **20 → 21** from that call; `intercom status` + `hydra_wave status` executed directly.
+- **The verdict:** **PASS — 5/5 guards + the happy path + the wire-schema presence + the receipts,
+  all mechanical.**
+- **The artifacts:** `/tmp/omp-llm-request-159d10a2ae721a7a.json` (1.7MB request dump; mirrored to
+  the checkpoint); the PTY captures quoted above.
+
+### RESULT-T10 — the audit hardening arc `[SCRIPT]`
+- **The runs:** six complete audit rounds + lane-blocked retries (sessions 685c7e4d · 970204df ·
+  e9e387bb · 21d2d920 · 9c975710 · 1c939723), each over the current two-file changeset in
+  `/tmp/jev-audit-repo`; every finding adjudicated (EN-117 carries the full ledger).
+- **The verdict:** **BLOCKED-WITH-ADJUDICATION — 19/19 critical+high adjudicated (15 fixed, 3
+  declined-with-evidence, 1 refuted-by-probe: the R6 critical claimed `.isFile()` where
+  `index.js:366` reads `.isDirectory()`); 0 confirmed open.** Later rounds: muse-free
+  429-quota-exhausted; poolside + openrouter lanes OCR_JSON_ABSENT. Retry condition: the OCR lanes
+  recover — rerun `--resume <session>` or `provider=poolside-laguna-s`.
+- **The artifacts:** the round transcripts quoted in EN-117; the scratch repo commits
+  `e5ddb8f → 7166fba → 478b7bf → ee309bd → 927c0b7 → f51ea0a → f2afbc1`.
+
+## AUDIT GATE — 2026-10-07 (the jev OMP tool)
+**AUDIT GATE: BLOCKED (lane) — 19/19 critical+high adjudicated: 15 fixed + 3 declined-with-evidence
++ 1 probe-error; 0 confirmed open.** Complete rounds: 6 (685c7e4d, 970204df, e9e387bb, 21d2d920,
+9c975710, 1c939723). Blocked rounds: muse-free QUOTA (429); poolside/openrouter OCR_JSON_ABSENT.
+Retry: rerun the scan via `provider=poolside-laguna-s` when the lane recovers. The gate does NOT
+claim PASS; the adjudication ledger stands as the record.

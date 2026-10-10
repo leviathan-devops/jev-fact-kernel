@@ -3436,3 +3436,140 @@ THE UNIT DEFECT: the claim loop's chunk is 200 ROWS, not 200 KB. The payload is
 `rows x (row + criteria)` and criteria repeats per question, so the packet overflowed the 256 KB
 cap on the very payload the verb exists for. Worked around by chunking the invocation; the real
 fix (a byte-budgeted accumulator) is recorded as an open item.
+
+---
+
+## [2026-10-07] EN-115 · THE INVISIBLE TOOL — the jev OMP registration: three layers, the silent handler, and the verified delivery
+
+THE SYMPTOM. The `jev` tool — registered by the OMP host extension
+`~/.omp/agent/extensions/jev-manager/index.js` — loaded, executed (reachable via `xd://jev`), and
+receipted in every fresh boot, yet for three days it was absent from the operator's live session's
+wire tool schema. The session could not call it as a top-level tool. Four operator escalations
+(verbatim in F-23) preceded the root-cause isolation.
+
+THE ROOT CAUSE — THREE LAYERS, ALL MECHANICAL.
+
+LAYER 1 — the registration itself was CORRECT, and the construction contract proves it.
+`pi.registerTool({name:"jev", label:"jev", loadMode:"essential", defaultInactive:false, ...})` is
+the documented shape (omp-docs enforcement-substrate §3). The OMP SDK force-includes every
+`!defaultInactive` extension tool into `initialToolNames` at session construction
+(`pi-coding-agent/src/sdk.ts:2984-2997` — "Custom tools and extension-registered tools are always
+included regardless of toolNames filter"), and `isMountableUnderXdev`
+(`src/tools/xdev.ts:81-84`) mounts a tool ONLY when `loadMode === "discoverable"` — so an
+essential tool ships top-level. PROOF: a clean-room process on this exact session's data (a copy
+under a new id, same flags) `/dump`ed a request whose wire schema carried **23 tools including
+`jev` at top level** (`/tmp/omp-llm-request-159d10a2ae721a7a.json`; later mirrored to the
+checkpoint artifacts). The same boot drove a DIRECT `jev` call that executed.
+
+LAYER 2 — a live session's wire set is FROZEN at construction, and later set re-applications can
+strip a late tool with no receipt. The goal-mode paths apply
+`setActiveToolsByName([...previousTools, "goal"])`
+(`src/modes/interactive-mode.ts:2547, 2763`; the guided-interview path at 3524-3529). The live
+set's observed fingerprint — `goal` appended LAST, `jev` missing — is exactly that application
+with a `previousTools` snapshot that did not carry the extension tool. And the original activation
+handler was a SILENT conditional add:
+
+```js
+if (!active.includes("jev")) { ...add...; console.log("...activated..."); }
+// no else — when jev IS present (every fresh boot), NOTHING is logged
+```
+
+so in the one case that mattered (present at start, stripped later) there were no receipts at all.
+
+LAYER 3 — the diagnostic itself (the three-day cost): testing the STALE RUNNING PROCESS. The live
+process started 18:31:48; the extension set changed underneath it (hydra-wave installed 19:08,
+hydra-intercom + hydra-wave rewritten 19:28:30, config.yml 19:43:59). A running OMP process never
+re-reads extension files. The owed two-command check — `stat -c %y <file>` vs `ps -o lstart <pid>`
+— plus a fresh-boot A/B would have isolated it in minutes.
+
+THE FIX (both files, in sync — `index.js` + `index.ts.source`):
+1. Both branches log — `"[jev-manager] jev already in the active set"` joins `"...activated into
+   the session's tool set"`; the silent path is gone.
+2. `before_agent_start` re-asserts idempotently: `if (!active.includes("jev")) await
+   pi.setActiveTools([...active, "jev"])` — one `includes()` per prompt, immune to later snapshots.
+3. Serialized through one promise chain (factory scope) + verify-after-write retry (CAS) + the pi
+   surface typeof-guarded.
+
+THE VERIFICATION (all mechanical):
+- Fresh boot receipt, read from the PTY: `[jev-manager] registered jev (loadMode=essential)` →
+  `[jev-manager] jev already in the active set`.
+- The clean-room A/B: a copy of this session, fresh process, same flags — `/dump` shows jev
+  top-level; a direct call executes.
+- The refreshed live session (pid 2236778, 20:09:55): a DIRECT `jev` call executed — the report
+  returned and the ledger's `report=` counter ticked 20 → 21 from that call. `intercom status` and
+  `hydra_wave status` executed the same way.
+
+SHAs (post-hardening): index.js `90a15480…` (pre-audit) → the audited chain in EN-117.
+THE LESSON (the standing rules):
+1. mtime(file) vs lstart(process) BEFORE any live-process diagnosis. The process predating the
+   wiring explains everything at zero cost.
+2. Test the FRESH BOOT, not the living session. The wire set freezes at construction.
+3. A model's self-report is not an instrument (EN-116).
+4. Any activation handler logs BOTH branches and re-asserts idempotently.
+
+---
+
+## [2026-10-07] EN-116 · THE MODEL SELF-REPORT IS NOT AN INSTRUMENT (retested)
+
+THE ACT. Mid-investigation, a clean-room boot (the "ab-copy") was asked whether the `jev` tool was
+callable top-level; its model replied `NOT-TOP-LEVEL` and then `CANNOT-CALL`, and executed the
+probe via the `xd://jev` device instead of a direct call. Those statements were treated as
+measurements for ~20 minutes of the investigation.
+
+THE EVIDENCE. The same process's own `/dump` (the request-context snapshot) carried **jev as a
+top-level wire tool (tool #20 of 23)**. The model's statement was FALSE about its own schema —
+twice. The instrument (`/dump`, `grep '"name":"<tool>"' <session.jsonl>`) is the evidence; the
+model's words about its own capabilities are not.
+
+THE LAW (restated, with the fresh receipt). `skill:omp-extension-tool-invisible-diagnosis`: "a
+model's self-report ('TOOL-ABSENT') is NOT an instrument." Countermeasure: answer every
+tool-presence question with dump-shaped evidence — never the model's prose about itself.
+
+---
+
+## [2026-10-07] EN-117 · THE AUDIT HARDENING ARC — six rounds, 19 critical/high adjudicated
+
+THE ARC. After the registration was delivered, an independent audit (qwen-code-audit / ocr) ran
+over the extension's two files as a two-commit changeset in a scratch repo. Six COMPLETE rounds
+ran; the seventh+ were lane-blocked. Sessions: 685c7e4d · 970204df · e9e387bb · 21d2d920 ·
+9c975710 · 1c939723.
+
+THE LEDGER (19 critical/high adjudicated — 15 FIXED, 3 DECLINED-with-evidence, 1 PROBE-ERROR):
+- R1 685c7e4d (5 high) → FIXED: buildArgs coverage for evaluate/watch/spec-audit/push-gate/st-detect
+  (params were silently dropped); file-param existence + leading-dash guards; timeout/abort/errno
+  were mapped to exit 0 (masked failures) → real exit truth; positional flag injection → guarded.
+- R2 970204df (3 high) → FIXED: caller abort misreported as judge outage; `--json` corrupted by the
+  stderr splice + truncation marker → raw-stdout-only + details-carried stderr; single-flight
+  activation → serialized chain.
+- R3 e9e387bb (3 high) → FIXED: caller abort during `run()` → `JEV_CANCELLED`; TOCTOU/symlink gap →
+  async stat+R_OK+realpath canonicalization feeding the CLI the canonical paths.
+- R4 21d2d920 (5 high) → 2 FIXED: JM_BIN realpath + reject group/world-writable; index `target`
+  existence + canonicalization. 3 DECLINED with evidence: (a) raw SQL/FTS passthrough — the jm CLI
+  binds parameters (`query.ts`: `docs_fts MATCH ?`, `LIMIT ?` "bound, never interpolated", tags
+  `name = ? AND value = ?`; `--where` goes through the restricted-predicate parser) so a wrapper
+  filter would be theater and would break FTS5 syntax; (b) `out` containment — the tool's contract
+  is the operator's CLI, which writes where the operator says; the wrapper adds shape guards, not a
+  sandbox; (c) target traversal — the tool's PURPOSE is indexing host trees; containment would
+  break it.
+- R5 9c975710 (2 high) → FIXED: `execFile` lacked `encoding:"utf8"` (Buffer output would break the
+  string helpers on Node); the surrogate guard's asymmetry (a trailing LOW surrogate means the pair
+  is COMPLETE — decrementing orphaned the high half) → high-only guard.
+- R6 1c939723 (1 critical, 0 high) → PROBE-ERROR: the reviewer claimed the out-parent check used
+  `.isFile()` "instead of `.isDirectory()`". MECHANICAL REFUTATION: `index.js:366` reads
+  `parentOk = (await stat(parent)).isDirectory();` — exactly as the header documents. The reviewer
+  conflated the file-param `.isFile()` (line 353) with the parent check. Adjudicated: probe-error,
+  evidence attached, no code change. The round's 2 lows (nested ternaries) → FIXED (r7).
+- R7+ → BLOCKED: muse-free lane quota-exhausted (429); poolside lane then OCR_JSON_ABSENT ×2;
+  openrouter rung OCR_JSON_ABSENT. Retry condition: the OCR lanes recover; rerun
+  `--resume <session>` or `provider=poolside-laguna-s`.
+
+THE RUNTIME PROOF SET (independent of the audit; live OMP process, pid 2680561):
+`verb=report` executed (ledger ticked) · `verb=evaluate` → `JEV_NEED_EVAL_ARGS` ·
+`verb=route` → `JEV_NEED_QUESTION` · `verb=watch` → `JEV_WATCH_NEEDS_ONCE` ·
+`verb=decision-tree rows=/tmp/does-not-exist.json` → `JEV_FILE_MISSING: rows is not a readable
+file` — 5/5 mechanical passes.
+
+THE LESSON. The registration fix (EN-115) and the audit hardening are the SAME discipline from
+two directions: prove the delivery on the FRESH artifact, and let an independent reviewer grade
+the artifact's own claims — adjudicating every finding with a mechanical probe (Side A probe-error
+/ Side B confirmed defect) rather than accepting or dismissing wholesale.

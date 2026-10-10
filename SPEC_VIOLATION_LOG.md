@@ -28,3 +28,30 @@ measurement, which timed out.
 **Adjudication:** the ARTIFACT (the skill) worked; the JUDGE was too slow. This is a defect in the
 test ENVIRONMENT, and the fix is the judge (decider-2b on GPU: 4ms vs 5s), not the skill.
 **Status:** OPEN — re-dispatch against the faster judge (W7).
+
+
+## SV-04 · The registration verification ran against the live stale process instead of the fresh-boot contract
+**Spec:** the OMP tool-registration delivery contract (a tool with `loadMode:"essential"` +
+`defaultInactive:false` ships top-level at every session CONSTRUCTION; the fresh boot is the
+delivery gate).
+**Deviation:** three days of verification ran against the operator's LIVE session process (started
+18:31:48) while the extension set changed underneath it (hydra-wave 19:08; rewrites 19:28:30;
+config 19:43:59). A running process never re-reads extension files; the live set was frozen at
+construction plus a stale snapshot application.
+**Adjudication:** the fresh-boot A/B (a clean-room copy of the session, `/dump`ed) settled it in
+minutes: jev top-level, 23 wire tools. The deviation was DIAGNOSTIC, not architectural — the
+registration itself was correct the whole time.
+**Status:** RESOLVED — the fresh-boot contract is now the standing delivery gate (EN-115); the
+handler logs both branches; the re-assert is serialized + CAS-verified.
+
+## SV-05 · The initial tool build shipped without an independent adversarial audit
+**Spec:** the project's production-grade standard (the jm lineage: no ship claim without the
+independent audit gate; the manifest's own audit discipline).
+**Deviation:** the first delivered extension passed its own runtime battery (happy path + the
+guards it wrote) but had never been graded by an independent reviewer. The audit arc found
+19 critical/high findings (EN-117) — silently-dropped verb params, masked exit codes, injection
+surfaces, `--json` corruption, an encoding gap, a surrogate asymmetry.
+**Adjudication:** all 19 adjudicated (15 fixed, 3 declined-with-evidence, 1 probe-error);
+the runtime proof set re-run (5/5). The remaining audit runs were lane-BLOCKED (retry named).
+**Status:** RESOLVED for the found set — the standing rule: no extension ships without an
+independent audit round + per-finding adjudication.
