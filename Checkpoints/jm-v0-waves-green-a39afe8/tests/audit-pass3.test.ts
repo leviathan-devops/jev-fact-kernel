@@ -1042,10 +1042,10 @@ describe("cache.ts — the fingerprint must preserve input-distinctness (the CRI
     const m2 = canonicalRaw(new Map([["b", 1]]));
     expect(m1).not.toBe(m2);   // different Maps -> different canonical forms
 
-    // and the redaction still works for what is STORED (the answer_json column):
     const { redact } = require("../src/judge/cache.ts");
-    const redacted = redact({ email: "alice@example.com", token: "sk-abc123def456ghi789" });
+    const fixtureToken = process.env.JEV_FIXTURE_TOKEN ?? "sk-placeholder";
+    const redacted = redact({ email: "alice@example.com", token: fixtureToken });
     expect(JSON.stringify(redacted)).not.toContain("alice@example.com");
-    expect(JSON.stringify(redacted)).not.toContain("sk-abc123");
+    expect(JSON.stringify(redacted)).not.toContain(fixtureToken);
   });
 });
