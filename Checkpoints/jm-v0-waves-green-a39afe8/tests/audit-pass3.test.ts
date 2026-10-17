@@ -1043,7 +1043,7 @@ describe("cache.ts — the fingerprint must preserve input-distinctness (the CRI
     expect(m1).not.toBe(m2);   // different Maps -> different canonical forms
 
     const { redact } = require("../src/judge/cache.ts");
-    const fixtureToken = process.env.JEV_FIXTURE_TOKEN ?? "sk-placeholder";
+    const fixtureToken = process.env.JEV_FIXTURE_TOKEN || "sk-placeholder";
     const redacted = redact({ email: "alice@example.com", token: fixtureToken });
     expect(JSON.stringify(redacted)).not.toContain("alice@example.com");
     expect(JSON.stringify(redacted)).not.toContain(fixtureToken);

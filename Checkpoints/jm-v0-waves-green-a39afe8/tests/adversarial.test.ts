@@ -35,7 +35,7 @@ function test_adv_route_boundaries() {
 
 function test_adv_redaction() {
   test("test_adv_redaction", () => {
-    const fixtureKey = process.env.JEV_FIXTURE_KEY ?? "sk-placeholder";
+    const fixtureKey = process.env.JEV_FIXTURE_KEY || "sk-placeholder";
     const dirty = {
       email: "ceo@example.com", phone: "+1 (555) 123-4567",
       hash: "a".repeat(40), key: fixtureKey,
