@@ -44,7 +44,7 @@
 - **LESSON:** an artifact that records HOW it was produced can never be replayed.
 
 ## EN-007 — INVISIBLE backspace byte disabled the secret-redaction control (2026-09-21)
-- **FINDING:** the adversarial sweep showed `sk-abcdefgh12345678` surviving redaction into the canonical string.
+- **FINDING:** the adversarial sweep showed `<REDACTED_SET_VIA_ENV>` surviving redaction into the canonical string. The original fixture value was removed from this log.
 - **ROOT CAUSE:** a single backslash-b was written through a non-raw Python string: the escape became the BACKSPACE byte (0x08) in `src/judge/cache.ts:12`, so the regex required a literal control character before `sk-`.
 - **MECHANISM:** `/[\x08](sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,}/` — invisible in every editor view.
 - **FIX:** replaced the byte with a real `\b`; then swept EVERY source/test file for C0 control characters -> exactly 1 hit, now 0.
@@ -185,7 +185,7 @@ two fresh runs: dA.json sha a3bc30351f68dad8 vs dB.json ... (before the fix they
 - **SYMPTOM:** the adversarial sweep showed a secret surviving redaction.
 - **EVIDENCE (verbatim):**
 ```
-received: "{\"email\":\"[email]\",\"hash\":\"[hex]\",\"key\":\"sk-abcdefgh12345678\",...}"
+received: "{\"email\":\"[email]\",\"hash\":\"[hex]\",\"key\":\"<REDACTED_SET_VIA_ENV>\",...}"
 ```
 - **ROOT CAUSE:** a single backslash-b written through a non-raw string layer became the BACKSPACE byte (0x08) in `src/judge/cache.ts:12`.
 - **MECHANISM:** `/[\x08](sk-|ghp_|xox[bap]-)[A-Za-z0-9_-]{8,}/` — a regex that required a literal control character.
@@ -364,8 +364,8 @@ Received: 3
 
 ## D-007 — the invisible byte
 ```
-expected "sk-abcdefgh" not to be contained in:
-received: "{\"email\":\"[email]\",\"hash\":\"[hex]\",\"key\":\"sk-abcdefgh12345678\",\"nested\":{\"deep\":{\"hex\":\"[hex]\"},\"list\":[\"[email]\"]},\"phone\":\"[phone]\"}"
+expected "<REDACTED_SET_VIA_ENV>" not to be contained in:
+received: "{\"email\":\"[email]\",\"hash\":\"[hex]\",\"key\":\"<REDACTED_SET_VIA_ENV>\",\"nested\":{\"deep\":{\"hex\":\"[hex]\"},\"list\":[\"[email]\"]},\"phone\":\"[phone]\"}"
 
 control-char scan:
 ./src/judge/cache.ts @byte 540: 0x08

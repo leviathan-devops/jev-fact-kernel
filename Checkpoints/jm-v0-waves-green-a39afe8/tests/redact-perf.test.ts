@@ -43,7 +43,7 @@ describe("D-037 redaction", () => {
   test("test_redaction_still_catches_every_class", () => {
     expect(String(redact("mail me at alice@example.com"))).toContain("[email]");
     expect(String(redact("call +1 555 123 4567"))).toContain("[phone]");
-    expect(String(redact("token sk-abcdefgh12345678"))).toContain("[secret]");
+    expect(String(redact("token sk-placeholder"))).toContain("[secret]");
     expect(String(redact("nothing to redact here"))).toBe("nothing to redact here");
   });
 

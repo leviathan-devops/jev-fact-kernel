@@ -35,15 +35,16 @@ function test_adv_route_boundaries() {
 
 function test_adv_redaction() {
   test("test_adv_redaction", () => {
+    const fixtureKey = process.env.JEV_FIXTURE_KEY || "sk-placeholder";
     const dirty = {
       email: "ceo@example.com", phone: "+1 (555) 123-4567",
-      hash: "a".repeat(40), key: "sk-abcdefgh12345678",
+      hash: "a".repeat(40), key: fixtureKey,
       nested: { list: ["bob@x.io"], deep: { hex: "deadbeef".repeat(8) } },
     };
     const out = canonical(dirty);
     expect(out).not.toContain("ceo@example.com");
     expect(out).not.toContain("555) 123-4567");
-    expect(out).not.toContain("sk-abcdefgh");
+    expect(out).not.toContain(fixtureKey);
     expect(out).not.toContain("deadbeefdeadbeef");
     expect(out).toContain("[email]");
     // canonical: key order cannot fork the key
