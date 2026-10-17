@@ -202,3 +202,22 @@ full, lives at `context_management/RUNTIME_SEAT.md:1` §7:
   driven through the gate on the live wire. Only `plutus-lsp` was.
 - **The kill path under load.** Concurrency, a server hanging mid-probe, and the probe's own timeout
   were not exercised on the live wire.
+
+## TEST RESULT — 2026-10-02 — the bug-class scan (SCRIPT)
+
+### SCRIPT
+- **The run:** `jm index <paths> --name ext|pbk` then `jm scan <index> --re '<the class>'` for:
+  remote URLs · escape hatches (`ALLOW_*`) · unchecked env-var URL defaults · remote-key gating.
+- **The raw output:**
+  ```
+  JM_INDEX_OK files=62 (extensions)  ·  JM_INDEX_OK files=43 (pbk-v2/src)
+  scan ext --re 'https?://(api\.typesafe|api\.openai|…)'  -> 5 hits, ALL dist.js.bak-* (backups)
+  scan ext --re '(ALLOW|BYPASS|SKIP|DISABLE)_(URL|HOST|CHECK|GATE)[A-Z_]*='  -> (none)
+  scan pbk --re 'fetch\(.https?://'  -> (none)
+  scan pbk --re 'TYPESAFE_AI_API_KEY'  -> kernel-judge.ts 16, claim-bind.ts 10, pbk-anti-derailment.ts 6
+  ```
+- **The verdict:** **PASS — the class is CLEARED from the LIVE trees.** Every remote-URL hit is a
+  pre-fix backup; no escape hatch survives in a live file. **The scan FOUND two stale key guards
+  (F-11), which are now fixed** — the scan's purpose, executed.
+- **The artifacts:** `~/.jm/index/ext.sqlite` · `~/.jm/index/pbk.sqlite` · the new
+  `~/.jm/targets.json`.

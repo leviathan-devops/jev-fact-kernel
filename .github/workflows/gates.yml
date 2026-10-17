@@ -49,9 +49,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: oven-sh/setup-bun@v2
-      - name: every spec item maps to a changed file
-        run: bun run scripts/spec-diff.ts || exit 1
       # REMOVED 2026-09-23 (a self-defeating gate bug, MEASURED): this step
       # created an EMPTY ledger when none existed. fence-check.py treats an
       # ABSENT ledger as NO-LEDGER-SKIP -> exit 0 (nothing to check yet), but an

@@ -175,7 +175,7 @@ function getNewestMtime(dir: string): number {
       }
     }
   };
-  try { walk(dir); } catch {}
+  try { walk(dir); } catch { /* absent directory: newest mtime stays 0 */ }
   return newest;
 }
 

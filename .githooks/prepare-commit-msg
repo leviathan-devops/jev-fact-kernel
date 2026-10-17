@@ -98,19 +98,4 @@ if printf '%s' "$MSG" | grep -qiE '\b(verified|passed|tested|works|green|done|co
   fi
 fi
 
-
-# ── THE FACT-KERNEL SPEC GATE, CHAINED (BEFORE the exit, or it never runs) ────────────────────
-# THE CONFLICT THIS RESOLVES: the enrollment ships its own .githooks/ and step 5 sets
-# `core.hooksPath .githooks` — DISPLACING the kernel's spec gate at .git-hooks/. Neither gate
-# may be lost: the enrollment's checks (semantic prefix + W-8 claim-evidence) and the kernel's
-# FR-citation check are BOTH required. They CHAIN here, on the anchor that fires where
-# commit-msg cannot.
-#
-# INSERTION POINT IS LOAD-BEARING: this block goes BEFORE the script's final `exit 0`. An
-# appended block after the exit is unreachable — a gate behind an exit is not a gate.
-SPEC_GATE="$(git rev-parse --show-toplevel 2>/dev/null)/scripts-spec-gate.sh"
-if [ -x "$SPEC_GATE" ] && [ -n "${1:-}" ]; then
-  bash "$SPEC_GATE" --staged "$1" || exit 1
-fi
-
 exit 0

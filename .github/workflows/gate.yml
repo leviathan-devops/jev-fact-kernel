@@ -23,12 +23,18 @@ jobs:
     timeout-minutes: 15
     env:
       JM_HOME: /tmp/jm-gate
+      # bin/jm defaults to a Leviathan checkout. CI uses this checkout. The default in bin/jm
+      # is an owner decision and is not changed here.
+      JM_REPO: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: put the repo jm shim on PATH
+        run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
 
       - name: L0 · tsc (the syntax floor — worth nothing alone)
         run: |
@@ -38,7 +44,7 @@ jobs:
       - name: L1 · the battery (the regression net; serialized — see bunfig.toml)
         run: bun test
 
-      - name: L2 · THE GATE'S REFUSALS (adverse-first: a gate that cannot block is decoration)
+      - name: "L2 · THE GATE'S REFUSALS (adverse-first: a gate that cannot block is decoration)"
         run: |
           set -e
           # A malformed where on a numeric column must refuse BY NAME, at exit 2
