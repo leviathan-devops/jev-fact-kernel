@@ -16,6 +16,15 @@ set -euo pipefail
 # wrong thing from the wrong directory; this one names the single place the engine lives.
 JM_REPO="${JM_REPO:-/home/leviathan/JARVIS_WORKSPACE/Shared_Workspace/JevManager}"
 
+# ★ W4 (LEV-27): THE CALLER'S REPO IS CAPTURED HERE, BEFORE ANY cd. The shim runs the engine from
+# $JM_REPO, and `push-gate` judges `process.cwd()` — so the gate used to judge JevManager's OWN tree
+# from every repo it was installed in (measured: an empty scratch repo reported src_files=40 and was
+# refused on JevManager's docs/drift). An explicit JM_CALLER_ROOT (the hook sets it) wins.
+CALLER_ROOT="${JM_CALLER_ROOT:-}"
+if [ -z "$CALLER_ROOT" ]; then
+  CALLER_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+fi
+
 [ -f "$JM_REPO/src/cli.ts" ] || {
   echo "jm: the engine is not at '$JM_REPO' (set JM_REPO to its location)" >&2
   exit 127
@@ -25,6 +34,20 @@ BUN="${JM_BUN:-}"
 [ -n "$BUN" ] || BUN="$(command -v bun 2>/dev/null || true)"
 [ -n "$BUN" ] || BUN="${HOME:-}/.bun/bin/bun"
 [ -x "$BUN" ] || { echo "jm: no bun found (tried JM_BUN, PATH, \$HOME/.bun/bin)" >&2; exit 127; }
+
+# ★ W4 (LEV-27): push-gate JUDGES THE COMMITTING REPO. It runs with cwd = the caller's repo root and
+# the engine by ABSOLUTE path (its imports resolve from the file, not the cwd). The caller's own
+# bunfig.toml and .env are NOT loaded (the engine's bunfig is pinned, auto .env is off), so the repo
+# being judged cannot reconfigure its judge. (No --tsconfig-override: bun 1.4.2 prints an internal
+# "directory mismatch" error with it; the engine's imports are relative, so `paths` cannot remap them.) Outside a git repo it refuses BY NAME (never guesses).
+if [ "${1:-}" = "push-gate" ]; then
+  if [ -z "$CALLER_ROOT" ] || [ ! -d "$CALLER_ROOT" ]; then
+    echo "jm push-gate: not inside a git repository — refusing to guess which repo to judge (cd into it, or set JM_CALLER_ROOT)" >&2
+    exit 2
+  fi
+  cd "$CALLER_ROOT"
+  exec "$BUN" run --config="$JM_REPO/bunfig.toml" --no-env-file "$JM_REPO/src/cli.ts" "$@"
+fi
 
 # RUN FROM THE REPO so `src/cli.ts` and its relative imports resolve, whatever cwd the caller is in.
 cd "$JM_REPO"

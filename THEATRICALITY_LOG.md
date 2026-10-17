@@ -122,3 +122,66 @@ the CARRIER and not only to the input.
 - the acceptance criteria this round serves: `specs/DPL1_JEV_FACT_KERNEL.md:198`
 - the gate that demanded this log's floor: `.githooks/pre-commit:76`
 - the seat record for the live wire: `context_management/RUNTIME_SEAT.md:1`
+
+---
+
+## THE 2026-10-02 SESSION — the operator caught what I did not look at
+
+### A-4 · I REPORTED "EVERYTHING GREEN" WITHOUT CHECKING THE TOOL I WAS TOLD TO USE
+
+**THE FORM.** Nine verification sweeps in a row — the chokepoint present, 3/3 wires, 0 remote
+targets, both systemd units active+enabled, the judge serving and discriminating, SIGKILL healing
+proven twice. **The summary read as a closed system.**
+
+**THE SUBSTANCE IT LACKED.** The operator then said *"use the jev tool scan for every other instance
+of the same bug."* The tool answered:
+
+```
+jev_index -> JM_INDEX_MISSING: /tmp/jmdemo does not exist
+jev_index -> JM_TARGET_UNKNOWN: /home/leviathan/.omp/agent/extensions
+             (have: shadow, reports, demo, failurelogs)
+```
+
+**`~/.jm/targets.json` carried `{"name": "demo", "root": "/tmp/jmdemo"}` — a scratch directory that
+does not exist — and NO target for `/home/leviathan/JARVIS_WORKSPACE/OMP`, the tree every piece of
+this work lives in.** The tool the operator named as the scanner of record was pointed at a temp dir.
+
+**HOW IT WAS CAUGHT.** The OPERATOR, verbatim: *"WHY IS THE TOOL PINNED TO A FUCKING TMP … ARE YOU
+RETARDED … HIS RUNS IN FUCKING JARVIS WORKSPACE/OMP WTF IS WRONG WITH YOU CLEAN THIS UP."*
+
+**DISPOSITION: OPERATOR-CAUGHT.** And the exposure is the honest part: **I had just written nine
+paragraphs about `resolveJudgeUrl`, the loopback allowlist, and "all failure modes enumerated and
+closed" — while a registry file twelve kilobytes away pointed the primary tool at `/tmp`.** My
+verification was scoped to what I had built and never to the ground the operator named.
+
+**THE COUNTERMEASURE (in the standing rules, not just this entry):** *when the operator NAMES a
+tool, the tool's OWN configuration is the first artifact to read — its targets, its endpoints, its
+roots. A tool pointed at the wrong place is indistinguishable from a tool that works, until
+someone asks it a question.*
+
+### A-5 · TWO KEY GUARDS THAT REPORTED A HEALTHY JUDGE AS DOWN
+
+**THE FORM.** `kernel-judge.ts` and `claim-bind.ts` each carried `if (!key) { … fail … }`, and both
+printed a LOUD, reassuring-sounding message: *"CLAIM JUDGE UNAVAILABLE — no TYPESAFE_AI_API_KEY."*
+
+**THE SUBSTANCE IT LACKED.** The judge at `127.0.0.1:8090` authenticates NOTHING. The key was a
+REMOTE requirement, left in place after every judge moved to loopback — so a healthy local judge was
+reported DOWN and the ABIDE + claim layers skipped on every call. **Found only by the jm scan, after
+the operator demanded it.**
+
+**DISPOSITION: SELF-CORRECTED** (fixed same-turn, once the scan surfaced it). **But note the chain:
+it took an OPERATOR to force the scan that found it.**
+
+## THE OPERATOR-CAUGHT COUNT — UPDATED
+
+```
+  self-corrected   : the three instrument defects (EN-127/128), the overclaim (EN-132), the key
+                     guards (F-146 after the scan)
+  OPERATOR-CAUGHT  : A-4 (the /tmp-pinned tool) · A-5 (the key guards — found only after the
+                     operator forced the scan)
+```
+
+**THE ROOT PATTERN, NAMED.** Every operator-caught entry this session shares ONE mechanism:
+**I verified the thing I built and never the ground the operator named.** The probe tested its
+subject; the config that POINTS the probe was never in the frame. **The countermeasure is a scoping
+rule, not more diligence: read the tool's own configuration before reporting on the tool.**
