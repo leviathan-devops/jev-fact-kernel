@@ -4,7 +4,7 @@ name: gates
 # status contexts. Only pull_request + merge_group triggers are used here — the
 # _target trigger variant must never appear in this file (it hands secrets
 # to fork PRs). Every job below fails closed with exit 1.
-"on": [pull_request, merge_group]
+"on": [push, pull_request, merge_group]
 
 jobs:
   anti_theatrical:
