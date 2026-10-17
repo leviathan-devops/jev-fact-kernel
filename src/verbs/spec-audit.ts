@@ -41,7 +41,7 @@ export interface SpecAuditResult {
   auditLine: string;
 }
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Audit a spec's components against the codebase. MECHANICAL — no model, no cost. */
@@ -71,13 +71,12 @@ export function auditSpec(
       const testsDir = join(repoRoot, "tests");
       let allTests = "";
       try {
-        const { readdirSync } = require("node:fs") as typeof import("node:fs");
         for (const f of readdirSync(testsDir)) {
           if (f.endsWith(".test.ts")) {
-            try { allTests += readFileSync(join(testsDir, f), "utf8") + "\n"; } catch {}
+            try { allTests += readFileSync(join(testsDir, f), "utf8") + "\n"; } catch { /* unreadable file: that selector stays missing */ }
           }
         }
-      } catch {}
+      } catch { /* no tests directory: every selector stays missing */ }
       testsPresent = c.tests.filter((t) => allTests.includes(t));
       testsMissing = c.tests.filter((t) => !allTests.includes(t));
     }
