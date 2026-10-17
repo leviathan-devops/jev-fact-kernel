@@ -33,6 +33,28 @@ export function makeSandbox(): { home: string; root: string; cleanup: () => void
   };
 }
 
+/** A judge endpoint bound with `port: 0` that accepts the TCP handshake and then closes.
+ *  Outage tests need every call to fail. A fixed port is not a mock — it can be taken, and
+ *  it is not the process-local server the suite is allowed to call. The OS assigns the port;
+ *  `socket.end()` drops the request before any HTTP response, so the transport sees a network
+ *  failure and the retry path runs exactly as it did against a dead port. */
+export function closedJudge(): { url: string; stop: () => void } {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open(socket) { socket.end(); },
+      data() { /* the peer is closed in open; nothing to read */ },
+      error() { /* a reset during close is the outage this mock exists to produce */ },
+      close() { /* the handshake is over */ },
+    },
+  });
+  return {
+    url: `http://127.0.0.1:${server.port}/`,
+    stop: () => { server.stop(true); },
+  };
+}
+
 /** Write a fixture tree: keys are paths RELATIVE to `root`. */
 export function fill(root: string, files: Record<string, string>): void {
   for (const [relativePath, body] of Object.entries(files)) {

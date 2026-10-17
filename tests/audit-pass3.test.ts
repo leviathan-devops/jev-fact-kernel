@@ -4,7 +4,7 @@
 // more high/critical findings — including two in code written the SAME DAY. Each probe below is the
 // settlement that turned a hypothesis into a defect.
 import { describe, expect, test } from "bun:test";
-import { echoJudge } from "./helpers";
+import { closedJudge, echoJudge } from "./helpers";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -104,7 +104,8 @@ describe("decision-tree.ts:121 — a degraded row must not leak its budget claim
     const home = mkdtempSync(join(tmpdir(), "jm-bt-"));
     const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
     process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
-    process.env.JM_JUDGE_URL = "http://127.0.0.1:9/";      // a dead port: every call fails
+    const dead = closedJudge();                           // port 0: every call fails, nothing is pinned
+    process.env.JM_JUDGE_URL = dead.url;
     delete process.env.JM_LEDGER;
     try {
       const { openDb, indexPathFor } = await import("../src/store/db");
@@ -127,6 +128,7 @@ describe("decision-tree.ts:121 — a degraded row must not leak its budget claim
       if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
       if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
       if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      dead.stop();
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -821,7 +823,8 @@ describe("the judged verbs — a claim is released on EVERY exit, and the trend 
     for (let i = 0; i < 6; i++) writeFileSync(join(corpus, `f${i}.md`), `tombstone record ${i} with enough body text for an excerpt`);
     const prev = { home: process.env.JM_HOME, homeDir: process.env.HOME, key: process.env.TYPESAFE_API_KEY, url: process.env.JM_JUDGE_URL, ledger: process.env.JM_LEDGER };
     process.env.JM_HOME = home; process.env.HOME = home; process.env.TYPESAFE_API_KEY = "sandbox";
-    process.env.JM_JUDGE_URL = "http://127.0.0.1:9/";          // a dead port: EVERY call fails
+    const dead = closedJudge();                               // port 0: EVERY call fails, nothing is pinned
+    process.env.JM_JUDGE_URL = dead.url;
     delete process.env.JM_LEDGER;
     try {
       const { openDb, indexPathFor } = await import("../src/store/db");
@@ -859,6 +862,7 @@ describe("the judged verbs — a claim is released on EVERY exit, and the trend 
       if (prev.key === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = prev.key;
       if (prev.url === undefined) delete process.env.JM_JUDGE_URL; else process.env.JM_JUDGE_URL = prev.url;
       if (prev.ledger === undefined) delete process.env.JM_LEDGER; else process.env.JM_LEDGER = prev.ledger;
+      dead.stop();
       rmSync(home, { recursive: true, force: true });
     }
   }, 30000);

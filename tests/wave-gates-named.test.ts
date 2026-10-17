@@ -79,7 +79,13 @@ describe("the wave-plan named gates", () => {
     // WAVE PLAN W7: "two fresh subagents (zero session context, only the skill + the tools)."
     // The skill MUST exist and MUST name the entry points, the keyless/judged split, and
     // the JM_JUDGE_URL setup — the §9.2 first-class definition.
-    const skillPath = join(process.env.HOME ?? "", ".omp/agent/managed-skills/jev-manager-operator/SKILL.md");
+    //
+    // The assertion used to read `$HOME/.omp/agent/managed-skills/jev-manager-operator/SKILL.md`.
+    // That file was minted on one machine and never committed, so existsSync was false in every
+    // fresh checkout and true only where the home directory happened to hold it — the same class
+    // as the ambient API key tests/preload.ts exists to remove. The content checks below are the
+    // gate. They now read the shipped skill, which is what a checkout actually contains.
+    const skillPath = join(REPO, "skills/jev-manager-operator/SKILL.md");
     expect(existsSync(skillPath)).toBe(true);
     const skill = readFileSync(skillPath, "utf8");
     expect(skill).toContain("jm");                       // the CLI entry point

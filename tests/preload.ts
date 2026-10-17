@@ -1,4 +1,17 @@
 // tests/preload.ts — THE HERMETICITY PRELOAD.
+import { afterAll } from "bun:test";
+import { installLiveJudgeGuard, liveJudgeHits } from "./live-judge-guard.ts";
+
+installLiveJudgeGuard();
+
+// Runs at the end of each file. A connection the calling test swallowed still fails the file.
+afterAll(() => {
+  const found = liveJudgeHits();
+  if (found.length > 0) {
+    throw new Error(`JM_LIVE_JUDGE_FORBIDDEN: ${found.map((h) => h.target).join(", ")}`);
+  }
+});
+
 //
 // WHY THIS FILE EXISTS: six test files point the judge at a LOCAL endpoint (`JM_JUDGE_URL`) so the
 // outage/usage/policy paths are reachable — but `requireKey()` gates the call BEFORE any network

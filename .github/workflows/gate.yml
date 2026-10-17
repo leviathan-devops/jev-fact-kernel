@@ -23,12 +23,18 @@ jobs:
     timeout-minutes: 15
     env:
       JM_HOME: /tmp/jm-gate
+      # bin/jm defaults to a Leviathan checkout. CI uses this checkout. The default in bin/jm
+      # is an owner decision and is not changed here.
+      JM_REPO: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: put the repo jm shim on PATH
+        run: echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
 
       - name: L0 · tsc (the syntax floor — worth nothing alone)
         run: |
