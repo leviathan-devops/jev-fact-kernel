@@ -1,11 +1,10 @@
 // tests/live-judge-guard.ts — refuse the live judge ports.
 //
 // The suite's judge calls go to a mock this process bound with `port: 0`, or to the canned
-// JM_MOCK_DIR transport, which never opens a socket. 127.0.0.1:8090 and :18090 are the live
-// Leviathan judge. A test that reaches either one is not a test of this checkout.
+// JM_MOCK_DIR transport, which never opens a socket. Ports 8090 and 18090 are the live
+// Leviathan judge, on any host. A test that reaches either port is not a test of this checkout.
 
 const FORBIDDEN_PORTS = new Set([8090, 18090]);
-const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 export interface LiveJudgeHit {
   target: string;
@@ -21,7 +20,6 @@ export function forbiddenJudgeTarget(target: string): boolean {
   } catch {
     return false;
   }
-  if (!LOOPBACK.has(url.hostname)) return false;
   const port = url.port === "" ? (url.protocol === "https:" ? 443 : 80) : Number(url.port);
   return FORBIDDEN_PORTS.has(port);
 }
