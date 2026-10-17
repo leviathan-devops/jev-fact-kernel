@@ -1,0 +1,25 @@
+STALE_BASE
+
+The GitHub tree of jev-manager-tool does not contain Leviathan commit 2757d6a
+(jm hook fix). That commit is local to Leviathan and was not pushed. This lane
+does not recreate it.
+
+Files named by that commit:
+
+- bin/jm
+  GitHub copy is the thin shim that pins JM_REPO to the Leviathan checkout.
+  CI sets JM_REPO to the GitHub workspace. The file itself is unchanged.
+  STALE_BASE: the Leviathan commit changes this file. Left untouched.
+
+- jm-gate-install.sh
+  GitHub copy writes a pre-commit hook whose default JM_JUDGE_URL is
+  http://127.0.0.1:8090/v1/systemone.
+  STALE_BASE: the Leviathan commit changes this file. Left untouched.
+  This lane does not run that hook and does not connect to that port.
+
+- tests/jm-hook-fix.test.ts
+  Absent on GitHub. STALE_BASE: not recreated from the unpushed commit.
+
+Work in this lane is against origin/feat/jev-fact-kernel plus the lane branch.
+The arm check added here reads JEV_GATES_MODE_FILE or ~/.jev-gates/mode. It does
+not edit the three files above.
